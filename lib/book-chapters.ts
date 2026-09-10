@@ -10,9 +10,12 @@ export type ChapterBoundary = {
   title: string;
 };
 
+export type DetectionConfidence = "high" | "medium" | "low";
+
 export type ChapterDetectionResult = {
   chapters: ChapterBoundary[];
   method: "headings" | "fixed_windows";
+  confidence: DetectionConfidence;
 };
 
 // Matches an English "Chapter/Unit/Part/Section N" or an Arabic
@@ -78,6 +81,19 @@ function boundariesToChapters(
   }));
 }
 
+// Full-featured chapter editing (renaming/resizing boundaries) is deferred
+// to a later PR — this only classifies how much a student should trust the
+// detected split, so the UI can show a "we guessed" banner for fixed_windows
+// and for the weakest heading result (exactly 2 boundaries, the bare minimum
+// isHeadingResultReliable() accepts).
+function classifyDetectionConfidence(
+  method: "headings" | "fixed_windows",
+  boundaryCount: number
+): DetectionConfidence {
+  if (method === "fixed_windows") return "low";
+  return boundaryCount >= 3 ? "high" : "medium";
+}
+
 function fixedWindowChapters(totalPages: number): ChapterBoundary[] {
   const chapters: ChapterBoundary[] = [];
   let start = 1;
@@ -100,14 +116,21 @@ export function detectChapters(pages: PageInput[]): ChapterDetectionResult {
   const totalPages = pages.length
     ? Math.max(...pages.map(page => page.page))
     : 0;
-  if (!totalPages) return { chapters: [], method: "fixed_windows" };
+  if (!totalPages) {
+    return { chapters: [], method: "fixed_windows", confidence: "low" };
+  }
 
   const boundaries = detectHeadingBoundaries(pages);
   if (isHeadingResultReliable(boundaries, totalPages)) {
     return {
       chapters: boundariesToChapters(boundaries, totalPages),
       method: "headings",
+      confidence: classifyDetectionConfidence("headings", boundaries.length),
     };
   }
-  return { chapters: fixedWindowChapters(totalPages), method: "fixed_windows" };
+  return {
+    chapters: fixedWindowChapters(totalPages),
+    method: "fixed_windows",
+    confidence: "low",
+  };
 }

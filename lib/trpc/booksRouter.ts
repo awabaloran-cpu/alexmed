@@ -14,6 +14,8 @@ import {
   listMcqsForUser,
   rateBookCard,
   resetBookChapterForRetry,
+  resetBookExtractionForRetry,
+  resetBookPageTextForRetry,
   resetBookPageVisualForRetry,
   submitMcqAttemptForUser,
 } from "../db-books";
@@ -127,6 +129,58 @@ export const booksRouter = router({
         type: "analyze_book_chapter",
         chapterId: input.chapterId,
         bookId: chapter.bookId,
+      });
+      return { success: true } as const;
+    }),
+
+  // Student-initiated retry for a book that failed outright during
+  // extraction (status "failed" — only reachable when literally zero pages
+  // could be parsed from the PDF, see app/api/books/extract/route.ts).
+  // Resets it to "extracting" with a clean attempt budget so the SAME
+  // uploaded file is re-processed — the student never re-uploads.
+  retryExtraction: protectedProcedure
+    .input(z.object({ bookId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const result = await getBookForUser(ctx.user.id, input.bookId);
+      if (!result) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Book not found" });
+      }
+      if (result.book.status !== "failed") {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Only a failed book can have its extraction retried",
+        });
+      }
+      await resetBookExtractionForRetry(input.bookId);
+      await publishMessage(
+        { type: "extract_book_job", bookId: input.bookId },
+        { flowControl: { key: `books-extract-${input.bookId}`, parallelism: 1 } }
+      );
+      return { success: true } as const;
+    }),
+
+  // Student-initiated retry for a single page whose TEXT extraction
+  // permanently exhausted its OCR retry budget (distinct from
+  // retryPageVisual below, which retries that page's independent
+  // image/diagram/table analysis) — same reset-then-republish pattern as
+  // retryChapter/retryPageVisual.
+  retryPageText: protectedProcedure
+    .input(z.object({ pageId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const page = await getBookPageOwnedByUser(ctx.user.id, input.pageId);
+      if (!page) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Page not found" });
+      }
+      if (page.textStatus !== "failed") {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Only a page whose text extraction failed can be retried",
+        });
+      }
+      await resetBookPageTextForRetry(input.pageId);
+      await publishMessage({
+        type: "retry_book_page_text",
+        pageId: input.pageId,
       });
       return { success: true } as const;
     }),

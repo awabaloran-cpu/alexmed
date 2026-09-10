@@ -71,6 +71,13 @@
       "when": 1788801453884,
       "tag": "0009_melted_epoch",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1789081180235,
+      "tag": "0010_add_book_extraction_partial_recovery",
+      "breakpoints": true
     }
   ]
 }

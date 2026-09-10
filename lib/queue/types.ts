@@ -16,7 +16,8 @@ export type QueueMessage =
       materialId: string;
     }
   | { type: "finalize_admin_material"; materialId: string }
-  | { type: "analyze_book_page_visuals"; bookId: string };
+  | { type: "analyze_book_page_visuals"; bookId: string }
+  | { type: "retry_book_page_text"; pageId: string };
 
 function readIntEnv(name: string, fallback: number): number {
   const raw = process.env[name];
