@@ -252,8 +252,11 @@ export async function finalizeBookExtraction(
     page,
     text,
   }));
-  const { chapters: boundaries, method, confidence } =
-    detectChapters(pageTexts);
+  const {
+    chapters: boundaries,
+    method,
+    confidence,
+  } = detectChapters(pageTexts);
   const pagesByChapter = boundaries.map(chapter =>
     pages.filter(
       page => page.page >= chapter.startPage && page.page <= chapter.endPage
@@ -806,22 +809,66 @@ export async function getBookCoverageReport(bookId: string) {
   };
 }
 
+export type BookRollupDecision = "skip" | "complete" | "partial_failed";
+
+// Pure decision logic for finalizeBookIfDone, extracted so it's directly
+// unit-testable without mocking the DB (same rationale as
+// linkSourcePagesToVisualAssets above). Found via a real-Postgres
+// integration run: "partial_failed" was originally treated the same as
+// "complete" (a terminal state finalizeBookIfDone refused to re-touch),
+// which meant a student successfully retrying their last failed
+// chapter/page could NEVER see the book flip back to "complete" — the
+// status was permanently stuck. "complete" alone is truly terminal (no
+// failure exists left to ever re-surface); "partial_failed" must keep being
+// re-evaluated on every call.
+export function computeBookRollupStatus(
+  currentStatus: string,
+  chapterStatuses: string[],
+  pageStatuses: { visualStatus: string; textStatus: string }[]
+): BookRollupDecision {
+  if (currentStatus === "complete") return "skip";
+  if (!chapterStatuses.length) return "skip";
+
+  const chaptersStillWorking = chapterStatuses.some(
+    status =>
+      status === "pending" ||
+      status === "processing" ||
+      status === "analyzing" ||
+      status === "retrying"
+  );
+  if (chaptersStillWorking) return "skip";
+
+  // Also gates on every page's visualStatus reaching a terminal state
+  // (complete/needs_review/failed) — a student can already read
+  // chapters/cards while visual analysis runs in the background (this never
+  // blocks that), but the book isn't reported "complete" until visual
+  // coverage is honestly settled too. "needs_review" alone (no true
+  // failures) does not force "partial_failed".
+  const pagesStillWorking = pageStatuses.some(
+    page =>
+      page.visualStatus === "pending" || page.visualStatus === "processing"
+  );
+  if (pagesStillWorking) return "skip";
+
+  const anyChapterFailed = chapterStatuses.some(status => status === "failed");
+  // textStatus === "failed" means this page permanently exhausted its OCR
+  // retry budget during extraction (see finalizeBookExtraction) — a real
+  // failure the student can retry individually, same as a failed chapter or
+  // a failed page visual, so it must count toward "partial_failed" too.
+  const anyPageFailed = pageStatuses.some(
+    page => page.visualStatus === "failed" || page.textStatus === "failed"
+  );
+
+  return anyChapterFailed || anyPageFailed ? "partial_failed" : "complete";
+}
+
 // Idempotent finalize: safe to call repeatedly — SELECT ... FOR UPDATE on
 // the book row serializes concurrent finalize attempts for the same book, so
-// two chapters finishing at nearly the same moment can't race each other.
-// Unlike مِرآة, there's no "graduation" step here — chapters' content
-// (bookTerms/bookCards/bookMcqs) is already the durable content, this just
-// rolls the book's own status up from its chapters' statuses.
-//
-// Also gates on every book_pages row's visualStatus reaching a terminal
-// state (complete/needs_review/failed) — a student can already read
-// chapters/cards while visual analysis is still running in the background
-// (it never blocks that), but the book itself isn't reported "complete"
-// until visual coverage is honestly settled too, per the plan's requirement
-// not to show "اكتمل" while pages remain unprocessed. "needs_review" alone
-// (no true failures) does not force "partial_failed" — only a real chapter
-// or page failure does; needs_review content is surfaced via the coverage
-// report instead of blocking completion.
+// two chapters (or page retries) finishing at nearly the same moment can't
+// race each other. Unlike مِرآة, there's no "graduation" step here —
+// chapters' content (bookTerms/bookCards/bookMcqs) is already the durable
+// content, this just rolls the book's own status up from its chapters'/
+// pages' statuses (see computeBookRollupStatus above for the actual rule).
 export async function finalizeBookIfDone(bookId: string) {
   const db = getDb();
   if (!db) throw new Error("Database not available");
@@ -832,29 +879,12 @@ export async function finalizeBookIfDone(bookId: string) {
       .from(books)
       .where(eq(books.id, bookId))
       .for("update");
-    if (
-      !book ||
-      book.status === "complete" ||
-      book.status === "partial_failed"
-    ) {
-      return;
-    }
+    if (!book) return;
 
     const chapters = await tx
       .select({ status: bookChapters.status })
       .from(bookChapters)
       .where(eq(bookChapters.bookId, bookId));
-    if (!chapters.length) return;
-
-    const chaptersStillWorking = chapters.some(
-      chapter =>
-        chapter.status === "pending" ||
-        chapter.status === "processing" ||
-        chapter.status === "analyzing" ||
-        chapter.status === "retrying"
-    );
-    if (chaptersStillWorking) return;
-
     const pages = await tx
       .select({
         visualStatus: bookPages.visualStatus,
@@ -862,30 +892,17 @@ export async function finalizeBookIfDone(bookId: string) {
       })
       .from(bookPages)
       .where(eq(bookPages.bookId, bookId));
-    const pagesStillWorking = pages.some(
-      page =>
-        page.visualStatus === "pending" || page.visualStatus === "processing"
-    );
-    if (pagesStillWorking) return;
 
-    const anyChapterFailed = chapters.some(
-      chapter => chapter.status === "failed"
+    const decision = computeBookRollupStatus(
+      book.status,
+      chapters.map(chapter => chapter.status),
+      pages
     );
-    // textStatus === "failed" means this page permanently exhausted its OCR
-    // retry budget during extraction (see finalizeBookExtraction) — a real
-    // failure the student can retry individually, same as a failed chapter
-    // or a failed page visual, so it must count toward "partial_failed" too.
-    const anyPageFailed = pages.some(
-      page => page.visualStatus === "failed" || page.textStatus === "failed"
-    );
-    const anyFailed = anyChapterFailed || anyPageFailed;
+    if (decision === "skip") return;
 
     await tx
       .update(books)
-      .set({
-        status: anyFailed ? "partial_failed" : "complete",
-        updatedAt: new Date(),
-      })
+      .set({ status: decision, updatedAt: new Date() })
       .where(eq(books.id, bookId));
   });
 }

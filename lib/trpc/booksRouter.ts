@@ -154,7 +154,9 @@ export const booksRouter = router({
       await resetBookExtractionForRetry(input.bookId);
       await publishMessage(
         { type: "extract_book_job", bookId: input.bookId },
-        { flowControl: { key: `books-extract-${input.bookId}`, parallelism: 1 } }
+        {
+          flowControl: { key: `books-extract-${input.bookId}`, parallelism: 1 },
+        }
       );
       return { success: true } as const;
     }),

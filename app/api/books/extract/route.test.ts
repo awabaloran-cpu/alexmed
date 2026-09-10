@@ -2,7 +2,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/queue/verify", () => ({ verifyQStashRequest: vi.fn() }));
 vi.mock("@/lib/storage", () => ({
-  storageGetSignedUrl: vi.fn().mockResolvedValue("https://signed.example/file.pdf"),
+  storageGetSignedUrl: vi
+    .fn()
+    .mockResolvedValue("https://signed.example/file.pdf"),
 }));
 vi.mock("@/lib/queue/client", () => ({ publishMessage: vi.fn() }));
 vi.mock("@/lib/pdf-ocr", () => ({ ocrPages: vi.fn() }));
@@ -40,9 +42,8 @@ const mockGetBook = getBookById as unknown as ReturnType<typeof vi.fn>;
 const mockMarkFailed = markBookExtractionFailed as unknown as ReturnType<
   typeof vi.fn
 >;
-const mockUpdateProgress = updateBookExtractionProgress as unknown as ReturnType<
-  typeof vi.fn
->;
+const mockUpdateProgress =
+  updateBookExtractionProgress as unknown as ReturnType<typeof vi.fn>;
 const mockUpsertPages = upsertBookPagesText as unknown as ReturnType<
   typeof vi.fn
 >;

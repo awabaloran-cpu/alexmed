@@ -35,7 +35,10 @@ export async function POST(request: Request) {
     const body = JSON.parse(rawBody) as { pageId?: string };
     pageId = typeof body.pageId === "string" ? body.pageId : "";
     if (!pageId) {
-      return NextResponse.json({ error: "معرف الصفحة مفقود." }, { status: 200 });
+      return NextResponse.json(
+        { error: "معرف الصفحة مفقود." },
+        { status: 200 }
+      );
     }
   } catch (error) {
     console.error("[Books] Retry-page-text body parse failed", error);

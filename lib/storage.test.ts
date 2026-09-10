@@ -40,7 +40,9 @@ describe("storage delete helpers", () => {
   // an empty response must not throw.
   it("does not throw when the object is already gone", async () => {
     mockSend.mockResolvedValue({});
-    await expect(deleteObject("books/already-gone.pdf")).resolves.toBeUndefined();
+    await expect(
+      deleteObject("books/already-gone.pdf")
+    ).resolves.toBeUndefined();
   });
 
   it("logs and re-throws when the delete request itself fails", async () => {
@@ -82,9 +84,7 @@ describe("storage delete helpers", () => {
     });
     const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
-    await expect(
-      deleteObjects(["books/locked.pdf"])
-    ).resolves.toBeUndefined();
+    await expect(deleteObjects(["books/locked.pdf"])).resolves.toBeUndefined();
     expect(consoleSpy).toHaveBeenCalled();
     consoleSpy.mockRestore();
   });
