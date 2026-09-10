@@ -386,6 +386,55 @@ export const bookChapterDetectionConfidenceEnum = pgEnum(
   ["high", "medium", "low"]
 );
 
+// ── StudyOS subjects (PR2: profile + multiple subjects) — one enum shared
+// between a subject's own "type" and a book's "profile": both answer the
+// same question ("what kind of material is this"), just at two different
+// granularities (a subject groups many books; a book can also carry its
+// own profile independent of — or before it even has — a subject, since
+// profile drives AI prompt/schema selection per book while subjects are a
+// student-organizational grouping layer added on top).
+export const bookProfileEnum = pgEnum("book_profile", [
+  "general",
+  "medical",
+  "english",
+  "mathematics",
+  "aptitude",
+  "programming",
+  "custom",
+]);
+
+export const subjects = pgTable(
+  "subjects",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: uuid("userId")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    type: bookProfileEnum("type").default("general").notNull(),
+    description: text("description"),
+    color: text("color"),
+    icon: text("icon"),
+    examDate: timestamp("examDate", { withTimezone: true }),
+    targetDate: timestamp("targetDate", { withTimezone: true }),
+    createdAt: timestamp("createdAt", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updatedAt", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  table => ({
+    userCreatedIdx: index("subjects_user_id_created_at_idx").on(
+      table.userId,
+      table.createdAt
+    ),
+  })
+);
+
+export type Subject = typeof subjects.$inferSelect;
+export type InsertSubject = typeof subjects.$inferInsert;
+
 export const books = pgTable(
   "books",
   {
@@ -393,9 +442,23 @@ export const books = pgTable(
     userId: uuid("userId")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
+    // Nullable — a book can exist unassigned (student hasn't organized it
+    // into a subject yet); onDelete "set null" so deleting a subject only
+    // unassigns its books rather than deleting them (books are the
+    // student's actual content, subjects are just an organizational label).
+    subjectId: uuid("subjectId").references(() => subjects.id, {
+      onDelete: "set null",
+    }),
     fileName: text("fileName").notNull(),
     fileKey: text("fileKey"),
     pageCount: integer("pageCount").default(0).notNull(),
+    // Drives AI prompt/schema selection in lib/book-analysis.ts (see that
+    // file). Every pre-existing book (before this column existed) is
+    // backfilled to "medical" by this migration — this app's entire history
+    // before StudyOS was medical-exam-focused, so that's the accurate
+    // profile for old data, NOT a placeholder. "general" is only the
+    // default for genuinely NEW books going forward.
+    profile: bookProfileEnum("profile").default("general").notNull(),
     // How chapters were determined — "headings" (regex-detected) or
     // "fixed_windows" (fallback fixed-size page chunks) — see detectChapters().
     // Null while status is "extracting": unknown until finalizeBookExtraction()

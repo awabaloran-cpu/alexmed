@@ -9,8 +9,19 @@ import {
   Upload as UploadIcon,
   X,
 } from "lucide-react";
+import { trpc } from "@/lib/trpc-client";
 
 type Stage = "idle" | "uploading" | "planning";
+
+const PROFILE_LABELS: Record<string, string> = {
+  general: "عام",
+  medical: "طبي",
+  english: "لغة إنجليزية",
+  mathematics: "رياضيات",
+  aptitude: "قدرات",
+  programming: "برمجة",
+  custom: "مخصص",
+};
 
 function formatBytes(bytes: number) {
   if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
@@ -31,6 +42,9 @@ export default function BookUploadPage() {
   const [stage, setStage] = useState<Stage>("idle");
   const [error, setError] = useState("");
   const [dragActive, setDragActive] = useState(false);
+  const [profile, setProfile] = useState("general");
+  const [subjectId, setSubjectId] = useState("");
+  const subjectsQuery = trpc.subjects.list.useQuery();
 
   function chooseFile(nextFile: File | undefined) {
     setError("");
@@ -78,7 +92,12 @@ export default function BookUploadPage() {
       const planResponse = await fetch("/api/books/extract-and-plan", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ key: uploadUrlData.key, fileName: file.name }),
+        body: JSON.stringify({
+          key: uploadUrlData.key,
+          fileName: file.name,
+          profile,
+          ...(subjectId ? { subjectId } : {}),
+        }),
       });
       const planData = await planResponse.json();
       if (!planResponse.ok)
@@ -180,6 +199,51 @@ export default function BookUploadPage() {
               >
                 <X size={16} />
               </button>
+            </div>
+          )}
+
+          {stage === "idle" && (
+            <div
+              style={{
+                display: "flex",
+                gap: 12,
+                flexWrap: "wrap",
+                marginTop: 14,
+              }}
+            >
+              <label style={{ flex: "1 1 160px" }}>
+                <span style={{ display: "block", fontSize: 12, marginBottom: 4 }}>
+                  نوع المادة
+                </span>
+                <select
+                  value={profile}
+                  onChange={event => setProfile(event.target.value)}
+                  style={{ width: "100%" }}
+                >
+                  {Object.entries(PROFILE_LABELS).map(([value, label]) => (
+                    <option key={value} value={value}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label style={{ flex: "1 1 160px" }}>
+                <span style={{ display: "block", fontSize: 12, marginBottom: 4 }}>
+                  المادة (اختياري)
+                </span>
+                <select
+                  value={subjectId}
+                  onChange={event => setSubjectId(event.target.value)}
+                  style={{ width: "100%" }}
+                >
+                  <option value="">بدون مادة</option>
+                  {(subjectsQuery.data ?? []).map(subject => (
+                    <option key={subject.id} value={subject.id}>
+                      {subject.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
             </div>
           )}
 

@@ -7,6 +7,33 @@
 import type { Message } from "./llm";
 import { parseJsonResponse } from "./pdf-cards";
 
+// PR2: drives which framing buildChapterAnalysisMessages uses below — see
+// that function's comment. Deliberately does NOT change the JSON schema's
+// field names (still "medicalTerms" for every profile, see bookChapterSchema
+// below) — only the prompt wording changes per profile. This keeps the wire
+// contract, BookChapterAnalysis's shape, and every downstream parse/merge/
+// persist function completely unchanged, so no previously-completed
+// chapter's stored data is affected and no chapter is ever forced to
+// re-analyze just because this column now exists on its book.
+export type BookProfile =
+  | "general"
+  | "medical"
+  | "english"
+  | "mathematics"
+  | "aptitude"
+  | "programming"
+  | "custom";
+
+const PROFILE_SUBJECT_LABEL: Record<BookProfile, string> = {
+  general: "study material",
+  medical: "medical textbook",
+  english: "English-language learning material",
+  mathematics: "mathematics textbook",
+  aptitude: "aptitude/reasoning test-prep material",
+  programming: "programming/technical material",
+  custom: "study material",
+};
+
 export const bookChapterSchema = {
   type: "object",
   additionalProperties: false,
@@ -26,6 +53,12 @@ export const bookChapterSchema = {
       items: { type: "string" },
       description: "The most important points to remember from this chapter.",
     },
+    // Field name kept as "medicalTerms" for every profile (not just
+    // medical) — see the BookProfile comment above for why: this is a
+    // deliberate wire-contract stability choice, not an oversight. What
+    // actually generalizes per profile is the prompt's own instruction
+    // (see buildChapterAnalysisMessages) about what "important terms" means
+    // for that subject.
     medicalTerms: {
       type: "array",
       items: {
@@ -37,7 +70,7 @@ export const bookChapterSchema = {
           pronunciation: {
             type: "string",
             description:
-              "A simple syllable-hyphenated pronunciation guide for the English term, e.g. 'ven-TRIK-yoo-lar'.",
+              "A simple syllable-hyphenated pronunciation guide for the term, e.g. 'ven-TRIK-yoo-lar' — leave as an empty string when pronunciation isn't meaningful (e.g. a math symbol or a code keyword).",
           },
         },
         required: ["ar", "en", "pronunciation"],
@@ -56,7 +89,7 @@ export const bookChapterSchema = {
           relatedTermEn: {
             type: "string",
             description:
-              "The medical term (English) this card tests, or an empty string if none.",
+              "The term (English) from medicalTerms this card tests, or an empty string if none.",
           },
           sourcePage: { type: "integer" },
         },
@@ -213,21 +246,32 @@ export function chunkChapterPages(
   return chunks;
 }
 
+// profile defaults to "medical" — matches this migration's own backfill
+// decision (every book that existed before the profile column did was
+// created by this pipeline back when it only ever did medical content), so
+// a caller that doesn't pass a profile keeps getting the exact original
+// behavior rather than silently drifting to generic wording.
 export function buildChapterAnalysisMessages(
   chapterTitle: string,
-  pages: BookPageInput[]
+  pages: BookPageInput[],
+  profile: BookProfile = "medical"
 ): Message[] {
   const source = pages
     .map(page => `\n===== PDF PAGE ${page.page} =====\n${page.text}`)
     .join("\n");
+  const subjectLabel = PROFILE_SUBJECT_LABEL[profile];
+  const termsInstruction =
+    profile === "medical"
+      ? "important medical terms (Arabic + English + a simple pronunciation guide)"
+      : "important terms/vocabulary a student of this subject should memorize (Arabic + English + a simple pronunciation guide when relevant, otherwise leave pronunciation empty)";
 
   return [
     {
       role: "system",
       content: [
-        "You are a meticulous, encouraging medical-school study coach writing for a student who finds English difficult and forgets quickly.",
-        `You are given the raw text of one chapter (or part of one) from a medical textbook, titled "${chapterTitle}".`,
-        "Produce: a simple Arabic explanation, a concise exam-focused English explanation, key points, important medical terms (Arabic + English + a simple pronunciation guide), flashcards, and 4-option multiple-choice questions.",
+        `You are a meticulous, encouraging study coach writing for a student who finds English difficult and forgets quickly.`,
+        `You are given the raw text of one chapter (or part of one) from a ${subjectLabel}, titled "${chapterTitle}".`,
+        `Produce: a simple Arabic explanation, a concise exam-focused English explanation, key points, ${termsInstruction}, flashcards, and 4-option multiple-choice questions.`,
         "Cover the material thoroughly — do not skip sections. Every flashcard and MCQ must cite the real PDF page number (sourcePage) it came from, using the PDF PAGE markers below.",
         "Do not invent facts not present in the source text. If the source text is too thin or unclear to extract real content from, say so plainly in explanationAr/explanationEn instead of inventing filler.",
         "Write ONLY in Arabic and English — every field in every language, never any third language, never mix scripts within a field.",

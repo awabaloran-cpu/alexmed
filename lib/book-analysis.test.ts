@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildChapterAnalysisMessages,
   chunkChapterPages,
   mergeSubChunkResults,
   parseChapterAnalysis,
@@ -108,6 +109,43 @@ describe("mergeSubChunkResults", () => {
 
     expect(merged.explanationAr).toBe(only.explanationAr);
     expect(merged.summaries).toEqual([only.chapterSummary]);
+  });
+});
+
+describe("buildChapterAnalysisMessages profile framing (PR2)", () => {
+  function systemContent(profile?: Parameters<typeof buildChapterAnalysisMessages>[2]) {
+    const messages = buildChapterAnalysisMessages("Ch. 1", makePages(1), profile);
+    const system = messages.find(m => m.role === "system");
+    return typeof system?.content === "string" ? system.content : "";
+  }
+
+  it("defaults to the original medical framing when no profile is passed", () => {
+    expect(systemContent()).toContain("medical textbook");
+    expect(systemContent()).toContain("important medical terms");
+  });
+
+  it("keeps the exact medical framing when profile is explicitly medical", () => {
+    expect(systemContent("medical")).toContain("medical textbook");
+  });
+
+  it("drops medical framing for a non-medical profile", () => {
+    const content = systemContent("mathematics");
+    expect(content).not.toContain("medical");
+    expect(content).toContain("mathematics textbook");
+  });
+
+  it("never forces a medical-school coach persona onto a general book", () => {
+    const content = systemContent("general");
+    expect(content).not.toContain("medical");
+    expect(content).toContain("study material");
+  });
+
+  it("never changes the JSON schema's field names regardless of profile", () => {
+    // The wire contract (medicalTerms as the property key) is deliberately
+    // stable across every profile — see BookProfile's comment in
+    // lib/book-analysis.ts. Only the prompt's wording changes.
+    const analysis = makeAnalysis();
+    expect(parseChapterAnalysis(JSON.stringify(analysis))).toEqual(analysis);
   });
 });
 
