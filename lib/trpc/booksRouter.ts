@@ -9,6 +9,7 @@ import {
   getChapterContentForUser,
   getChapterForUser,
   getDueCardsForUser,
+  getWeakPointsForUser,
   listBooksForUser,
   listBookPagesForUser,
   listMcqsForUser,
@@ -123,6 +124,13 @@ export const booksRouter = router({
 
   stats: protectedProcedure.query(async ({ ctx }) => {
     return getBookStatsForUser(ctx.user.id);
+  }),
+
+  // نقاط الضعف (PR6) — questions whose most recent attempt was wrong,
+  // grouped by chapter so the student sees where to focus, not just a flat
+  // list. See lib/db-books.ts's computeWeakPoints for the exact definition.
+  listWeakPoints: protectedProcedure.query(async ({ ctx }) => {
+    return getWeakPointsForUser(ctx.user.id);
   }),
 
   // Student-initiated retry for a chapter that exhausted its automatic
