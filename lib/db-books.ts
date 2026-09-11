@@ -33,7 +33,14 @@ export type BookPageText = { page: number; text: string; hasText: boolean };
 // immediately regardless of file size; see app/api/books/extract/route.ts).
 export async function createBookShell(
   userId: string,
-  input: { fileName: string; fileKey: string }
+  input: {
+    fileName: string;
+    fileKey: string;
+    // Both optional — profile defaults to "general" (the schema column's
+    // own default, for genuinely new books) and subjectId to unassigned.
+    profile?: Book["profile"];
+    subjectId?: string | null;
+  }
 ): Promise<Book> {
   const db = getDb();
   if (!db) throw new Error("Database not available");
@@ -45,6 +52,8 @@ export async function createBookShell(
       fileName: input.fileName,
       fileKey: input.fileKey,
       status: "extracting",
+      ...(input.profile ? { profile: input.profile } : {}),
+      ...(input.subjectId !== undefined ? { subjectId: input.subjectId } : {}),
     })
     .returning();
   return book;
@@ -362,6 +371,8 @@ export async function listBooksForUser(userId: string) {
       fileName: books.fileName,
       pageCount: books.pageCount,
       createdAt: books.createdAt,
+      subjectId: books.subjectId,
+      profile: books.profile,
       chapterCount: count(bookChapters.id),
       completeChapterCount: count(
         sql`case when ${bookChapters.status} = 'complete' then 1 end`
@@ -488,18 +499,26 @@ export async function getChapterForUser(
 // trust-boundary reasoning as db-mirror.ts's getMirrorBatchById.
 export async function getChapterById(
   chapterId: string
-): Promise<(BookChapter & { userId: string }) | null> {
+): Promise<
+  (BookChapter & { userId: string; bookProfile: Book["profile"] }) | null
+> {
   const db = getDb();
   if (!db) return null;
 
   const [row] = await db
-    .select({ chapter: bookChapters, userId: books.userId })
+    .select({
+      chapter: bookChapters,
+      userId: books.userId,
+      bookProfile: books.profile,
+    })
     .from(bookChapters)
     .innerJoin(books, eq(books.id, bookChapters.bookId))
     .where(eq(bookChapters.id, chapterId))
     .limit(1);
 
-  return row ? { ...row.chapter, userId: row.userId } : null;
+  return row
+    ? { ...row.chapter, userId: row.userId, bookProfile: row.bookProfile }
+    : null;
 }
 
 // Resets a failed chapter back to "pending" for a fresh retry budget — used

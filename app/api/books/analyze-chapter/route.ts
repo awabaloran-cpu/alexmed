@@ -115,7 +115,11 @@ export async function POST(request: Request) {
     for (const chunk of subChunks) {
       const response = await invokeLLM({
         max_tokens: BOOK_CHAPTER_MAX_TOKENS,
-        messages: buildChapterAnalysisMessages(chapter.title, chunk),
+        messages: buildChapterAnalysisMessages(
+          chapter.title,
+          chunk,
+          chapter.bookProfile
+        ),
         response_format: bookChapterResponseSchema,
       });
       subChunkResults.push(

@@ -45,6 +45,10 @@ export default function BookDetailPage() {
       utils.books.listPages.invalidate({ bookId });
     },
   });
+  const subjectsQuery = trpc.subjects.list.useQuery();
+  const setSubject = trpc.books.setSubject.useMutation({
+    onSuccess: () => utils.books.get.invalidate({ id: bookId }),
+  });
   const coverageQuery = trpc.books.getCoverageReport.useQuery(
     { bookId },
     {
@@ -115,6 +119,27 @@ export default function BookDetailPage() {
             {chapters.length} مكتمل
           </p>
         </div>
+        <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+          <span style={{ fontSize: 12 }}>المادة</span>
+          <select
+            value={book.subjectId ?? ""}
+            disabled={setSubject.isPending}
+            onChange={event => {
+              const value = event.target.value;
+              setSubject.mutate({
+                bookId,
+                subjectId: value || null,
+              });
+            }}
+          >
+            <option value="">بدون مادة</option>
+            {(subjectsQuery.data ?? []).map(subject => (
+              <option key={subject.id} value={subject.id}>
+                {subject.name}
+              </option>
+            ))}
+          </select>
+        </label>
       </div>
 
       {coverageQuery.data && coverageQuery.data.totalPages > 0 && (

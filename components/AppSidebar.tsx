@@ -9,6 +9,7 @@ import {
   BookOpen,
   CircleAlert,
   ClipboardList,
+  FolderKanban,
   GraduationCap,
   Home,
   Layers3,
@@ -145,6 +146,15 @@ export default function AppSidebar({
       <div className="side-rule" />
       <p className="side-label">كتبي</p>
       <nav className="side-nav">
+        <Link
+          href="/subjects"
+          className={
+            pathname.startsWith("/subjects") ? "nav-item active" : "nav-item"
+          }
+        >
+          <FolderKanban size={17} />
+          <span>موادي</span>
+        </Link>
         <Link
           href="/books"
           className={pathname === "/books" ? "nav-item active" : "nav-item"}

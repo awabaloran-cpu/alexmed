@@ -1,11 +1,22 @@
 import { auth } from "@/lib/auth";
 import { createBookShell } from "@/lib/db-books";
+import { getSubjectForUser } from "@/lib/db-subjects";
 import { publishMessage } from "@/lib/queue/client";
 import {
   assertJobCreationAllowed,
   RateLimitedError,
 } from "@/lib/queue/rateLimit";
 import { NextResponse } from "next/server";
+
+const VALID_PROFILES = new Set([
+  "general",
+  "medical",
+  "english",
+  "mathematics",
+  "aptitude",
+  "programming",
+  "custom",
+]);
 
 // Step 1 of the book pipeline: the browser already PUT the raw file straight
 // to storage via /api/books/upload-url. This route now only creates a bare
@@ -37,6 +48,8 @@ export async function POST(request: Request) {
   const body = (await request.json().catch(() => ({}))) as {
     key?: string;
     fileName?: string;
+    profile?: string;
+    subjectId?: string;
   };
   const key = typeof body.key === "string" ? body.key : "";
   const fileName = typeof body.fileName === "string" ? body.fileName : "";
@@ -51,9 +64,27 @@ export async function POST(request: Request) {
     );
   }
 
+  const profile =
+    typeof body.profile === "string" && VALID_PROFILES.has(body.profile)
+      ? (body.profile as Parameters<typeof createBookShell>[1]["profile"])
+      : undefined;
+
+  let subjectId: string | undefined;
+  if (typeof body.subjectId === "string" && body.subjectId) {
+    // Ownership check — a student can only file a new book under a subject
+    // that's actually theirs, never someone else's subject id.
+    const owned = await getSubjectForUser(session.user.id, body.subjectId);
+    if (!owned) {
+      return NextResponse.json({ error: "المادة غير موجودة." }, { status: 400 });
+    }
+    subjectId = body.subjectId;
+  }
+
   const book = await createBookShell(session.user.id, {
     fileName,
     fileKey: key,
+    profile,
+    subjectId,
   });
 
   try {

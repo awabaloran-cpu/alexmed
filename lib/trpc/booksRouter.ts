@@ -19,6 +19,7 @@ import {
   resetBookPageVisualForRetry,
   submitMcqAttemptForUser,
 } from "../db-books";
+import { assignBookToSubject } from "../db-subjects";
 import { publishMessage } from "../queue/client";
 import { protectedProcedure, router } from "./trpc";
 
@@ -56,6 +57,25 @@ export const booksRouter = router({
       const ok = await deleteBook(ctx.user.id, input.id);
       if (!ok) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Book not found" });
+      }
+      return { success: true } as const;
+    }),
+
+  // PR2: move a book into a subject, or out of one (subjectId: null) — both
+  // sides' ownership are re-checked inside assignBookToSubject.
+  setSubject: protectedProcedure
+    .input(z.object({ bookId: z.string(), subjectId: z.string().nullable() }))
+    .mutation(async ({ ctx, input }) => {
+      const ok = await assignBookToSubject(
+        ctx.user.id,
+        input.bookId,
+        input.subjectId
+      );
+      if (!ok) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Book or subject not found",
+        });
       }
       return { success: true } as const;
     }),

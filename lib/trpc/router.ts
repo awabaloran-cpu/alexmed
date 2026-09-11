@@ -5,6 +5,7 @@ import { booksRouter } from "./booksRouter";
 import { decksRouter } from "./decksRouter";
 import { mirrorRouter } from "./mirrorRouter";
 import { studentMaterialsRouter } from "./studentMaterialsRouter";
+import { subjectsRouter } from "./subjectsRouter";
 import { publicProcedure, router } from "./trpc";
 import { systemRouter } from "./systemRouter";
 
@@ -20,6 +21,7 @@ export const appRouter = router({
   decks: decksRouter,
   books: booksRouter,
   mirror: mirrorRouter,
+  subjects: subjectsRouter,
   // مكتبة الأدمن — kept as two separate top-level namespaces (not nested
   // under one "admin" router) so the admin-only surface (adminMaterials) and
   // the student-facing surface (materials) stay obviously distinct at every

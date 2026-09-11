@@ -78,6 +78,13 @@
       "when": 1789081180235,
       "tag": "0010_add_book_extraction_partial_recovery",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1789083183586,
+      "tag": "0011_add_subjects_and_book_profile",
+      "breakpoints": true
     }
   ]
 }
