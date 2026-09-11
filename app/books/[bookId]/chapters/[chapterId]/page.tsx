@@ -9,34 +9,77 @@ import {
   ChevronRight,
   CircleAlert,
   Loader2,
+  Search,
+  Trash2,
 } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import BookPageViewer from "@/components/BookPageViewer";
 
-type AssistantTab = "explanation" | "terms" | "cards" | "mcqs";
+type AssistantTab = "explanation" | "terms" | "cards" | "mcqs" | "notes";
 
 // "الصفحات الأصلية" tab content is now the page's permanent middle column
-// instead of a tab — everything else (شرح/مصطلحات/بطاقات/اختبار) moved into
-// a persistent right-hand assistant panel, per StudyOS's reader layout:
-// [فصول الكتاب] [صفحة PDF] [المساعد + تبويبات]. "اسألني"/"اختبرني"/
-// "ملاحظاتي" are placeholders — they need the RAG-chat (later PR), adaptive
-// quiz (later PR), and annotations (later PR) work respectively, which
-// aren't built yet; showing "قريبًا" here is honest, not a stub pretending
-// to work.
+// instead of a tab — everything else (شرح/مصطلحات/بطاقات/اختبار/ملاحظاتي)
+// moved into a persistent right-hand assistant panel, per StudyOS's reader
+// layout: [فصول الكتاب] [صفحة PDF] [المساعد + تبويبات]. "ملاحظاتي" is now
+// real (PR4: annotations/highlighting) — "اسألني"/"اختبرني الآن" stay
+// placeholders since they need the RAG-chat and adaptive-quiz work from
+// later PRs; showing "قريبًا" is honest, not a stub pretending to work.
 const ASSISTANT_TABS: { id: AssistantTab; label: string }[] = [
   { id: "explanation", label: "الشرح" },
   { id: "terms", label: "المصطلحات" },
   { id: "cards", label: "البطاقات" },
   { id: "mcqs", label: "الاختبار" },
+  { id: "notes", label: "ملاحظاتي" },
 ];
-const COMING_SOON_TABS = ["اسألني", "اختبرني الآن", "ملاحظاتي"];
+const COMING_SOON_TABS = ["اسألني", "اختبرني الآن"];
+
+type PendingSelection = { selectedText: string; start: number; end: number };
 
 export default function ChapterDetailPage() {
   const params = useParams<{ bookId: string; chapterId: string }>();
+  const utils = trpc.useUtils();
   const bookQuery = trpc.books.get.useQuery({ id: params.bookId });
   const chapterQuery = trpc.books.getChapter.useQuery({ id: params.chapterId });
   const [assistantTab, setAssistantTab] = useState<AssistantTab>("explanation");
   const [pageIndex, setPageIndex] = useState(0);
+  const [pendingSelection, setPendingSelection] =
+    useState<PendingSelection | null>(null);
+  const [noteDraft, setNoteDraft] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+
+  const { chapter, terms, cards, mcqs, pages } = chapterQuery.data ?? {
+    chapter: null,
+    terms: [],
+    cards: [],
+    mcqs: [],
+    pages: [],
+  };
+  const currentPage = pages[pageIndex];
+
+  const annotationsQuery = trpc.annotations.listForPage.useQuery(
+    { pageId: currentPage?.id ?? "" },
+    { enabled: !!currentPage }
+  );
+  const invalidateAnnotations = () => {
+    utils.annotations.listForPage.invalidate({ pageId: currentPage?.id });
+  };
+  const createAnnotation = trpc.annotations.create.useMutation({
+    onSuccess: () => {
+      invalidateAnnotations();
+      setPendingSelection(null);
+      setNoteDraft("");
+    },
+  });
+  const deleteAnnotation = trpc.annotations.delete.useMutation({
+    onSuccess: invalidateAnnotations,
+  });
+  const createCard = trpc.annotations.createCard.useMutation();
+
+  const subjectId = bookQuery.data?.book.subjectId ?? null;
+  const searchQueryResult = trpc.annotations.searchInSubject.useQuery(
+    { subjectId: subjectId ?? "", query: searchQuery },
+    { enabled: !!subjectId && searchQuery.trim().length > 0 }
+  );
 
   if (chapterQuery.isLoading) {
     return (
@@ -49,7 +92,7 @@ export default function ChapterDetailPage() {
     );
   }
 
-  if (!chapterQuery.data) {
+  if (!chapter) {
     return (
       <section className="upload-view">
         <div className="empty-state">
@@ -60,8 +103,6 @@ export default function ChapterDetailPage() {
     );
   }
 
-  const { chapter, terms, cards, mcqs, pages } = chapterQuery.data;
-  const currentPage = pages[pageIndex];
   const pageCardsAndMcqs = currentPage
     ? {
         cards: cards.filter(card => card.sourcePage === currentPage.pageNumber),
@@ -72,6 +113,42 @@ export default function ChapterDetailPage() {
     ? Math.round(((pageIndex + 1) / pages.length) * 100)
     : 0;
   const allChapters = bookQuery.data?.chapters ?? [];
+  const highlightAnnotations = (annotationsQuery.data ?? []).filter(
+    a => a.type === "highlight" && a.positionJson
+  );
+
+  function saveHighlightOnly() {
+    if (!currentPage || !pendingSelection) return;
+    createAnnotation.mutate({
+      bookId: params.bookId,
+      pageId: currentPage.id,
+      type: "highlight",
+      selectedText: pendingSelection.selectedText,
+      positionJson: {
+        start: pendingSelection.start,
+        end: pendingSelection.end,
+      },
+    });
+  }
+
+  function saveAsNote() {
+    if (!currentPage) return;
+    createAnnotation.mutate({
+      bookId: params.bookId,
+      pageId: currentPage.id,
+      type: "note",
+      content: noteDraft.trim(),
+      ...(pendingSelection
+        ? {
+            selectedText: pendingSelection.selectedText,
+            positionJson: {
+              start: pendingSelection.start,
+              end: pendingSelection.end,
+            },
+          }
+        : {}),
+    });
+  }
 
   return (
     <section className="cards-view">
@@ -157,7 +234,10 @@ export default function ChapterDetailPage() {
                   type="button"
                   className="secondary-button"
                   disabled={pageIndex === 0}
-                  onClick={() => setPageIndex(i => Math.max(0, i - 1))}
+                  onClick={() => {
+                    setPageIndex(i => Math.max(0, i - 1));
+                    setPendingSelection(null);
+                  }}
                 >
                   <ChevronRight size={16} /> السابقة
                 </button>
@@ -168,9 +248,10 @@ export default function ChapterDetailPage() {
                   type="button"
                   className="secondary-button"
                   disabled={pageIndex >= pages.length - 1}
-                  onClick={() =>
-                    setPageIndex(i => Math.min(pages.length - 1, i + 1))
-                  }
+                  onClick={() => {
+                    setPageIndex(i => Math.min(pages.length - 1, i + 1));
+                    setPendingSelection(null);
+                  }}
                 >
                   التالية <ChevronLeft size={16} />
                 </button>
@@ -181,13 +262,22 @@ export default function ChapterDetailPage() {
                   page={currentPage}
                   visuals={currentPage.visuals}
                   showExtractedText
+                  highlights={highlightAnnotations.map(a => ({
+                    start: a.positionJson!.start,
+                    end: a.positionJson!.end,
+                    color: a.color,
+                  }))}
+                  onTextSelected={data => {
+                    setPendingSelection(data);
+                    setAssistantTab("notes");
+                  }}
                 />
               )}
             </div>
           )}
         </div>
 
-        {/* عمود المساعد — تبويبات الشرح/المصطلحات/البطاقات/الاختبار */}
+        {/* عمود المساعد — تبويبات الشرح/المصطلحات/البطاقات/الاختبار/ملاحظاتي */}
         <aside style={{ flex: "2 1 280px", minWidth: 260 }}>
           <div className="cards-toolbar" style={{ gap: 6, marginBottom: 14 }}>
             {ASSISTANT_TABS.map(t => (
@@ -315,6 +405,166 @@ export default function ChapterDetailPage() {
               {!(currentPage ? pageCardsAndMcqs.mcqs : mcqs).length && (
                 <p>لا توجد أسئلة لهذه الصفحة.</p>
               )}
+            </div>
+          )}
+
+          {assistantTab === "notes" && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+              {pendingSelection && (
+                <div className="panel-card" style={{ background: "#fff8e6" }}>
+                  <span className="micro-label">النص المحدد</span>
+                  <p style={{ fontStyle: "italic" }}>
+                    “{pendingSelection.selectedText}”
+                  </p>
+                  <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                    <button
+                      type="button"
+                      className="secondary-button"
+                      disabled={createAnnotation.isPending}
+                      onClick={saveHighlightOnly}
+                    >
+                      ظلّل فقط
+                    </button>
+                    <button
+                      type="button"
+                      className="secondary-button"
+                      onClick={() => setPendingSelection(null)}
+                    >
+                      إلغاء
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              <div className="panel-card">
+                <span className="micro-label">
+                  {pendingSelection
+                    ? "احفظ كملاحظة على هذا التحديد"
+                    : "ملاحظة جديدة"}
+                </span>
+                <textarea
+                  value={noteDraft}
+                  onChange={event => setNoteDraft(event.target.value)}
+                  placeholder="اكتب ملاحظتك هنا..."
+                  rows={3}
+                  style={{ width: "100%", marginTop: 8 }}
+                />
+                <button
+                  type="button"
+                  className="primary-button"
+                  style={{ marginTop: 8 }}
+                  disabled={!noteDraft.trim() || createAnnotation.isPending}
+                  onClick={saveAsNote}
+                >
+                  حفظ الملاحظة
+                </button>
+              </div>
+
+              {subjectId && (
+                <div className="panel-card">
+                  <span className="micro-label">
+                    <Search size={12} style={{ verticalAlign: "middle" }} />{" "}
+                    البحث في ملاحظات المادة
+                  </span>
+                  <input
+                    value={searchQuery}
+                    onChange={event => setSearchQuery(event.target.value)}
+                    placeholder="ابحث في كل ملاحظات هذه المادة..."
+                    style={{ width: "100%", marginTop: 8 }}
+                  />
+                  {searchQuery.trim() && (
+                    <div
+                      style={{
+                        marginTop: 10,
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: 8,
+                      }}
+                    >
+                      {searchQueryResult.isLoading && <p>جاري البحث...</p>}
+                      {searchQueryResult.data?.map(result => (
+                        <div key={result.annotation.id} className="list-card">
+                          <span className="list-copy">
+                            <strong>
+                              {result.bookFileName} · صفحة {result.pageNumber}
+                            </strong>
+                            <small>
+                              {result.annotation.content ||
+                                result.annotation.selectedText}
+                            </small>
+                          </span>
+                        </div>
+                      ))}
+                      {searchQueryResult.data &&
+                        !searchQueryResult.data.length && (
+                          <p>لا نتائج مطابقة.</p>
+                        )}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div>
+                <span className="micro-label">ملاحظات هذه الصفحة</span>
+                {!annotationsQuery.data?.length ? (
+                  <p style={{ marginTop: 8 }}>
+                    لا توجد ملاحظات لهذه الصفحة بعد. حدّد نصًا أو أضف ملاحظة
+                    أعلاه.
+                  </p>
+                ) : (
+                  <div
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 10,
+                      marginTop: 8,
+                    }}
+                  >
+                    {annotationsQuery.data.map(annotation => (
+                      <div className="panel-card" key={annotation.id}>
+                        {annotation.selectedText && (
+                          <p style={{ fontStyle: "italic", marginBottom: 4 }}>
+                            “{annotation.selectedText}”
+                          </p>
+                        )}
+                        {annotation.content && <p>{annotation.content}</p>}
+                        <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                          <button
+                            type="button"
+                            className="secondary-button"
+                            disabled={createCard.isPending}
+                            onClick={() =>
+                              createCard.mutate({
+                                annotationId: annotation.id,
+                              })
+                            }
+                          >
+                            أنشئ بطاقة
+                          </button>
+                          <button
+                            type="button"
+                            className="secondary-button"
+                            disabled={deleteAnnotation.isPending}
+                            onClick={() =>
+                              deleteAnnotation.mutate({ id: annotation.id })
+                            }
+                            aria-label="حذف الملاحظة"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                        {createCard.isSuccess &&
+                          createCard.variables?.annotationId ===
+                            annotation.id && (
+                            <p style={{ fontSize: 11, color: "#5d9b78" }}>
+                              تم إنشاء البطاقة.
+                            </p>
+                          )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           )}
         </aside>

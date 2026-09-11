@@ -33,12 +33,53 @@ const ASSET_TYPE_LABELS: Record<string, string> = {
   chart: "رسم بياني",
 };
 
+export type BookPageViewerHighlight = {
+  start: number;
+  end: number;
+  color?: string | null;
+};
+
+// Splits extractedText into plain-text/<mark> segments per the given
+// character ranges — see the annotations table's schema comment
+// (drizzle/schema.ts) for why positions are character offsets rather than
+// pixel coordinates. Overlapping/out-of-order ranges are clamped/sorted
+// defensively since they come from student-created rows, not a controlled
+// source.
+export function renderTextWithHighlights(
+  text: string,
+  ranges: BookPageViewerHighlight[]
+): React.ReactNode {
+  if (!ranges.length) return text;
+  const sorted = [...ranges].sort((a, b) => a.start - b.start);
+  const nodes: React.ReactNode[] = [];
+  let cursor = 0;
+  sorted.forEach((range, index) => {
+    const start = Math.max(0, Math.min(range.start, text.length), cursor);
+    const end = Math.max(start, Math.min(range.end, text.length));
+    if (start > cursor) nodes.push(text.slice(cursor, start));
+    if (end > start) {
+      nodes.push(
+        <mark key={index} style={{ backgroundColor: range.color || "#ffe08a" }}>
+          {text.slice(start, end)}
+        </mark>
+      );
+      cursor = end;
+    }
+  });
+  if (cursor < text.length) nodes.push(text.slice(cursor));
+  return nodes;
+}
+
 // مكوّن عرض صفحة كتبي الأصلية قابل لإعادة الاستخدام — يدعم: عرض كامل بدون
 // قص (object-fit:contain دومًا)، تكبير بالضغط (Lightbox + Zoom In/Out +
 // ملاءمة للشاشة)، تمرير أفقي/عمودي للصور العريضة/الطويلة، lazy loading،
 // placeholder أثناء التحميل، رسالة خطأ واضحة عند الفشل، alt نصّي، رقم
 // الصفحة. summaryNode/cardsNode/mcqsNode تُمرَّر من الأب (شرح/بطاقات/أسئلة
 // الفصل مشتركة بين كل صفحاته) وتُعرض فقط عند تفعيل العلم المطابق.
+// onTextSelected (PR4) — reports a selection made inside the extracted-text
+// paragraph as {selectedText, start, end} character offsets, so the parent
+// can turn it into a highlight/note annotation without this component
+// needing to know anything about annotations itself.
 export default function BookPageViewer({
   page,
   visuals = [],
@@ -49,6 +90,8 @@ export default function BookPageViewer({
   summaryNode,
   cardsNode,
   mcqsNode,
+  highlights = [],
+  onTextSelected,
 }: {
   page: BookPageViewerPage;
   visuals?: BookPageViewerVisual[];
@@ -59,6 +102,12 @@ export default function BookPageViewer({
   summaryNode?: React.ReactNode;
   cardsNode?: React.ReactNode;
   mcqsNode?: React.ReactNode;
+  highlights?: BookPageViewerHighlight[];
+  onTextSelected?: (data: {
+    selectedText: string;
+    start: number;
+    end: number;
+  }) => void;
 }) {
   const [loaded, setLoaded] = useState(false);
   const [failed, setFailed] = useState(false);
@@ -136,9 +185,41 @@ export default function BookPageViewer({
         <div style={{ padding: "0 14px 14px" }}>
           <div className="book-page-caption" style={{ textAlign: "right" }}>
             النص المستخرج
+            {onTextSelected && (
+              <span style={{ fontWeight: 400, color: "#8d9895" }}>
+                {" "}
+                · حدّد نصًا لتظليله أو تحويله إلى ملاحظة
+              </span>
+            )}
           </div>
-          <p style={{ whiteSpace: "pre-wrap", fontSize: 12, color: "#2e4850" }}>
-            {page.extractedText}
+          <p
+            style={{ whiteSpace: "pre-wrap", fontSize: 12, color: "#2e4850" }}
+            onMouseUp={
+              onTextSelected
+                ? event => {
+                    const selection = window.getSelection();
+                    if (!selection || selection.isCollapsed) return;
+                    const selectedText = selection.toString();
+                    if (!selectedText.trim()) return;
+                    const container = event.currentTarget;
+                    const range = selection.getRangeAt(0);
+                    if (!container.contains(range.commonAncestorContainer)) {
+                      return;
+                    }
+                    const preRange = document.createRange();
+                    preRange.selectNodeContents(container);
+                    preRange.setEnd(range.startContainer, range.startOffset);
+                    const start = preRange.toString().length;
+                    onTextSelected({
+                      selectedText,
+                      start,
+                      end: start + selectedText.length,
+                    });
+                  }
+                : undefined
+            }
+          >
+            {renderTextWithHighlights(page.extractedText, highlights)}
           </p>
         </div>
       )}

@@ -1,6 +1,7 @@
 import { signOut } from "../auth";
 import { adminJobsRouter } from "./adminJobsRouter";
 import { adminMaterialsRouter } from "./adminMaterialsRouter";
+import { annotationsRouter } from "./annotationsRouter";
 import { booksRouter } from "./booksRouter";
 import { decksRouter } from "./decksRouter";
 import { mirrorRouter } from "./mirrorRouter";
@@ -22,6 +23,7 @@ export const appRouter = router({
   books: booksRouter,
   mirror: mirrorRouter,
   subjects: subjectsRouter,
+  annotations: annotationsRouter,
   // مكتبة الأدمن — kept as two separate top-level namespaces (not nested
   // under one "admin" router) so the admin-only surface (adminMaterials) and
   // the student-facing surface (materials) stay obviously distinct at every
