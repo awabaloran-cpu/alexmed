@@ -1,6 +1,6 @@
 import { DrizzleAdapter } from "@auth/drizzle-adapter";
 import bcrypt from "bcryptjs";
-import NextAuth from "next-auth";
+import NextAuth, { CredentialsSignin } from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import Google from "next-auth/providers/google";
 import {
@@ -10,6 +10,13 @@ import {
   verificationTokens,
 } from "../drizzle/schema";
 import { getUserByEmail, requireDb, touchLastSignedIn } from "./db";
+
+// Distinct error code (rather than the generic "CredentialsSignin" from
+// returning null) so LoginForm can show "حسابك معلّق" instead of "بيانات
+// الدخول غير صحيحة" — a suspended student didn't mistype their password.
+class AccountSuspendedError extends CredentialsSignin {
+  code = "account_suspended";
+}
 
 // Google only appears once real credentials are supplied — keeps this app
 // fully functional on Credentials alone until then, no code change needed
@@ -58,6 +65,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         const valid = await bcrypt.compare(password, user.passwordHash);
         if (!valid) return null;
 
+        if (user.suspendedAt) throw new AccountSuspendedError();
+
         await touchLastSignedIn(user.id);
 
         return {
@@ -78,6 +87,18 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       : []),
   ],
   callbacks: {
+    // Credentials' authorize() already blocks a suspended account before it
+    // ever returns a user, so this only matters for the Google path (which
+    // never runs authorize()). Returning a URL redirects there with that
+    // query string instead of the default generic "?error=AccessDenied".
+    async signIn({ user, account }) {
+      if (account?.provider !== "google" || !user.email) return true;
+      const existing = await getUserByEmail(user.email);
+      if (existing?.suspendedAt) {
+        return "/login?error=account_suspended";
+      }
+      return true;
+    },
     async jwt({ token, user }) {
       if (user) {
         token.id = (user as { id: string }).id;
