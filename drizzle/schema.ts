@@ -828,6 +828,68 @@ export type BookMcq = typeof bookMcqs.$inferSelect;
 export type BookMcqAttempt = typeof bookMcqAttempts.$inferSelect;
 export type BookReviewEvent = typeof bookReviewEvents.$inferSelect;
 
+// ── الملاحظات والتظليل (PR4) — كتبي only for now (مِرآة untouched, per the
+// standing rule). Starting with "highlight" and "note" only — pen drawing
+// is explicitly a later addition per the plan ("ابدأ بالملاحظات النصية
+// والتظليل، ثم أضف الرسم بالقلم لاحقاً"). No subjectId column here
+// deliberately: it's always derivable via bookId -> books.subjectId, and
+// storing it separately would go stale the moment a book moves to another
+// subject (see lib/db-subjects.ts's assignBookToSubject) — subject-scoped
+// search (lib/db-annotations.ts) joins through books instead.
+export const annotationTypeEnum = pgEnum("annotation_type", [
+  "highlight",
+  "note",
+]);
+
+export const annotations = pgTable(
+  "annotations",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: uuid("userId")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    bookId: uuid("bookId")
+      .notNull()
+      .references(() => books.id, { onDelete: "cascade" }),
+    pageId: uuid("pageId")
+      .notNull()
+      .references(() => bookPages.id, { onDelete: "cascade" }),
+    type: annotationTypeEnum("type").notNull(),
+    // The highlighted text itself, when this annotation came from a
+    // selection — null for a plain note typed without selecting anything.
+    selectedText: text("selectedText"),
+    // Character offsets {start, end} into that page's own extractedText —
+    // deliberately NOT pixel/CSS coordinates, so a highlight's position
+    // stays valid regardless of screen size, zoom, or font — see the plan's
+    // explicit "مستقلة عن حجم الشاشة" requirement. Null for a plain note.
+    positionJson: jsonb("positionJson").$type<{
+      start: number;
+      end: number;
+    }>(),
+    // The note's own written text. For a highlight-only annotation (no
+    // note attached) this can be empty — the highlight's meaning is the
+    // selectedText itself.
+    content: text("content").notNull().default(""),
+    color: text("color"),
+    createdAt: timestamp("createdAt", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updatedAt", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  table => ({
+    pageIdx: index("annotations_page_id_idx").on(table.pageId),
+    userBookIdx: index("annotations_user_id_book_id_idx").on(
+      table.userId,
+      table.bookId
+    ),
+  })
+);
+
+export type Annotation = typeof annotations.$inferSelect;
+export type InsertAnnotation = typeof annotations.$inferInsert;
+
 // ── مكتبة الأدمن (Admin Library) — a third, fully independent
 // feature/data layer, deliberately not sharing any table with مِرآة
 // (decks/cards/mirrorJobs/mirrorBatches) or كتبي (books/bookChapters/
