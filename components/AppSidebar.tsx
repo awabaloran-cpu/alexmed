@@ -236,7 +236,7 @@ export default function AppSidebar({
             app/admin/layout.tsx and every adminProcedure/admin route. */}
         {isAdmin && (
           <Link
-            href="/admin/materials"
+            href="/admin"
             className={
               pathname.startsWith("/admin") ? "nav-item active" : "nav-item"
             }

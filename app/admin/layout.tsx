@@ -1,4 +1,4 @@
-import AppSidebar from "@/components/AppSidebar";
+import AdminSidebar from "@/components/AdminSidebar";
 import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
 
@@ -8,6 +8,11 @@ import { redirect } from "next/navigation";
 // every mutation/query behind it). Redirects unauthenticated users to
 // /login (same as app/books/layout.tsx) and non-admins to "/" — never
 // renders admin content, even a loading shell, for a non-admin session.
+//
+// The `dark` class here is what makes /admin visually its own product (see
+// the ".dark" block in app/globals.css) — every other layout in the app
+// stays on the default `:root` palette; this is the only place `dark` is
+// ever applied, deliberately scoped to just this subtree.
 export default async function AdminLayout({
   children,
 }: {
@@ -22,9 +27,9 @@ export default async function AdminLayout({
   }
 
   return (
-    <div className="app-shell">
-      <AppSidebar />
-      <main className="main-content">{children}</main>
+    <div className="dark flex min-h-screen bg-background text-foreground">
+      <AdminSidebar />
+      <main className="flex-1 overflow-y-auto p-8">{children}</main>
     </div>
   );
 }

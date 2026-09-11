@@ -17,6 +17,13 @@ import type { GeneratedCard } from "../lib/pdf-cards";
 
 export const userRoleEnum = pgEnum("user_role", ["user", "admin"]);
 
+// Manual plan tracking only — there is no real payment provider wired up
+// yet (no Stripe/webhooks). An admin sets this by hand from the admin
+// dashboard; it does not gate any feature on its own today, it is just the
+// record of what a student is on. planExpiresAt is null for "free" and for
+// a premium grant with no set end date.
+export const userPlanEnum = pgEnum("user_plan", ["free", "premium"]);
+
 /**
  * Core user table. Shape is a superset of what @auth/drizzle-adapter expects
  * (id/name/email/emailVerified/image) plus our own fields (passwordHash,
@@ -32,6 +39,12 @@ export const users = pgTable("users", {
   emailVerified: timestamp("emailVerified", { withTimezone: true }),
   image: text("image"),
   role: userRoleEnum("role").default("user").notNull(),
+  plan: userPlanEnum("plan").default("free").notNull(),
+  planExpiresAt: timestamp("planExpiresAt", { withTimezone: true }),
+  // Null = active. Set by an admin from the dashboard; checked at sign-in
+  // (both Credentials and Google) in lib/auth.ts so a suspended account
+  // genuinely cannot use the app, not just cosmetically hidden.
+  suspendedAt: timestamp("suspendedAt", { withTimezone: true }),
   createdAt: timestamp("createdAt", { withTimezone: true })
     .defaultNow()
     .notNull(),

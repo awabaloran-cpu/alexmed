@@ -51,6 +51,34 @@
   --radius: 0.85rem;
 }
 
+/* Admin dashboard theme — applied via a `dark` class on the /admin shell
+   only (see app/admin/layout.tsx), never globally. Deliberately a distinct
+   palette (slate + indigo) from the student app's warm cream/orange theme
+   above, so opening /admin looks and feels like a different, dedicated
+   control panel rather than the same app with an extra page bolted on. */
+.dark {
+  --primary: #6366f1;
+  --primary-foreground: #f5f5ff;
+  --background: #0b0e14;
+  --foreground: #e5e7eb;
+  --card: #131722;
+  --card-foreground: #e5e7eb;
+  --popover: #131722;
+  --popover-foreground: #e5e7eb;
+  --secondary: #1c2130;
+  --secondary-foreground: #9ca3af;
+  --muted: #1a1e2a;
+  --muted-foreground: #8b93a3;
+  --accent: #1e2438;
+  --accent-foreground: #a5b4fc;
+  --destructive: #ef4444;
+  --destructive-foreground: #fff;
+  --border: #232838;
+  --input: #232838;
+  --ring: #6366f1;
+  --radius: 0.6rem;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -1703,7 +1731,10 @@ h1 em {
   border-radius: 9px;
   background: #fffdf9;
   color: #2e4850;
-  font: 12px "Noto Sans Arabic", "Inter", sans-serif;
+  font:
+    12px "Noto Sans Arabic",
+    "Inter",
+    sans-serif;
 }
 .text-input:focus {
   outline: none;

@@ -1,6 +1,7 @@
 import { signOut } from "../auth";
 import { adminJobsRouter } from "./adminJobsRouter";
 import { adminMaterialsRouter } from "./adminMaterialsRouter";
+import { adminUsersRouter } from "./adminUsersRouter";
 import { annotationsRouter } from "./annotationsRouter";
 import { booksRouter } from "./booksRouter";
 import { chatRouter } from "./chatRouter";
@@ -35,6 +36,9 @@ export const appRouter = router({
   // Admin-only Jobs monitoring (Phase 0) — gated by adminProcedure inside
   // adminJobsRouter itself, same pattern as adminMaterials above.
   adminJobs: adminJobsRouter,
+  // Admin dashboard's user management (users list/detail/plan/suspend/
+  // delete + platform-wide stats) — same adminProcedure gating pattern.
+  adminUsers: adminUsersRouter,
 });
 
 export type AppRouter = typeof appRouter;

@@ -4,8 +4,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { signIn } from "next-auth/react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
+
+const SUSPENDED_MESSAGE_AR =
+  "حسابك معلّق حاليًا. تواصل مع الدعم إذا كنت تظن أن هذا خطأ.";
 
 export default function LoginForm({
   googleEnabled,
@@ -13,9 +16,17 @@ export default function LoginForm({
   googleEnabled: boolean;
 }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [error, setError] = useState("");
+  // The Google OAuth path (unlike Credentials' redirect:false) does a full
+  // redirect back here with ?error=... on failure — e.g. after
+  // lib/auth.ts's signIn callback rejects a suspended account.
+  const [error, setError] = useState(
+    searchParams.get("error") === "account_suspended"
+      ? SUSPENDED_MESSAGE_AR
+      : ""
+  );
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
 
@@ -33,7 +44,15 @@ export default function LoginForm({
     setLoading(false);
 
     if (result?.error) {
-      setError("البريد الإلكتروني أو كلمة المرور غير صحيحة.");
+      // next-auth puts a custom CredentialsSignin subclass's `code` in its
+      // own field — `result.error` itself stays the generic
+      // "CredentialsSignin" regardless (verified against the actual
+      // /api/auth/callback/credentials response, not just the type decl).
+      setError(
+        result.code === "account_suspended"
+          ? SUSPENDED_MESSAGE_AR
+          : "البريد الإلكتروني أو كلمة المرور غير صحيحة."
+      );
       return;
     }
 
