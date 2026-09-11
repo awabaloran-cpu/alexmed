@@ -113,8 +113,14 @@ describe("mergeSubChunkResults", () => {
 });
 
 describe("buildChapterAnalysisMessages profile framing (PR2)", () => {
-  function systemContent(profile?: Parameters<typeof buildChapterAnalysisMessages>[2]) {
-    const messages = buildChapterAnalysisMessages("Ch. 1", makePages(1), profile);
+  function systemContent(
+    profile?: Parameters<typeof buildChapterAnalysisMessages>[2]
+  ) {
+    const messages = buildChapterAnalysisMessages(
+      "Ch. 1",
+      makePages(1),
+      profile
+    );
     const system = messages.find(m => m.role === "system");
     return typeof system?.content === "string" ? system.content : "";
   }

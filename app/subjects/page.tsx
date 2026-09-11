@@ -82,7 +82,10 @@ export default function SubjectsPage() {
               className="primary-button"
               disabled={!name.trim() || createMutation.isPending}
               onClick={() =>
-                createMutation.mutate({ name: name.trim(), type: type as never })
+                createMutation.mutate({
+                  name: name.trim(),
+                  type: type as never,
+                })
               }
             >
               {createMutation.isPending ? (

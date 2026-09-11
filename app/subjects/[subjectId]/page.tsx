@@ -68,13 +68,17 @@ export default function SubjectDetailPage() {
     <section className="cards-view">
       <div className="cards-header">
         <div>
-          <Link href="/subjects" className="eyebrow" style={{ marginBottom: 8 }}>
+          <Link
+            href="/subjects"
+            className="eyebrow"
+            style={{ marginBottom: 8 }}
+          >
             <span className="eyebrow-dot" /> ‹ موادي
           </Link>
           <h1>{subject.name}</h1>
           <p>
-            {TYPE_LABELS[subject.type] ?? subject.type} · {booksInSubject.length}{" "}
-            كتاب
+            {TYPE_LABELS[subject.type] ?? subject.type} ·{" "}
+            {booksInSubject.length} كتاب
           </p>
         </div>
       </div>

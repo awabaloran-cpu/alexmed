@@ -29,7 +29,10 @@ export const subjectsRouter = router({
     .query(async ({ ctx, input }) => {
       const subject = await getSubjectForUser(ctx.user.id, input.id);
       if (!subject) {
-        throw new TRPCError({ code: "NOT_FOUND", message: "Subject not found" });
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Subject not found",
+        });
       }
       return subject;
     }),
@@ -90,7 +93,10 @@ export const subjectsRouter = router({
             : undefined,
       });
       if (!ok) {
-        throw new TRPCError({ code: "NOT_FOUND", message: "Subject not found" });
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Subject not found",
+        });
       }
       return { success: true } as const;
     }),
@@ -100,7 +106,10 @@ export const subjectsRouter = router({
     .mutation(async ({ ctx, input }) => {
       const ok = await deleteSubject(ctx.user.id, input.id);
       if (!ok) {
-        throw new TRPCError({ code: "NOT_FOUND", message: "Subject not found" });
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Subject not found",
+        });
       }
       return { success: true } as const;
     }),
