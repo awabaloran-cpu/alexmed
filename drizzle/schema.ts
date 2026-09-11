@@ -109,10 +109,14 @@ export const cardConfidenceEnum = pgEnum("card_confidence", [
 // than only where `bookCards` is defined) since `cards` now needs it too and
 // a pgEnum() const must be initialized before any pgTable() that references
 // it.
+// "again" added for FSRS (PR7) — كتبي's bookCards only (see the FSRS columns
+// on bookCards below). Purely additive: مِرآة's cards and
+// adminMaterialReviews never emit it, so this changes nothing for either.
 export const bookCardRatingEnum = pgEnum("book_card_rating", [
   "hard",
   "good",
   "easy",
+  "again",
 ]);
 
 // A saved study session: one uploaded PDF's generated cards, so a user can
@@ -741,12 +745,26 @@ export const bookCards = pgTable(
     answerEn: text("answerEn").notNull(),
     relatedTermEn: text("relatedTermEn"),
     sourcePage: integer("sourcePage").notNull(),
-    // SRS (SM-2-style) scheduling fields — see lib/srs.ts's applySrsRating().
+    // Legacy SM-2-style fields — see lib/srs.ts's applySrsRating(). No longer
+    // written to as of PR7 (rateBookCard now schedules via FSRS below); left
+    // in place, unread by any UI (verified before this change), rather than
+    // dropped, since dropping a column is harder to undo than leaving one
+    // unused.
     easeFactor: real("easeFactor").default(2.5).notNull(),
     intervalDays: integer("intervalDays").default(0).notNull(),
     dueAt: timestamp("dueAt", { withTimezone: true }).defaultNow().notNull(),
     reviewCount: integer("reviewCount").default(0).notNull(),
     lastRating: bookCardRatingEnum("lastRating"),
+    // FSRS (PR7) memory-state fields — see lib/fsrs.ts. Both null until the
+    // card's first FSRS-scheduled review (distinct from "0", which the
+    // reference algorithm uses as its own internal not-yet-reviewed
+    // sentinel — a DB column can just say so directly). lastReviewedAt is
+    // required to compute elapsed days since the last review, which the
+    // retrievability/forgetting-curve formula needs and which the old SM-2
+    // fields never had to track explicitly (interval already encoded it).
+    fsrsStability: real("fsrsStability"),
+    fsrsDifficulty: real("fsrsDifficulty"),
+    lastReviewedAt: timestamp("lastReviewedAt", { withTimezone: true }),
     createdAt: timestamp("createdAt", { withTimezone: true })
       .defaultNow()
       .notNull(),

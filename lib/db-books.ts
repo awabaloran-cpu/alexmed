@@ -22,7 +22,11 @@ import {
 } from "../drizzle/schema";
 import { getDb } from "./db";
 import { detectChapters } from "./book-chapters";
-import { applySrsRating, type SrsRating } from "./srs";
+import {
+  FSRS_DEFAULT_WEIGHTS,
+  scheduleFsrsReview,
+  type FsrsGrade,
+} from "./fsrs";
 
 export type PageText = { page: number; text: string };
 export type BookPageText = { page: number; text: string; hasText: boolean };
@@ -1154,31 +1158,43 @@ export async function getDueCardsForUser(userId: string) {
 export async function rateBookCard(
   userId: string,
   cardId: string,
-  rating: SrsRating
+  rating: FsrsGrade
 ) {
   const db = getDb();
   if (!db) throw new Error("Database not available");
 
   const [card] = await db
     .select({
-      easeFactor: bookCards.easeFactor,
-      intervalDays: bookCards.intervalDays,
-      reviewCount: bookCards.reviewCount,
+      fsrsStability: bookCards.fsrsStability,
+      fsrsDifficulty: bookCards.fsrsDifficulty,
+      lastReviewedAt: bookCards.lastReviewedAt,
     })
     .from(bookCards)
     .where(and(eq(bookCards.id, cardId), eq(bookCards.userId, userId)))
     .limit(1);
   if (!card) return null;
 
-  const update = applySrsRating(card, rating);
+  const now = new Date();
+  const update = scheduleFsrsReview(
+    FSRS_DEFAULT_WEIGHTS,
+    {
+      stability: card.fsrsStability,
+      difficulty: card.fsrsDifficulty,
+      lastReviewedAt: card.lastReviewedAt,
+    },
+    rating,
+    now
+  );
 
   await db
     .update(bookCards)
     .set({
-      easeFactor: update.easeFactor,
+      fsrsStability: update.stability,
+      fsrsDifficulty: update.difficulty,
       intervalDays: update.intervalDays,
       dueAt: update.dueAt,
-      reviewCount: update.reviewCount,
+      lastReviewedAt: now,
+      reviewCount: sql`${bookCards.reviewCount} + 1`,
       lastRating: rating,
     })
     .where(eq(bookCards.id, cardId));
@@ -1186,6 +1202,33 @@ export async function rateBookCard(
   await db.insert(bookReviewEvents).values({ cardId, userId, rating });
 
   return update;
+}
+
+// ── خطة الدراسة (PR7) — a simple, honest forecast: how many bookCards are
+// already scheduled to come due on each of the next 7 days, from real
+// dueAt values FSRS just computed. Deliberately كتبي-only (not a combined
+// مِرآة+كتبي forecast): مِرآة's SM-2 cards have no stability model to make a
+// multi-day projection meaningful beyond their own single next dueAt, so
+// mixing them in here would either drop them silently or fabricate a
+// forecast for an algorithm that doesn't support one.
+export async function getUpcomingReviewForecastForUser(
+  userId: string,
+  days = 7
+) {
+  const db = getDb();
+  if (!db) return [];
+
+  const rows = await db.execute<{ day: string; count: number }>(sql`
+    select date(bc."dueAt") as day, count(*)::int as count
+    from book_cards bc
+    where bc."userId" = ${userId}
+      and bc."dueAt" >= now()
+      and bc."dueAt" < now() + ${days} * interval '1 day'
+    group by date(bc."dueAt")
+    order by day asc
+  `);
+
+  return rows.map(row => ({ day: row.day, count: Number(row.count) }));
 }
 
 // ── MCQ practice + stats ─────────────────────────────────────────────────
