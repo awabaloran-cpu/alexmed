@@ -376,6 +376,16 @@ export const bookStatusEnum = pgEnum("book_status", [
   "failed",
 ]);
 
+// Surfaced to the student when chapter detection fell back to guesswork —
+// see lib/book-chapters.ts's classifyDetectionConfidence(). Null for books
+// extracted before this column existed (legacy rows never get backfilled;
+// the UI simply shows no confidence banner for them, same as it would for
+// a book that's still mid-extraction).
+export const bookChapterDetectionConfidenceEnum = pgEnum(
+  "book_chapter_detection_confidence",
+  ["high", "medium", "low"]
+);
+
 export const books = pgTable(
   "books",
   {
@@ -391,6 +401,12 @@ export const books = pgTable(
     // Null while status is "extracting": unknown until finalizeBookExtraction()
     // runs detectChapters() against the fully-extracted text.
     chapterDetectionMethod: text("chapterDetectionMethod"),
+    // Set alongside chapterDetectionMethod above — lets the UI show "we
+    // guessed at the chapter split" only when it's actually true, instead of
+    // inferring it (fragilely) from chapterDetectionMethod === "fixed_windows".
+    chapterDetectionConfidence: bookChapterDetectionConfidenceEnum(
+      "chapterDetectionConfidence"
+    ),
     status: bookStatusEnum("status").default("pending").notNull(),
     // Extraction/OCR staging (background worker, app/api/books/extract) —
     // same role as mirrorJobs' equivalent columns above. Cleared once
@@ -400,7 +416,17 @@ export const books = pgTable(
         { page: number; text: string; hasText: boolean }[]
       >(),
     pagesNeedingOcr: jsonb("pagesNeedingOcr").$type<number[]>(),
+    // Pages that have permanently exhausted their OCR retry budget (see
+    // ocrAttemptCounts) — distinct from pagesNeedingOcr, which still holds
+    // pages waiting for another attempt. A page never appears in both.
     ocrFailedPages: jsonb("ocrFailedPages").$type<number[]>(),
+    // Per-page OCR attempt counter, keyed by page number as a string —
+    // deliberately separate from extractionAttemptCount below, which counts
+    // worker *invocations* (scales with book size, not failures) and would
+    // wrongly trip a page-retry-budget check on a large-but-healthy book.
+    // Cleared (along with the other staging columns) once
+    // finalizeBookExtraction() runs.
+    ocrAttemptCounts: jsonb("ocrAttemptCounts").$type<Record<string, number>>(),
     extractionError: text("extractionError"),
     extractionAttemptCount: integer("extractionAttemptCount")
       .default(0)
@@ -538,6 +564,12 @@ export const bookPages = pgTable(
     textStatus: bookPageTextStatusEnum("textStatus")
       .default("pending")
       .notNull(),
+    // Separate from errorMessage below (which is owned by the visual
+    // pipeline, see updateBookPageVisualResult) — a page can fail text
+    // extraction and later succeed visual analysis (or vice versa)
+    // independently, and each pipeline clearing its own error on success
+    // must never wipe out the other's.
+    textErrorMessage: text("textErrorMessage"),
     visualStatus: bookPageVisualStatusEnum("visualStatus")
       .default("pending")
       .notNull(),

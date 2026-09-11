@@ -36,6 +36,15 @@ export default function BookDetailPage() {
   const retryChapter = trpc.books.retryChapter.useMutation({
     onSuccess: () => utils.books.get.invalidate({ id: bookId }),
   });
+  const retryExtraction = trpc.books.retryExtraction.useMutation({
+    onSuccess: () => utils.books.get.invalidate({ id: bookId }),
+  });
+  const retryPageText = trpc.books.retryPageText.useMutation({
+    onSuccess: () => {
+      utils.books.get.invalidate({ id: bookId });
+      utils.books.listPages.invalidate({ bookId });
+    },
+  });
   const coverageQuery = trpc.books.getCoverageReport.useQuery(
     { bookId },
     {
@@ -48,6 +57,10 @@ export default function BookDetailPage() {
           : false;
       },
     }
+  );
+  const pagesQuery = trpc.books.listPages.useQuery({ bookId });
+  const failedTextPages = (pagesQuery.data ?? []).filter(
+    page => page.textStatus === "failed"
   );
 
   if (bookQuery.isLoading) {
@@ -153,8 +166,17 @@ export default function BookDetailPage() {
           <CircleAlert size={16} />
           <span>
             {book.extractionError ||
-              "تعذّرت قراءة هذا الكتاب. جرّب رفع نسخة أخرى منه."}
+              "تعذّرت قراءة هذا الكتاب. جرّب إعادة المحاولة أو رفع نسخة أخرى منه."}
           </span>
+          <button
+            type="button"
+            className="secondary-button"
+            style={{ marginRight: 12 }}
+            disabled={retryExtraction.isPending}
+            onClick={() => retryExtraction.mutate({ bookId })}
+          >
+            <RotateCcw size={14} /> إعادة محاولة الاستخراج
+          </button>
           <Link
             href="/books/upload"
             className="secondary-button"
@@ -168,8 +190,44 @@ export default function BookDetailPage() {
       {book.status === "partial_failed" && (
         <div className="inline-alert warning wide">
           <CircleAlert size={16} />
-          اكتمل معظم الكتاب، لكن {failedChapters.length} فصل تعذّر تحليله. يمكنك
-          إعادة محاولته أدناه.
+          اكتمل معظم الكتاب، لكن {failedChapters.length} فصل تعذّر تحليله
+          {failedTextPages.length > 0
+            ? ` و${failedTextPages.length} صفحة تعذّرت قراءتها`
+            : ""}
+          . يمكنك إعادة المحاولة أدناه.
+        </div>
+      )}
+
+      {book.chapterDetectionConfidence === "low" && (
+        <div className="inline-alert warning wide">
+          اكتشفنا تقسيم الكتاب بشكل تقريبي. يمكنك مراجعة أسماء الفصول وحدود
+          الصفحات.
+        </div>
+      )}
+
+      {failedTextPages.length > 0 && (
+        <div className="library-grid" style={{ marginBottom: 18 }}>
+          {failedTextPages.map(page => (
+            <div className="library-item" key={page.id}>
+              <div className="library-item-icon">
+                <CircleAlert size={18} />
+              </div>
+              <div className="library-item-meta">
+                <strong>صفحة {page.pageNumber}</strong>
+                <span>
+                  {page.textErrorMessage || "تعذّرت قراءة هذه الصفحة ضوئيًا"}
+                </span>
+              </div>
+              <button
+                type="button"
+                className="secondary-button"
+                disabled={retryPageText.isPending}
+                onClick={() => retryPageText.mutate({ pageId: page.id })}
+              >
+                <RotateCcw size={14} /> إعادة المحاولة
+              </button>
+            </div>
+          ))}
         </div>
       )}
 

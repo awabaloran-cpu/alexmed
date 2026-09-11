@@ -4,6 +4,7 @@
 // eq(userId,...)), read functions return safe empty defaults, write
 // functions throw when the DB isn't configured.
 import { and, asc, count, desc, eq, inArray, lte, sql } from "drizzle-orm";
+import { deleteObjects } from "./storage";
 import {
   bookCards,
   bookChapters,
@@ -64,7 +65,13 @@ export async function getBookById(bookId: string): Promise<Book | null> {
 }
 
 // Persists one extraction worker invocation's progress — mirrors
-// updateMirrorJobExtractionProgress exactly.
+// updateMirrorJobExtractionProgress exactly. extractionAttemptCount counts
+// worker *invocations* (diagnostic/telemetry — naturally scales with book
+// size) and is unconditionally bumped every call; it is NOT the per-page
+// retry budget (see ocrAttemptCounts, tracked separately by the caller and
+// passed through here) — conflating the two would make a large-but-healthy
+// book falsely look like it exhausted its OCR retry budget just from having
+// many batches.
 export async function updateBookExtractionProgress(
   bookId: string,
   update: {
@@ -72,6 +79,7 @@ export async function updateBookExtractionProgress(
     pageTexts: BookPageText[];
     pagesNeedingOcr: number[];
     ocrFailedPages: number[];
+    ocrAttemptCounts?: Record<string, number>;
   }
 ) {
   const db = getDb();
@@ -85,10 +93,118 @@ export async function updateBookExtractionProgress(
       pageTexts: update.pageTexts,
       pagesNeedingOcr: update.pagesNeedingOcr,
       ocrFailedPages: update.ocrFailedPages,
+      ...(update.ocrAttemptCounts !== undefined
+        ? { ocrAttemptCounts: update.ocrAttemptCounts }
+        : {}),
       extractionAttemptCount: sql`${books.extractionAttemptCount} + 1`,
       updatedAt: new Date(),
     })
     .where(eq(books.id, bookId));
+}
+
+// Student-initiated retry for a book whose extraction hit a fatal error
+// before any page could be salvaged (see markBookExtractionFailed) — resets
+// it back to "extracting" with a clean attempt budget so the extract worker
+// starts over, without the student re-uploading the file (same fileKey).
+export async function resetBookExtractionForRetry(bookId: string) {
+  const db = getDb();
+  if (!db) throw new Error("Database not available");
+  await db
+    .update(books)
+    .set({
+      status: "extracting",
+      extractionError: null,
+      extractionAttemptCount: 0,
+      pageTexts: null,
+      pagesNeedingOcr: null,
+      ocrFailedPages: null,
+      ocrAttemptCounts: null,
+      updatedAt: new Date(),
+    })
+    .where(eq(books.id, bookId));
+}
+
+// Upserts one page's TEXT-extraction result — safe to call repeatedly for
+// the same (bookId, pageNumber) as extraction/retries progress across
+// worker invocations, relying on book_pages' existing unique index on
+// (bookId, pageNumber) (see schema) rather than a new one. Only ever touches
+// text-related columns: visualStatus/attemptCount/errorMessage (owned by the
+// separate visual-analysis pipeline) are left untouched on conflict, and
+// only defaulted on the very first insert for this page.
+export async function upsertBookPageText(
+  bookId: string,
+  update: {
+    page: number;
+    text: string;
+    textStatus: "complete" | "failed";
+    errorMessage?: string | null;
+    // Left undefined while extraction is still in progress (chapter isn't
+    // known yet); passed explicitly once finalizeBookExtraction has run
+    // detectChapters(). Omitting the key on conflict (rather than writing
+    // null) means an earlier chapter assignment is never clobbered by a
+    // later call that doesn't know it.
+    chapterId?: string | null;
+  }
+) {
+  const db = getDb();
+  if (!db) throw new Error("Database not available");
+  await db
+    .insert(bookPages)
+    .values({
+      bookId,
+      pageNumber: update.page,
+      chapterId: update.chapterId ?? null,
+      extractedText: update.text,
+      textStatus: update.textStatus,
+      textErrorMessage: update.errorMessage ?? null,
+      visualStatus: "pending",
+    })
+    .onConflictDoUpdate({
+      target: [bookPages.bookId, bookPages.pageNumber],
+      set: {
+        extractedText: update.text,
+        textStatus: update.textStatus,
+        textErrorMessage: update.errorMessage ?? null,
+        ...(update.chapterId !== undefined
+          ? { chapterId: update.chapterId }
+          : {}),
+        updatedAt: new Date(),
+      },
+    });
+}
+
+export async function upsertBookPagesText(
+  bookId: string,
+  updates: {
+    page: number;
+    text: string;
+    textStatus: "complete" | "failed";
+    errorMessage?: string | null;
+    chapterId?: string | null;
+  }[]
+) {
+  for (const update of updates) {
+    await upsertBookPageText(bookId, update);
+  }
+}
+
+// Student-initiated retry for a single page whose text extraction
+// permanently failed (retry budget exhausted during extraction) — resets it
+// to "pending" so the dedicated retry worker
+// (app/api/books/retry-page-text/route.ts) picks it up. Does not touch
+// visualStatus or the book's own status; finalizeBookIfDone re-derives the
+// book's status once the retry resolves.
+export async function resetBookPageTextForRetry(pageId: string) {
+  const db = getDb();
+  if (!db) throw new Error("Database not available");
+  await db
+    .update(bookPages)
+    .set({
+      textStatus: "pending",
+      textErrorMessage: null,
+      updatedAt: new Date(),
+    })
+    .where(eq(bookPages.id, pageId));
 }
 
 // Terminal extraction failure — mirrors markMirrorJobExtractionFailed.
@@ -108,13 +224,26 @@ export async function markBookExtractionFailed(
     .where(eq(books.id, bookId));
 }
 
-// Step 2: runs detectChapters() against the now-fully-extracted text and
-// creates the chapter rows against the EXISTING book row from
-// createBookShell — mirrors finalizeMirrorJobExtraction. Leaves the book in
-// "pending", which finalizeBookIfDone already understands.
+export type FinalizedPageText = {
+  page: number;
+  text: string;
+  // Whether this page's text is trustworthy content vs. a permanent OCR
+  // failure the extract worker gave up on (see app/api/books/extract). A
+  // "failed" page still gets a real book_pages row (readable, just empty)
+  // and is individually retryable afterward — it never blocks the rest of
+  // the book from finalizing.
+  textStatus: "complete" | "failed";
+  errorMessage?: string | null;
+};
+
+// Step 2: runs detectChapters() against the now-fully-extracted (or
+// partially-extracted — see textStatus above) text and creates the chapter
+// rows against the EXISTING book row from createBookShell — mirrors
+// finalizeMirrorJobExtraction. Leaves the book in "pending", which
+// finalizeBookIfDone already understands.
 export async function finalizeBookExtraction(
   bookId: string,
-  pages: BookPageText[]
+  pages: FinalizedPageText[]
 ) {
   const db = getDb();
   if (!db) throw new Error("Database not available");
@@ -123,7 +252,11 @@ export async function finalizeBookExtraction(
     page,
     text,
   }));
-  const { chapters: boundaries, method } = detectChapters(pageTexts);
+  const {
+    chapters: boundaries,
+    method,
+    confidence,
+  } = detectChapters(pageTexts);
   const pagesByChapter = boundaries.map(chapter =>
     pages.filter(
       page => page.page >= chapter.startPage && page.page <= chapter.endPage
@@ -147,7 +280,10 @@ export async function finalizeBookExtraction(
           title: chapter.title,
           startPage: chapter.startPage,
           endPage: chapter.endPage,
-          pageTexts: pagesByChapter[index] ?? [],
+          pageTexts: (pagesByChapter[index] ?? []).map(page => ({
+            page: page.page,
+            text: page.text,
+          })),
         }))
       )
       .returning({
@@ -163,13 +299,15 @@ export async function finalizeBookExtraction(
     chapters = inserted.sort((a, b) => a.orderIndex - b.orderIndex);
   }
 
-  // One book_pages row per page, text already known (visual analysis is a
-  // separate, independent background pass — see
-  // app/api/books/analyze-page-visuals/route.ts). chapterId is already known
-  // here since detectChapters() just ran, so no later backfill is needed.
-  // This function only ever runs once per book (same guarantee bookChapters
-  // above relies on), so the (bookId, pageNumber) unique index is a backstop,
-  // never expected to actually reject anything.
+  // Backfill (or, for a book whose extract worker never got a chance to
+  // upsert incrementally — e.g. a legacy/edge path — create outright) each
+  // page's book_pages row now that its chapterId is known. Upsert-based
+  // (see upsertBookPageText) rather than a bulk INSERT, since pages with
+  // real text/embedded content were typically already written incrementally
+  // during extraction (see app/api/books/extract/route.ts) — this call is
+  // what attaches the now-known chapterId and the FINAL textStatus
+  // (including any page that permanently failed OCR) without duplicating
+  // rows, relying on book_pages' existing (bookId, pageNumber) unique index.
   if (pages.length) {
     const chapterIdByPage = new Map<number, string>();
     boundaries.forEach((chapter, index) => {
@@ -180,27 +318,32 @@ export async function finalizeBookExtraction(
       }
     });
 
-    await db.insert(bookPages).values(
+    await upsertBookPagesText(
+      bookId,
       pages.map(page => ({
-        bookId,
+        page: page.page,
+        text: page.text,
+        textStatus: page.textStatus,
+        errorMessage: page.errorMessage,
         chapterId: chapterIdByPage.get(page.page) ?? null,
-        pageNumber: page.page,
-        extractedText: page.text,
-        textStatus: "complete" as const,
-        visualStatus: "pending" as const,
       }))
     );
   }
 
+  const failedPages = pages.filter(page => page.textStatus === "failed");
   const [book] = await db
     .update(books)
     .set({
       status: "pending",
       chapterDetectionMethod: method,
+      chapterDetectionConfidence: confidence,
       pageTexts: null,
       pagesNeedingOcr: null,
       ocrFailedPages: null,
-      extractionError: null,
+      ocrAttemptCounts: null,
+      extractionError: failedPages.length
+        ? `تعذّرت قراءة ${failedPages.length} صفحة ضوئيًا: ${failedPages.map(page => page.page).join(", ")}. يمكنك إعادة محاولتها من صفحة الكتاب.`
+        : null,
       updatedAt: new Date(),
     })
     .where(eq(books.id, bookId))
@@ -259,15 +402,66 @@ export async function getBookForUser(userId: string, bookId: string) {
   return { book, chapters };
 }
 
+// Ordered, safe deletion (see lib/storage.ts's deleteObject/deleteObjects):
+// 1) verify ownership, 2) collect every storage key this book owns (its
+// original PDF + every page screenshot/preview + every visual asset image)
+// WHILE the rows still exist, 3) delete the DB rows (a single DELETE is
+// already atomic; children cascade via each table's onDelete: "cascade"),
+// 4) only once that's committed, best-effort delete the collected S3
+// objects. A student-visible "book deleted" means step 3 succeeded — S3
+// cleanup failing afterward is logged (an orphan for a future cleanup pass)
+// and never reported back as this call failing, since the DB record (what
+// the rest of the app and the student actually see) is already gone.
 export async function deleteBook(userId: string, bookId: string) {
   const db = getDb();
   if (!db) throw new Error("Database not available");
+
+  const [book] = await db
+    .select({ id: books.id, fileKey: books.fileKey })
+    .from(books)
+    .where(and(eq(books.id, bookId), eq(books.userId, userId)))
+    .limit(1);
+  if (!book) return false;
+
+  const pages = await db
+    .select({
+      storageKey: bookPages.storageKey,
+      previewKey: bookPages.previewKey,
+    })
+    .from(bookPages)
+    .where(eq(bookPages.bookId, bookId));
+  const visuals = await db
+    .select({
+      storageKey: bookVisualAssets.storageKey,
+      previewKey: bookVisualAssets.previewKey,
+    })
+    .from(bookVisualAssets)
+    .where(eq(bookVisualAssets.bookId, bookId));
+
+  const storageKeys = [
+    book.fileKey,
+    ...pages.flatMap(page => [page.storageKey, page.previewKey]),
+    ...visuals.flatMap(visual => [visual.storageKey, visual.previewKey]),
+  ].filter((key): key is string => Boolean(key));
 
   const deleted = await db
     .delete(books)
     .where(and(eq(books.id, bookId), eq(books.userId, userId)))
     .returning({ id: books.id });
-  return deleted.length > 0;
+  if (!deleted.length) return false;
+
+  if (storageKeys.length) {
+    try {
+      await deleteObjects(storageKeys);
+    } catch (error) {
+      console.error("[Books] Failed to delete storage objects for book", {
+        bookId,
+        error,
+      });
+    }
+  }
+
+  return true;
 }
 
 // Ownership check for a chapter-scoped action (the analyze route) — joins
@@ -615,22 +809,66 @@ export async function getBookCoverageReport(bookId: string) {
   };
 }
 
+export type BookRollupDecision = "skip" | "complete" | "partial_failed";
+
+// Pure decision logic for finalizeBookIfDone, extracted so it's directly
+// unit-testable without mocking the DB (same rationale as
+// linkSourcePagesToVisualAssets above). Found via a real-Postgres
+// integration run: "partial_failed" was originally treated the same as
+// "complete" (a terminal state finalizeBookIfDone refused to re-touch),
+// which meant a student successfully retrying their last failed
+// chapter/page could NEVER see the book flip back to "complete" — the
+// status was permanently stuck. "complete" alone is truly terminal (no
+// failure exists left to ever re-surface); "partial_failed" must keep being
+// re-evaluated on every call.
+export function computeBookRollupStatus(
+  currentStatus: string,
+  chapterStatuses: string[],
+  pageStatuses: { visualStatus: string; textStatus: string }[]
+): BookRollupDecision {
+  if (currentStatus === "complete") return "skip";
+  if (!chapterStatuses.length) return "skip";
+
+  const chaptersStillWorking = chapterStatuses.some(
+    status =>
+      status === "pending" ||
+      status === "processing" ||
+      status === "analyzing" ||
+      status === "retrying"
+  );
+  if (chaptersStillWorking) return "skip";
+
+  // Also gates on every page's visualStatus reaching a terminal state
+  // (complete/needs_review/failed) — a student can already read
+  // chapters/cards while visual analysis runs in the background (this never
+  // blocks that), but the book isn't reported "complete" until visual
+  // coverage is honestly settled too. "needs_review" alone (no true
+  // failures) does not force "partial_failed".
+  const pagesStillWorking = pageStatuses.some(
+    page =>
+      page.visualStatus === "pending" || page.visualStatus === "processing"
+  );
+  if (pagesStillWorking) return "skip";
+
+  const anyChapterFailed = chapterStatuses.some(status => status === "failed");
+  // textStatus === "failed" means this page permanently exhausted its OCR
+  // retry budget during extraction (see finalizeBookExtraction) — a real
+  // failure the student can retry individually, same as a failed chapter or
+  // a failed page visual, so it must count toward "partial_failed" too.
+  const anyPageFailed = pageStatuses.some(
+    page => page.visualStatus === "failed" || page.textStatus === "failed"
+  );
+
+  return anyChapterFailed || anyPageFailed ? "partial_failed" : "complete";
+}
+
 // Idempotent finalize: safe to call repeatedly — SELECT ... FOR UPDATE on
 // the book row serializes concurrent finalize attempts for the same book, so
-// two chapters finishing at nearly the same moment can't race each other.
-// Unlike مِرآة, there's no "graduation" step here — chapters' content
-// (bookTerms/bookCards/bookMcqs) is already the durable content, this just
-// rolls the book's own status up from its chapters' statuses.
-//
-// Also gates on every book_pages row's visualStatus reaching a terminal
-// state (complete/needs_review/failed) — a student can already read
-// chapters/cards while visual analysis is still running in the background
-// (it never blocks that), but the book itself isn't reported "complete"
-// until visual coverage is honestly settled too, per the plan's requirement
-// not to show "اكتمل" while pages remain unprocessed. "needs_review" alone
-// (no true failures) does not force "partial_failed" — only a real chapter
-// or page failure does; needs_review content is surfaced via the coverage
-// report instead of blocking completion.
+// two chapters (or page retries) finishing at nearly the same moment can't
+// race each other. Unlike مِرآة, there's no "graduation" step here —
+// chapters' content (bookTerms/bookCards/bookMcqs) is already the durable
+// content, this just rolls the book's own status up from its chapters'/
+// pages' statuses (see computeBookRollupStatus above for the actual rule).
 export async function finalizeBookIfDone(bookId: string) {
   const db = getDb();
   if (!db) throw new Error("Database not available");
@@ -641,51 +879,30 @@ export async function finalizeBookIfDone(bookId: string) {
       .from(books)
       .where(eq(books.id, bookId))
       .for("update");
-    if (
-      !book ||
-      book.status === "complete" ||
-      book.status === "partial_failed"
-    ) {
-      return;
-    }
+    if (!book) return;
 
     const chapters = await tx
       .select({ status: bookChapters.status })
       .from(bookChapters)
       .where(eq(bookChapters.bookId, bookId));
-    if (!chapters.length) return;
-
-    const chaptersStillWorking = chapters.some(
-      chapter =>
-        chapter.status === "pending" ||
-        chapter.status === "processing" ||
-        chapter.status === "analyzing" ||
-        chapter.status === "retrying"
-    );
-    if (chaptersStillWorking) return;
-
     const pages = await tx
-      .select({ visualStatus: bookPages.visualStatus })
+      .select({
+        visualStatus: bookPages.visualStatus,
+        textStatus: bookPages.textStatus,
+      })
       .from(bookPages)
       .where(eq(bookPages.bookId, bookId));
-    const pagesStillWorking = pages.some(
-      page =>
-        page.visualStatus === "pending" || page.visualStatus === "processing"
-    );
-    if (pagesStillWorking) return;
 
-    const anyChapterFailed = chapters.some(
-      chapter => chapter.status === "failed"
+    const decision = computeBookRollupStatus(
+      book.status,
+      chapters.map(chapter => chapter.status),
+      pages
     );
-    const anyPageFailed = pages.some(page => page.visualStatus === "failed");
-    const anyFailed = anyChapterFailed || anyPageFailed;
+    if (decision === "skip") return;
 
     await tx
       .update(books)
-      .set({
-        status: anyFailed ? "partial_failed" : "complete",
-        updatedAt: new Date(),
-      })
+      .set({ status: decision, updatedAt: new Date() })
       .where(eq(books.id, bookId));
   });
 }

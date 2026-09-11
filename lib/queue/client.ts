@@ -56,6 +56,8 @@ function resolveDestination(message: QueueMessage): string {
       return `${base}/api/admin/materials/finalize`;
     case "analyze_book_page_visuals":
       return `${base}/api/books/analyze-page-visuals`;
+    case "retry_book_page_text":
+      return `${base}/api/books/retry-page-text`;
   }
 }
 
@@ -98,12 +100,17 @@ function defaultFlowControl(message: QueueMessage): FlowControl {
         key: "books-visual-pipeline",
         parallelism: getBooksVisualQueueConcurrency(),
       };
+    // One-off, student-triggered retries — keyed per page (not the shared
+    // "books-pipeline" key) so a page retry never has to wait behind that
+    // book's own bulk extraction/analysis traffic.
+    case "retry_book_page_text":
+      return { key: `books-page-text-retry-${message.pageId}`, parallelism: 1 };
   }
 }
 
 export async function publishMessage(
   message: QueueMessage,
-  options?: { retries?: number; flowControl?: FlowControl }
+  options?: { retries?: number; flowControl?: FlowControl; delay?: number }
 ): Promise<void> {
   const client = getClient();
   await client.publishJSON({
@@ -112,5 +119,6 @@ export async function publishMessage(
     retries: options?.retries ?? getQueueMaxAttempts() - 1,
     retryDelay: RETRY_DELAY_FORMULA,
     flowControl: options?.flowControl ?? defaultFlowControl(message),
+    ...(options?.delay !== undefined ? { delay: options.delay } : {}),
   });
 }

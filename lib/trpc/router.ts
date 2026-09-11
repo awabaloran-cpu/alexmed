@@ -1,4 +1,5 @@
 import { signOut } from "../auth";
+import { adminJobsRouter } from "./adminJobsRouter";
 import { adminMaterialsRouter } from "./adminMaterialsRouter";
 import { booksRouter } from "./booksRouter";
 import { decksRouter } from "./decksRouter";
@@ -25,6 +26,9 @@ export const appRouter = router({
   // call site, matching adminProcedure vs protectedProcedure below them.
   adminMaterials: adminMaterialsRouter,
   materials: studentMaterialsRouter,
+  // Admin-only Jobs monitoring (Phase 0) — gated by adminProcedure inside
+  // adminJobsRouter itself, same pattern as adminMaterials above.
+  adminJobs: adminJobsRouter,
 });
 
 export type AppRouter = typeof appRouter;

@@ -30,6 +30,9 @@ describe("detectChapters", () => {
     const result = detectChapters(pages);
 
     expect(result.method).toBe("headings");
+    // 3 boundaries meets the "comfortably reliable" bar, not just the bare
+    // isHeadingResultReliable() minimum of 2 — see classifyDetectionConfidence.
+    expect(result.confidence).toBe("high");
     expect(result.chapters).toHaveLength(3);
     expect(result.chapters[0]).toEqual({
       startPage: 1,
@@ -60,12 +63,25 @@ describe("detectChapters", () => {
     expect(result.chapters).toHaveLength(2);
   });
 
+  it("marks exactly-2-boundaries headings as only medium confidence", () => {
+    // Passes isHeadingResultReliable()'s bare minimum (2 boundaries) but
+    // isn't the "comfortably reliable" 3+ case — the UI should still hint
+    // the student toward reviewing the split.
+    const pages = makePages(20, { 1: "Chapter 1", 12: "Chapter 2" });
+
+    const result = detectChapters(pages);
+
+    expect(result.method).toBe("headings");
+    expect(result.confidence).toBe("medium");
+  });
+
   it("falls back to fixed 8-page windows when no headings are found", () => {
     const pages = makePages(20, {});
 
     const result = detectChapters(pages);
 
     expect(result.method).toBe("fixed_windows");
+    expect(result.confidence).toBe("low");
     // 20 pages / 8-page windows -> [1-8],[9-16],[17-20] (remainder 4 kept
     // separate since it isn't < MIN_WINDOW_REMAINDER)
     expect(result.chapters).toEqual([
@@ -112,6 +128,10 @@ describe("detectChapters", () => {
   it("returns no chapters for an empty page list", () => {
     const result = detectChapters([]);
 
-    expect(result).toEqual({ chapters: [], method: "fixed_windows" });
+    expect(result).toEqual({
+      chapters: [],
+      method: "fixed_windows",
+      confidence: "low",
+    });
   });
 });
