@@ -1304,3 +1304,111 @@ export async function getBookStatsForUser(userId: string) {
       Math.round(((Number(reviewStats?.total ?? 0) * 1.5) / 60) * 10) / 10,
   };
 }
+
+// ── نقاط الضعف (PR6) ─────────────────────────────────────────────────────
+// "Weak" is defined structurally, not by a prompt or a heuristic score: an
+// MCQ is a current weak point iff the user's MOST RECENT attempt at it was
+// wrong — so getting it right on a later retry removes it, and a question
+// never attempted is never "weak" (that's just unstudied, a different
+// thing). No new table: book_mcq_attempts already logs every attempt.
+export type WeakPointAttemptRow = {
+  mcqId: string;
+  questionEn: string;
+  choices: string[];
+  correctIndex: number;
+  explanationEn: string;
+  sourcePage: number;
+  chapterId: string;
+  chapterTitle: string;
+  bookId: string;
+  bookFileName: string;
+  lastSelectedIndex: number;
+  lastAttemptedAt: Date;
+};
+
+export type WeakChapterSummary = {
+  chapterId: string;
+  chapterTitle: string;
+  bookId: string;
+  bookFileName: string;
+  wrongCount: number;
+};
+
+export function computeWeakPoints(rows: WeakPointAttemptRow[]): {
+  chapters: WeakChapterSummary[];
+  questions: WeakPointAttemptRow[];
+} {
+  const stillWrong = rows.filter(
+    row => row.lastSelectedIndex !== row.correctIndex
+  );
+
+  const chapterMap = new Map<string, WeakChapterSummary>();
+  for (const row of stillWrong) {
+    const existing = chapterMap.get(row.chapterId);
+    if (existing) {
+      existing.wrongCount += 1;
+    } else {
+      chapterMap.set(row.chapterId, {
+        chapterId: row.chapterId,
+        chapterTitle: row.chapterTitle,
+        bookId: row.bookId,
+        bookFileName: row.bookFileName,
+        wrongCount: 1,
+      });
+    }
+  }
+
+  return {
+    chapters: Array.from(chapterMap.values()).sort(
+      (a, b) => b.wrongCount - a.wrongCount
+    ),
+    questions: stillWrong.sort(
+      (a, b) => b.lastAttemptedAt.getTime() - a.lastAttemptedAt.getTime()
+    ),
+  };
+}
+
+export async function getWeakPointsForUser(userId: string) {
+  const db = getDb();
+  if (!db) return { chapters: [], questions: [] };
+
+  // DISTINCT ON (Postgres) picks exactly one row per mcq — the most recent
+  // attempt — in a single query, rather than fetching every attempt ever
+  // made and reducing in JS.
+  const rows = await db.execute<
+    Omit<WeakPointAttemptRow, "lastAttemptedAt"> & {
+      lastAttemptedAt: string | Date;
+    }
+  >(sql`
+    select distinct on (bm.id)
+      bm.id as "mcqId",
+      bm."questionEn" as "questionEn",
+      bm.choices as "choices",
+      bm."correctIndex" as "correctIndex",
+      bm."explanationEn" as "explanationEn",
+      bm."sourcePage" as "sourcePage",
+      bc.id as "chapterId",
+      bc.title as "chapterTitle",
+      b.id as "bookId",
+      b."fileName" as "bookFileName",
+      bma."selectedIndex" as "lastSelectedIndex",
+      bma."createdAt" as "lastAttemptedAt"
+    from book_mcq_attempts bma
+    inner join book_mcqs bm on bm.id = bma."mcqId"
+    inner join book_chapters bc on bc.id = bm."chapterId"
+    inner join books b on b.id = bc."bookId"
+    where bma."userId" = ${userId}
+    order by bm.id, bma."createdAt" desc
+  `);
+
+  // db.execute() bypasses Drizzle's own column-type mapping, so a raw
+  // timestamp column can come back as a string rather than a Date — coerce
+  // here, at the query boundary, so computeWeakPoints (and its unit tests)
+  // can rely on a real Date.
+  return computeWeakPoints(
+    rows.map(row => ({
+      ...row,
+      lastAttemptedAt: new Date(row.lastAttemptedAt),
+    }))
+  );
+}

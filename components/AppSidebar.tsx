@@ -19,6 +19,7 @@ import {
   RotateCcw,
   Settings,
   ShieldCheck,
+  TriangleAlert,
   Upload,
 } from "lucide-react";
 
@@ -198,6 +199,15 @@ export default function AppSidebar({
         >
           <ClipboardList size={17} />
           <span>اختباراتي</span>
+        </Link>
+        <Link
+          href="/books/weak-points"
+          className={
+            pathname === "/books/weak-points" ? "nav-item active" : "nav-item"
+          }
+        >
+          <TriangleAlert size={17} />
+          <span>نقاط الضعف</span>
         </Link>
         <Link
           href="/books/stats"

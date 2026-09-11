@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import BookPageViewer from "@/components/BookPageViewer";
+import McqCard from "@/components/McqCard";
 
 type AssistantTab =
   | "explanation"
@@ -91,6 +92,7 @@ export default function ChapterDetailPage() {
     onSuccess: invalidateAnnotations,
   });
   const createCard = trpc.annotations.createCard.useMutation();
+  const submitMcqAttempt = trpc.books.submitMcqAttempt.useMutation();
 
   const subjectId = bookQuery.data?.book.subjectId ?? null;
   const searchQueryResult = trpc.annotations.searchInSubject.useQuery(
@@ -439,26 +441,19 @@ export default function ChapterDetailPage() {
           {assistantTab === "mcqs" && (
             <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
               {(currentPage ? pageCardsAndMcqs.mcqs : mcqs).map(mcq => (
-                <div className="panel-card" key={mcq.id}>
-                  <strong className="en">{mcq.questionEn}</strong>
-                  <ul style={{ marginTop: 10 }}>
-                    {(mcq.choices as string[]).map((choice, i) => (
-                      <li
-                        key={i}
-                        className="en"
-                        style={{
-                          fontWeight: i === mcq.correctIndex ? 700 : 400,
-                          color: i === mcq.correctIndex ? "#5d9b78" : undefined,
-                        }}
-                      >
-                        {choice}
-                      </li>
-                    ))}
-                  </ul>
-                  <p style={{ marginTop: 8, fontSize: 12, color: "#8a9493" }}>
-                    {mcq.explanationEn}
-                  </p>
-                </div>
+                <McqCard
+                  key={mcq.id}
+                  mcq={{
+                    id: mcq.id,
+                    questionEn: mcq.questionEn,
+                    choices: mcq.choices as string[],
+                    correctIndex: mcq.correctIndex,
+                    explanationEn: mcq.explanationEn,
+                  }}
+                  onSubmit={(mcqId, selectedIndex) =>
+                    submitMcqAttempt.mutateAsync({ mcqId, selectedIndex })
+                  }
+                />
               ))}
               {!(currentPage ? pageCardsAndMcqs.mcqs : mcqs).length && (
                 <p>لا توجد أسئلة لهذه الصفحة.</p>
