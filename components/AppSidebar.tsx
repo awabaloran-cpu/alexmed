@@ -13,6 +13,7 @@ import {
   GraduationCap,
   Home,
   Layers3,
+  LayoutDashboard,
   Library,
   LogOut,
   RotateCcw,
@@ -94,6 +95,17 @@ export default function AppSidebar({
           <span>study cards</span>
         </div>
       </div>
+      <div className="side-rule" />
+      <nav className="side-nav">
+        <Link
+          href="/today"
+          className={pathname === "/today" ? "nav-item active" : "nav-item"}
+        >
+          <LayoutDashboard size={17} />
+          <span>لوحة اليوم</span>
+        </Link>
+      </nav>
+
       <div className="side-rule" />
       <p className="side-label">مِرآة</p>
       <nav className="side-nav">

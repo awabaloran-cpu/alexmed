@@ -212,7 +212,9 @@ export default function BookUploadPage() {
               }}
             >
               <label style={{ flex: "1 1 160px" }}>
-                <span style={{ display: "block", fontSize: 12, marginBottom: 4 }}>
+                <span
+                  style={{ display: "block", fontSize: 12, marginBottom: 4 }}
+                >
                   نوع المادة
                 </span>
                 <select
@@ -228,7 +230,9 @@ export default function BookUploadPage() {
                 </select>
               </label>
               <label style={{ flex: "1 1 160px" }}>
-                <span style={{ display: "block", fontSize: 12, marginBottom: 4 }}>
+                <span
+                  style={{ display: "block", fontSize: 12, marginBottom: 4 }}
+                >
                   المادة (اختياري)
                 </span>
                 <select

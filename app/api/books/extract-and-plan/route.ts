@@ -75,7 +75,10 @@ export async function POST(request: Request) {
     // that's actually theirs, never someone else's subject id.
     const owned = await getSubjectForUser(session.user.id, body.subjectId);
     if (!owned) {
-      return NextResponse.json({ error: "المادة غير موجودة." }, { status: 400 });
+      return NextResponse.json(
+        { error: "المادة غير موجودة." },
+        { status: 400 }
+      );
     }
     subjectId = body.subjectId;
   }
