@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import {
@@ -9,13 +9,24 @@ import {
   ChevronRight,
   CircleAlert,
   Loader2,
+  Mic,
   Search,
   Send,
   Trash2,
+  Volume2,
+  VolumeX,
 } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import BookPageViewer from "@/components/BookPageViewer";
 import McqCard from "@/components/McqCard";
+import {
+  isSpeechRecognitionSupported,
+  isSpeechSynthesisSupported,
+  speak,
+  startListening,
+  stopSpeaking,
+  type SpeechRecognitionHandle,
+} from "@/lib/voice";
 
 type AssistantTab =
   | "explanation"
@@ -111,20 +122,68 @@ export default function ChapterDetailPage() {
     { sessionId: chatSessionId ?? "" },
     { enabled: !!chatSessionId }
   );
+
+  // ── الصوت (PR8) — browser-only (Web Speech API), a voice front-end onto
+  // the exact same chat above: the mic just fills chatInput with a
+  // transcript, and read-aloud just speaks assistantMessage.content — no
+  // new RAG/session logic. Support is feature-detected in an effect (not at
+  // render time) so server-rendered and first-client-render HTML match;
+  // controls stay hidden rather than rendering a button that would silently
+  // do nothing in an unsupported browser (Firefox has no SpeechRecognition
+  // at all; Safari's support is partial).
+  const [voiceSupport, setVoiceSupport] = useState({
+    recognition: false,
+    synthesis: false,
+  });
+  useEffect(() => {
+    setVoiceSupport({
+      recognition: isSpeechRecognitionSupported(),
+      synthesis: isSpeechSynthesisSupported(),
+    });
+  }, []);
+  const [isListening, setIsListening] = useState(false);
+  const [voiceError, setVoiceError] = useState("");
+  const [readAloud, setReadAloud] = useState(false);
+  const recognizerRef = useRef<SpeechRecognitionHandle | null>(null);
+
   const askChat = trpc.chat.ask.useMutation({
-    onSuccess: () => {
+    onSuccess: data => {
       setChatInput("");
       chatMessagesQuery.refetch();
+      if (readAloud && data.assistantMessage) {
+        speak(data.assistantMessage.content, "ar-SA");
+      }
     },
   });
   const createNoteFromMessage = trpc.chat.createNoteFromMessage.useMutation();
   const createCardFromMessage = trpc.chat.createCardFromMessage.useMutation();
+
+  function toggleListening() {
+    if (isListening) {
+      recognizerRef.current?.stop();
+      return;
+    }
+    setVoiceError("");
+    const handle = startListening(
+      "ar-SA",
+      transcript => {
+        setChatInput(prev => (prev ? `${prev} ${transcript}` : transcript));
+      },
+      message => setVoiceError(message),
+      () => setIsListening(false)
+    );
+    if (handle) {
+      recognizerRef.current = handle;
+      setIsListening(true);
+    }
+  }
 
   // (Re)opens the right session whenever the student switches scope or, for
   // page scope, moves to a different page — one session per (scope,
   // target), reused across visits (see lib/db-chat.ts).
   useEffect(() => {
     if (assistantTab !== "chat") return;
+    stopSpeaking(); // never keep reading a stale answer after switching scope
     setChatSessionId(null);
     if (chatScope === "page" && currentPage) {
       getOrCreateChatSession.mutate({ scope: "page", pageId: currentPage.id });
@@ -623,23 +682,50 @@ export default function ChapterDetailPage() {
 
           {assistantTab === "chat" && (
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              <div className="cards-toolbar" style={{ gap: 6 }}>
-                {(Object.keys(CHAT_SCOPE_LABELS) as ChatScope[])
-                  .filter(scope => scope !== "subject" || !!subjectId)
-                  .map(scope => (
-                    <button
-                      type="button"
-                      key={scope}
-                      className={
-                        chatScope === scope
-                          ? "filter-button active"
-                          : "filter-button"
-                      }
-                      onClick={() => setChatScope(scope)}
-                    >
-                      {CHAT_SCOPE_LABELS[scope]}
-                    </button>
-                  ))}
+              <div
+                className="cards-toolbar"
+                style={{
+                  gap: 6,
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                }}
+              >
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                  {(Object.keys(CHAT_SCOPE_LABELS) as ChatScope[])
+                    .filter(scope => scope !== "subject" || !!subjectId)
+                    .map(scope => (
+                      <button
+                        type="button"
+                        key={scope}
+                        className={
+                          chatScope === scope
+                            ? "filter-button active"
+                            : "filter-button"
+                        }
+                        onClick={() => setChatScope(scope)}
+                      >
+                        {CHAT_SCOPE_LABELS[scope]}
+                      </button>
+                    ))}
+                </div>
+                {voiceSupport.synthesis && (
+                  <button
+                    type="button"
+                    className="filter-button"
+                    title={
+                      readAloud
+                        ? "إيقاف نطق الإجابات"
+                        : "نطق الإجابات بصوت عالٍ"
+                    }
+                    aria-pressed={readAloud}
+                    onClick={() => {
+                      if (readAloud) stopSpeaking();
+                      setReadAloud(prev => !prev);
+                    }}
+                  >
+                    {readAloud ? <Volume2 size={14} /> : <VolumeX size={14} />}
+                  </button>
+                )}
               </div>
 
               <div
@@ -731,6 +817,10 @@ export default function ChapterDetailPage() {
                 )}
               </div>
 
+              {voiceError && (
+                <p style={{ fontSize: 12, color: "#974d49" }}>{voiceError}</p>
+              )}
+
               <form
                 style={{ display: "flex", gap: 8 }}
                 onSubmit={event => {
@@ -749,6 +839,27 @@ export default function ChapterDetailPage() {
                   style={{ flex: 1 }}
                   disabled={!chatSessionId || askChat.isPending}
                 />
+                {voiceSupport.recognition && (
+                  <button
+                    type="button"
+                    className={
+                      isListening
+                        ? "secondary-button active"
+                        : "secondary-button"
+                    }
+                    style={
+                      isListening
+                        ? { background: "#f7ded9", color: "#974d49" }
+                        : undefined
+                    }
+                    disabled={!chatSessionId}
+                    title={isListening ? "إيقاف الاستماع" : "اسأل بصوتك"}
+                    aria-pressed={isListening}
+                    onClick={toggleListening}
+                  >
+                    <Mic size={16} />
+                  </button>
+                )}
                 <button
                   type="submit"
                   className="primary-button"
@@ -760,6 +871,11 @@ export default function ChapterDetailPage() {
                   <Send size={16} />
                 </button>
               </form>
+              {isListening && (
+                <p style={{ fontSize: 12, color: "#8d9895" }}>
+                  جارٍ الاستماع...
+                </p>
+              )}
             </div>
           )}
         </aside>
