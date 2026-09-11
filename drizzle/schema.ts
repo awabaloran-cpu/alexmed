@@ -1134,3 +1134,98 @@ export type AdminMaterialBatch = typeof adminMaterialBatches.$inferSelect;
 export type AdminMaterialCard = typeof adminMaterialCards.$inferSelect;
 export type AdminMaterialReview = typeof adminMaterialReviews.$inferSelect;
 export type AdminMaterialAuditLog = typeof adminMaterialAuditLogs.$inferSelect;
+
+// ── المحادثة مع المصادر (PR5) — retrieval is keyword/full-text search
+// (Postgres to_tsvector/plainto_tsquery over book_pages.extractedText,
+// see lib/rag.ts) scoped by whichever of subjectId/bookId/chapterId/pageId
+// is set, NOT embedding-based semantic search. Deliberately so: this repo
+// has no pgvector extension and no confirmed-available embedding model in
+// production, and standing up that infra (extension, a vector column, a
+// backfill-embedding job) is a bigger, riskier addition than one PR
+// warrants. lib/ai/types.ts's AiProvider.embed() already exists for a
+// later upgrade once pgvector availability on the production DB is
+// confirmed — this table's shape doesn't need to change for that (only
+// lib/rag.ts's retrieval query would).
+// No separate "chunks" table: book_pages already carries bookId/chapterId/
+// pageNumber on every row, which is exactly the metadata a chunk would
+// need — indexing at page granularity reuses it directly.
+export const chatScopeEnum = pgEnum("chat_scope", [
+  "page",
+  "chapter",
+  "book",
+  "subject",
+]);
+
+export const chatSessions = pgTable(
+  "chat_sessions",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: uuid("userId")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    scope: chatScopeEnum("scope").notNull(),
+    // Exactly one of these is authoritative per `scope` (see comment
+    // above) — the others are left null. All nullable + onDelete cascade
+    // since a session is worthless once its one real target is gone.
+    subjectId: uuid("subjectId").references(() => subjects.id, {
+      onDelete: "cascade",
+    }),
+    bookId: uuid("bookId").references(() => books.id, { onDelete: "cascade" }),
+    chapterId: uuid("chapterId").references(() => bookChapters.id, {
+      onDelete: "cascade",
+    }),
+    pageId: uuid("pageId").references(() => bookPages.id, {
+      onDelete: "cascade",
+    }),
+    // First user message, truncated — a human-readable label when a
+    // student has more than one session in the same scope over time.
+    title: text("title"),
+    createdAt: timestamp("createdAt", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updatedAt", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  table => ({
+    userCreatedIdx: index("chat_sessions_user_id_created_at_idx").on(
+      table.userId,
+      table.createdAt
+    ),
+  })
+);
+
+export const chatMessageRoleEnum = pgEnum("chat_message_role", [
+  "user",
+  "assistant",
+]);
+
+export const chatMessages = pgTable(
+  "chat_messages",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    sessionId: uuid("sessionId")
+      .notNull()
+      .references(() => chatSessions.id, { onDelete: "cascade" }),
+    role: chatMessageRoleEnum("role").notNull(),
+    content: text("content").notNull(),
+    // Which (bookId, pageNumber) excerpts were actually fed to the model
+    // for this assistant reply — "إظهار المصدر ورقم الصفحة مع الإجابة".
+    // Null for a user message, and null/empty for an assistant reply that
+    // found no evidence (see lib/rag.ts) — never populated with a guess.
+    citedPages:
+      jsonb("citedPages").$type<{ bookId: string; pageNumber: number }[]>(),
+    createdAt: timestamp("createdAt", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  table => ({
+    sessionCreatedIdx: index("chat_messages_session_id_created_at_idx").on(
+      table.sessionId,
+      table.createdAt
+    ),
+  })
+);
+
+export type ChatSession = typeof chatSessions.$inferSelect;
+export type ChatMessage = typeof chatMessages.$inferSelect;

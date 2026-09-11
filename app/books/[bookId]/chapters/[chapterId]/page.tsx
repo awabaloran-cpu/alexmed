@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import {
@@ -10,28 +10,45 @@ import {
   CircleAlert,
   Loader2,
   Search,
+  Send,
   Trash2,
 } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import BookPageViewer from "@/components/BookPageViewer";
 
-type AssistantTab = "explanation" | "terms" | "cards" | "mcqs" | "notes";
+type AssistantTab =
+  | "explanation"
+  | "terms"
+  | "cards"
+  | "mcqs"
+  | "notes"
+  | "chat";
+type ChatScope = "page" | "chapter" | "book" | "subject";
+
+const CHAT_SCOPE_LABELS: Record<ChatScope, string> = {
+  page: "هذه الصفحة",
+  chapter: "هذا الفصل",
+  book: "هذا الكتاب",
+  subject: "هذه المادة",
+};
 
 // "الصفحات الأصلية" tab content is now the page's permanent middle column
-// instead of a tab — everything else (شرح/مصطلحات/بطاقات/اختبار/ملاحظاتي)
-// moved into a persistent right-hand assistant panel, per StudyOS's reader
-// layout: [فصول الكتاب] [صفحة PDF] [المساعد + تبويبات]. "ملاحظاتي" is now
-// real (PR4: annotations/highlighting) — "اسألني"/"اختبرني الآن" stay
-// placeholders since they need the RAG-chat and adaptive-quiz work from
-// later PRs; showing "قريبًا" is honest, not a stub pretending to work.
+// instead of a tab — everything else (شرح/مصطلحات/بطاقات/اختبار/ملاحظاتي/
+// اسألني) moved into a persistent right-hand assistant panel, per StudyOS's
+// reader layout: [فصول الكتاب] [صفحة PDF] [المساعد + تبويبات]. "اسألني" is
+// now real (PR5: RAG chat) — "اختبرني الآن" (an adaptive quiz FLOW, distinct
+// from just asking the chat to quiz you conversationally) stays a
+// placeholder for PR6's error-tracking/quiz work; showing "قريبًا" there is
+// honest, not a stub pretending to work.
 const ASSISTANT_TABS: { id: AssistantTab; label: string }[] = [
   { id: "explanation", label: "الشرح" },
   { id: "terms", label: "المصطلحات" },
   { id: "cards", label: "البطاقات" },
   { id: "mcqs", label: "الاختبار" },
   { id: "notes", label: "ملاحظاتي" },
+  { id: "chat", label: "اسألني" },
 ];
-const COMING_SOON_TABS = ["اسألني", "اختبرني الآن"];
+const COMING_SOON_TABS = ["اختبرني الآن"];
 
 type PendingSelection = { selectedText: string; start: number; end: number };
 
@@ -80,6 +97,47 @@ export default function ChapterDetailPage() {
     { subjectId: subjectId ?? "", query: searchQuery },
     { enabled: !!subjectId && searchQuery.trim().length > 0 }
   );
+
+  // ── اسألني (PR5: RAG chat) ────────────────────────────────────────────
+  const [chatScope, setChatScope] = useState<ChatScope>("page");
+  const [chatSessionId, setChatSessionId] = useState<string | null>(null);
+  const [chatInput, setChatInput] = useState("");
+  const getOrCreateChatSession = trpc.chat.getOrCreateSession.useMutation({
+    onSuccess: session => setChatSessionId(session.id),
+  });
+  const chatMessagesQuery = trpc.chat.listMessages.useQuery(
+    { sessionId: chatSessionId ?? "" },
+    { enabled: !!chatSessionId }
+  );
+  const askChat = trpc.chat.ask.useMutation({
+    onSuccess: () => {
+      setChatInput("");
+      chatMessagesQuery.refetch();
+    },
+  });
+  const createNoteFromMessage = trpc.chat.createNoteFromMessage.useMutation();
+  const createCardFromMessage = trpc.chat.createCardFromMessage.useMutation();
+
+  // (Re)opens the right session whenever the student switches scope or, for
+  // page scope, moves to a different page — one session per (scope,
+  // target), reused across visits (see lib/db-chat.ts).
+  useEffect(() => {
+    if (assistantTab !== "chat") return;
+    setChatSessionId(null);
+    if (chatScope === "page" && currentPage) {
+      getOrCreateChatSession.mutate({ scope: "page", pageId: currentPage.id });
+    } else if (chatScope === "chapter") {
+      getOrCreateChatSession.mutate({
+        scope: "chapter",
+        chapterId: params.chapterId,
+      });
+    } else if (chatScope === "book") {
+      getOrCreateChatSession.mutate({ scope: "book", bookId: params.bookId });
+    } else if (chatScope === "subject" && subjectId) {
+      getOrCreateChatSession.mutate({ scope: "subject", subjectId });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [assistantTab, chatScope, currentPage?.id]);
 
   if (chapterQuery.isLoading) {
     return (
@@ -565,6 +623,148 @@ export default function ChapterDetailPage() {
                   </div>
                 )}
               </div>
+            </div>
+          )}
+
+          {assistantTab === "chat" && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              <div className="cards-toolbar" style={{ gap: 6 }}>
+                {(Object.keys(CHAT_SCOPE_LABELS) as ChatScope[])
+                  .filter(scope => scope !== "subject" || !!subjectId)
+                  .map(scope => (
+                    <button
+                      type="button"
+                      key={scope}
+                      className={
+                        chatScope === scope
+                          ? "filter-button active"
+                          : "filter-button"
+                      }
+                      onClick={() => setChatScope(scope)}
+                    >
+                      {CHAT_SCOPE_LABELS[scope]}
+                    </button>
+                  ))}
+              </div>
+
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 10,
+                  maxHeight: 420,
+                  overflowY: "auto",
+                }}
+              >
+                {!chatSessionId || chatMessagesQuery.isLoading ? (
+                  <p style={{ fontSize: 12, color: "#8d9895" }}>
+                    جاري التحضير...
+                  </p>
+                ) : !chatMessagesQuery.data?.length ? (
+                  <p style={{ fontSize: 12, color: "#8d9895" }}>
+                    اسأل عن {CHAT_SCOPE_LABELS[chatScope]} — مثلًا: "لخّص هذا في
+                    خمس نقاط" أو "اختبرني".
+                  </p>
+                ) : (
+                  chatMessagesQuery.data.map(message => (
+                    <div
+                      key={message.id}
+                      className="panel-card"
+                      style={{
+                        background:
+                          message.role === "user" ? "#eef3f2" : "#fff",
+                        alignSelf:
+                          message.role === "user" ? "flex-end" : "flex-start",
+                        maxWidth: "90%",
+                      }}
+                    >
+                      <p style={{ whiteSpace: "pre-line" }}>
+                        {message.content}
+                      </p>
+                      {!!message.citedPages?.length && (
+                        <p
+                          style={{
+                            fontSize: 11,
+                            color: "#8a9493",
+                            marginTop: 6,
+                          }}
+                        >
+                          المصدر:{" "}
+                          {message.citedPages
+                            .map(cite => `صفحة ${cite.pageNumber}`)
+                            .join("، ")}
+                        </p>
+                      )}
+                      {message.role === "assistant" &&
+                        !!message.citedPages?.length && (
+                          <div
+                            style={{ display: "flex", gap: 8, marginTop: 8 }}
+                          >
+                            <button
+                              type="button"
+                              className="secondary-button"
+                              disabled={createNoteFromMessage.isPending}
+                              onClick={() =>
+                                createNoteFromMessage.mutate({
+                                  messageId: message.id,
+                                })
+                              }
+                            >
+                              حوّل لملاحظة
+                            </button>
+                            <button
+                              type="button"
+                              className="secondary-button"
+                              disabled={createCardFromMessage.isPending}
+                              onClick={() =>
+                                createCardFromMessage.mutate({
+                                  messageId: message.id,
+                                })
+                              }
+                            >
+                              أنشئ بطاقة
+                            </button>
+                          </div>
+                        )}
+                    </div>
+                  ))
+                )}
+                {askChat.isPending && (
+                  <p style={{ fontSize: 12, color: "#8d9895" }}>
+                    <Loader2 size={12} className="spin" /> جاري التفكير...
+                  </p>
+                )}
+              </div>
+
+              <form
+                style={{ display: "flex", gap: 8 }}
+                onSubmit={event => {
+                  event.preventDefault();
+                  if (!chatSessionId || !chatInput.trim()) return;
+                  askChat.mutate({
+                    sessionId: chatSessionId,
+                    question: chatInput.trim(),
+                  });
+                }}
+              >
+                <input
+                  value={chatInput}
+                  onChange={event => setChatInput(event.target.value)}
+                  placeholder="اكتب سؤالك..."
+                  style={{ flex: 1 }}
+                  disabled={!chatSessionId || askChat.isPending}
+                />
+                <button
+                  type="submit"
+                  className="primary-button"
+                  disabled={
+                    !chatSessionId || !chatInput.trim() || askChat.isPending
+                  }
+                  aria-label="إرسال"
+                >
+                  <Send size={16} />
+                </button>
+              </form>
             </div>
           )}
         </aside>
