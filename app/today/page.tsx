@@ -1,8 +1,24 @@
 "use client";
 
 import Link from "next/link";
-import { BookOpen, CalendarClock, CheckCircle2, Layers3 } from "lucide-react";
+import {
+  BookOpen,
+  CalendarClock,
+  CheckCircle2,
+  Layers3,
+  TrendingUp,
+} from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
+
+const WEEKDAY_LABELS_AR = [
+  "الأحد",
+  "الإثنين",
+  "الثلاثاء",
+  "الأربعاء",
+  "الخميس",
+  "الجمعة",
+  "السبت",
+];
 
 const TYPE_LABELS: Record<string, string> = {
   general: "عام",
@@ -40,6 +56,7 @@ export default function TodayPage() {
   const booksDue = trpc.books.dueCards.useQuery();
   const decksDue = trpc.decks.dueCards.useQuery();
   const booksQuery = trpc.books.list.useQuery();
+  const forecastQuery = trpc.books.upcomingForecast.useQuery();
 
   const dueCount = (booksDue.data?.length ?? 0) + (decksDue.data?.length ?? 0);
 
@@ -175,6 +192,49 @@ export default function TodayPage() {
             </>
           ) : (
             <p>ارفع كتابك الأول لتبدأ.</p>
+          )}
+        </div>
+
+        <div className="panel-card">
+          <div className="panel-heading">
+            <div>
+              <span className="section-kicker">خطة الدراسة</span>
+              <h2>الأسبوع القادم (كتبي)</h2>
+            </div>
+            <TrendingUp size={20} className="heading-icon" />
+          </div>
+          {forecastQuery.isLoading ? (
+            <p>جاري التحميل...</p>
+          ) : !forecastQuery.data?.length ? (
+            <p style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <CheckCircle2 size={16} /> لا توجد مراجعات مجدولة قريبًا.
+            </p>
+          ) : (
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: 6,
+                marginTop: 8,
+              }}
+            >
+              {forecastQuery.data.map(entry => (
+                <div
+                  key={entry.day}
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    fontSize: 13,
+                  }}
+                >
+                  <span>
+                    {WEEKDAY_LABELS_AR[new Date(entry.day).getUTCDay()]} ·{" "}
+                    {formatDate(entry.day)}
+                  </span>
+                  <b>{entry.count}</b>
+                </div>
+              ))}
+            </div>
           )}
         </div>
 

@@ -9,6 +9,7 @@ import {
   getChapterContentForUser,
   getChapterForUser,
   getDueCardsForUser,
+  getUpcomingReviewForecastForUser,
   getWeakPointsForUser,
   listBooksForUser,
   listBookPagesForUser,
@@ -89,7 +90,7 @@ export const booksRouter = router({
     .input(
       z.object({
         cardId: z.string(),
-        rating: z.enum(["hard", "good", "easy"]),
+        rating: z.enum(["again", "hard", "good", "easy"]),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -131,6 +132,12 @@ export const booksRouter = router({
   // list. See lib/db-books.ts's computeWeakPoints for the exact definition.
   listWeakPoints: protectedProcedure.query(async ({ ctx }) => {
     return getWeakPointsForUser(ctx.user.id);
+  }),
+
+  // خطة الدراسة (PR7) — 7-day forecast of bookCards' real FSRS-computed
+  // dueAt values.
+  upcomingForecast: protectedProcedure.query(async ({ ctx }) => {
+    return getUpcomingReviewForecastForUser(ctx.user.id);
   }),
 
   // Student-initiated retry for a chapter that exhausted its automatic

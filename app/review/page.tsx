@@ -87,6 +87,17 @@ export default function ReviewPage() {
     setIndex(current => Math.min(current, Math.max(0, cards.length - 2)));
   }
 
+  // كتبي-only 4th rating (FSRS's "Again"/lapse grade) — لا يوجد ما يقابله في
+  // مِرآة (SM-2 stays a 3-button hard/good/easy scale, unchanged), so this is
+  // a separate function/button rather than widening the shared Rating type
+  // and risking a "again" ever reaching decksRouter's still-3-value enum.
+  function rateAgain() {
+    if (!card || card.source !== "book") return;
+    rateBookCard.mutate({ cardId: card.id, rating: "again" });
+    setShowAnswer(false);
+    setIndex(current => Math.min(current, Math.max(0, cards.length - 2)));
+  }
+
   if (isLoading) {
     return (
       <section className="upload-view">
@@ -191,11 +202,26 @@ export default function ReviewPage() {
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "repeat(3, 1fr)",
+            gridTemplateColumns: `repeat(${card.source === "book" ? 4 : 3}, 1fr)`,
             gap: 12,
             marginTop: 20,
           }}
         >
+          {card.source === "book" && (
+            <button
+              type="button"
+              className="secondary-button"
+              style={{
+                background: "#f7ded9",
+                color: "#974d49",
+                border: "none",
+              }}
+              disabled={isPending}
+              onClick={rateAgain}
+            >
+              لم أتذكر
+            </button>
+          )}
           <button
             type="button"
             className="secondary-button"
