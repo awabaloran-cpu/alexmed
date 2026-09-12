@@ -41,6 +41,11 @@ export const users = pgTable("users", {
   role: userRoleEnum("role").default("user").notNull(),
   plan: userPlanEnum("plan").default("free").notNull(),
   planExpiresAt: timestamp("planExpiresAt", { withTimezone: true }),
+  // PR18 — real student profile fields shown/editable on /account. Free-text
+  // rather than an enum: "السنة الدراسية"/"التخصص" vary too much across
+  // students' actual programs to enumerate meaningfully.
+  academicYear: text("academicYear"),
+  specialty: text("specialty"),
   // Null = active. Set by an admin from the dashboard; checked at sign-in
   // (both Credentials and Google) in lib/auth.ts so a suspended account
   // genuinely cannot use the app, not just cosmetically hidden.
@@ -420,6 +425,17 @@ export const bookProfileEnum = pgEnum("book_profile", [
   "custom",
 ]);
 
+// PR16: distinguishes an uploaded PDF that's a study textbook (the existing
+// chapter-detection + AI analysis pipeline, unchanged) from one that's a
+// bank of pre-existing questions (a separate, non-AI extraction pipeline —
+// see extractedQuestions below). Every pre-existing book backfills to
+// "study_book", which is accurate for all of them (question-file upload
+// didn't exist before this).
+export const bookSourceTypeEnum = pgEnum("book_source_type", [
+  "study_book",
+  "question_file",
+]);
+
 export const subjects = pgTable(
   "subjects",
   {
@@ -469,6 +485,12 @@ export const books = pgTable(
     fileName: text("fileName").notNull(),
     fileKey: text("fileKey"),
     pageCount: integer("pageCount").default(0).notNull(),
+    // PR16 — see bookSourceTypeEnum above. "question_file" books skip the
+    // whole chapter/AI pipeline below entirely (chapterDetectionMethod,
+    // chapterDetectionConfidence, etc. stay null for them).
+    sourceType: bookSourceTypeEnum("sourceType")
+      .default("study_book")
+      .notNull(),
     // Drives AI prompt/schema selection in lib/book-analysis.ts (see that
     // file). Every pre-existing book (before this column existed) is
     // backfilled to "medical" by this migration — this app's entire history
@@ -553,10 +575,69 @@ export const bookChapters = pgTable(
     // This chapter's own slice of extracted page text, stored at plan time so
     // the analyze route never has to re-fetch/re-parse the whole book PDF.
     pageTexts: jsonb("pageTexts").$type<{ page: number; text: string }[]>(),
+    // Audit fix (P0): a long chapter is split into several sub-chunks, each
+    // its own sequential AI call within one worker invocation (Vercel's 60s
+    // ceiling can't fit more than a couple) — this holds every sub-chunk's
+    // completed analysis as it finishes, so a timeout/retry resumes from the
+    // next un-processed sub-chunk instead of redoing (and re-paying for) the
+    // whole chapter. Cleared back to null once the chapter reaches "complete"
+    // — purely transient scaffolding, never read once analysis is done.
+    subChunkResults: jsonb("subChunkResults").$type<
+      {
+        explanationAr: string;
+        explanationEn: string;
+        keyPoints: string[];
+        medicalTerms: { ar: string; en: string; pronunciation: string }[];
+        flashcards: {
+          questionAr: string;
+          questionEn: string;
+          answerAr: string;
+          answerEn: string;
+          relatedTermEn: string;
+          sourcePage: number;
+        }[];
+        mcqs: {
+          questionEn: string;
+          choices: string[];
+          correctIndex: number;
+          explanationEn: string;
+          sourcePage: number;
+        }[];
+        chapterSummary: string;
+      }[]
+    >(),
     explanationAr: text("explanationAr"),
     explanationEn: text("explanationEn"),
     keyPoints: jsonb("keyPoints").$type<string[]>(),
     chapterSummary: text("chapterSummary"),
+    // Audit Phase 6 — real hierarchical mind map data: Chapter -> Sections ->
+    // Key concepts, each section carrying the real page numbers it came
+    // from. Generated lazily (on first mind-map view, one bounded LLM call
+    // per chapter — see lib/trpc/booksRouter.ts's generateMindMapSections)
+    // from this chapter's OWN already-generated explanationAr/keyPoints —
+    // purely reorganizing already-grounded content, never re-reading raw PDF
+    // text, so it can never introduce a new fact this chapter didn't already
+    // contain. Null until generated; never blocks chapter completion.
+    mindMapSections: jsonb("mindMapSections").$type<
+      {
+        title: string;
+        explanationAr: string;
+        sourcePages: number[];
+        concepts: { termAr: string; termEn: string; explanationAr: string }[];
+      }[]
+    >(),
+    // Audit Phase 7 — connects this chapter's already-written explanation to
+    // its real images/diagrams/tables (book_visual_assets), generated
+    // lazily AFTER both chapter analysis and page-visual analysis are done
+    // (see lib/trpc/booksRouter.ts's generateVisualInsights). Never blocks
+    // or reorders the original chapter-analysis pipeline — visual analysis
+    // finishes independently of and typically after chapter analysis, so
+    // this is a separate, later, additive enrichment rather than a change
+    // to explanationAr/explanationEn themselves. Grounded ONLY in this
+    // chapter's own already-extracted visual descriptions — never invents
+    // what a diagram shows beyond what analyze-page-visuals already wrote.
+    // Null until generated (or until there's nothing to generate from).
+    visualInsightsAr: text("visualInsightsAr"),
     // Last failure reason, when status is "failed" — surfaced with a retry
     // button rather than leaving the chapter stuck silently.
     errorMessage: text("errorMessage"),
@@ -791,6 +872,17 @@ export const bookCards = pgTable(
   })
 );
 
+// Audit Phase 5 — Question Validation Agent's verdict per MCQ. "pending"
+// (default) means no validation pass has run yet — never treated as "known
+// good", just "not yet checked". Additive only: existing quiz-taking code
+// (submitMcqAttemptForUser, listMcqsForUser) is completely unaffected by an
+// MCQ's validation status — see lib/db-books.ts's validateChapterMcqs for
+// the only writer of this column.
+export const bookMcqValidationStatusEnum = pgEnum(
+  "book_mcq_validation_status",
+  ["pending", "valid", "flagged"]
+);
+
 export const bookMcqs = pgTable("book_mcqs", {
   id: uuid("id").defaultRandom().primaryKey(),
   chapterId: uuid("chapterId")
@@ -801,6 +893,13 @@ export const bookMcqs = pgTable("book_mcqs", {
   correctIndex: integer("correctIndex").notNull(),
   explanationEn: text("explanationEn").notNull(),
   sourcePage: integer("sourcePage").notNull(),
+  validationStatus: bookMcqValidationStatusEnum("validationStatus")
+    .default("pending")
+    .notNull(),
+  // Why it was flagged (wrong correctIndex, ungrounded/hallucinated, exact
+  // duplicate of another MCQ in the same chapter, etc.) — null while
+  // pending/valid.
+  validationNote: text("validationNote"),
   createdAt: timestamp("createdAt", { withTimezone: true })
     .defaultNow()
     .notNull(),
@@ -820,6 +919,45 @@ export const bookMcqAttempts = pgTable("book_mcq_attempts", {
     .defaultNow()
     .notNull(),
 });
+
+// PR16 — questions parsed directly out of an uploaded "question_file" book's
+// real text (lib/question-extraction.ts), NEVER generated by an LLM. Kept
+// entirely separate from bookMcqs (which IS AI-generated, from study
+// chapters) so the two are never conflated in the UI or in a query.
+//
+// extractedAnswer{Index,Text} reflect ONLY what the source PDF itself states
+// (null when the file doesn't give an answer — never guessed). aiInferred
+// AnswerIndex is a deliberately distinct column reserved for a possible
+// future AI-assisted-guess feature; it must never be read as if it were
+// extractedAnswerIndex, and nothing in this PR ever writes to it.
+export const extractedQuestions = pgTable(
+  "extracted_questions",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    bookId: uuid("bookId")
+      .notNull()
+      .references(() => books.id, { onDelete: "cascade" }),
+    orderIndex: integer("orderIndex").notNull(),
+    questionText: text("questionText").notNull(),
+    options: jsonb("options").$type<string[]>(),
+    extractedAnswerIndex: integer("extractedAnswerIndex"),
+    extractedAnswerText: text("extractedAnswerText"),
+    aiInferredAnswerIndex: integer("aiInferredAnswerIndex"),
+    explanationText: text("explanationText"),
+    sourcePage: integer("sourcePage").notNull(),
+    createdAt: timestamp("createdAt", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  table => ({
+    bookOrderIdx: index("extracted_questions_book_id_order_index_idx").on(
+      table.bookId,
+      table.orderIndex
+    ),
+  })
+);
+
+export type ExtractedQuestion = typeof extractedQuestions.$inferSelect;
 
 // Append-only SRS rating log — separate from book_cards' own (mutable,
 // current-state) SRS fields, because stats (accuracy history, streaks) need

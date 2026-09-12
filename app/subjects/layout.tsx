@@ -1,8 +1,9 @@
-import AppSidebar from "@/components/AppSidebar";
+import BottomNav from "@/components/BottomNav";
 import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
 
-// Same shell as app/books/layout.tsx — one auth check, same shared sidebar.
+// Same shell as app/books/layout.tsx — one auth check, BottomNav (PR9)
+// instead of AppSidebar.
 export default async function SubjectsLayout({
   children,
 }: {
@@ -15,8 +16,8 @@ export default async function SubjectsLayout({
 
   return (
     <div className="app-shell">
-      <AppSidebar />
       <main className="main-content">{children}</main>
+      <BottomNav />
     </div>
   );
 }

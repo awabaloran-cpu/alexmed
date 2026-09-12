@@ -22,6 +22,10 @@ import {
 } from "../drizzle/schema";
 import { getDb } from "./db";
 import { detectChapters } from "./book-chapters";
+import type {
+  BookChapterAnalysis,
+  ChapterMindMapSection,
+} from "./book-analysis";
 import {
   FSRS_DEFAULT_WEIGHTS,
   scheduleFsrsReview,
@@ -375,6 +379,7 @@ export async function listBooksForUser(userId: string) {
       fileName: books.fileName,
       pageCount: books.pageCount,
       createdAt: books.createdAt,
+      updatedAt: books.updatedAt,
       subjectId: books.subjectId,
       profile: books.profile,
       chapterCount: count(bookChapters.id),
@@ -384,7 +389,7 @@ export async function listBooksForUser(userId: string) {
     })
     .from(books)
     .leftJoin(bookChapters, eq(bookChapters.bookId, books.id))
-    .where(eq(books.userId, userId))
+    .where(and(eq(books.userId, userId), eq(books.sourceType, "study_book")))
     .groupBy(books.id)
     .orderBy(desc(books.createdAt));
 }
@@ -396,7 +401,13 @@ export async function getBookForUser(userId: string, bookId: string) {
   const [book] = await db
     .select()
     .from(books)
-    .where(and(eq(books.id, bookId), eq(books.userId, userId)))
+    .where(
+      and(
+        eq(books.id, bookId),
+        eq(books.userId, userId),
+        eq(books.sourceType, "study_book")
+      )
+    )
     .limit(1);
   if (!book) return null;
 
@@ -415,6 +426,118 @@ export async function getBookForUser(userId: string, bookId: string) {
     .orderBy(asc(bookChapters.orderIndex));
 
   return { book, chapters };
+}
+
+// PR18 — real, minimal data for the book's mind map: just titles/keyPoints/
+// terms, not the full getChapter payload (cards/mcqs/pages), since the map
+// needs every chapter at once rather than one at a time.
+export async function getBookMindMapForUser(userId: string, bookId: string) {
+  const db = getDb();
+  if (!db) return null;
+
+  const [book] = await db
+    .select({ id: books.id, fileName: books.fileName })
+    .from(books)
+    .where(
+      and(
+        eq(books.id, bookId),
+        eq(books.userId, userId),
+        eq(books.sourceType, "study_book")
+      )
+    )
+    .limit(1);
+  if (!book) return null;
+
+  const chapters = await db
+    .select({
+      id: bookChapters.id,
+      orderIndex: bookChapters.orderIndex,
+      title: bookChapters.title,
+      keyPoints: bookChapters.keyPoints,
+      mindMapSections: bookChapters.mindMapSections,
+    })
+    .from(bookChapters)
+    .where(
+      and(eq(bookChapters.bookId, bookId), eq(bookChapters.status, "complete"))
+    )
+    .orderBy(asc(bookChapters.orderIndex));
+
+  const terms = chapters.length
+    ? await db
+        .select({
+          chapterId: bookTerms.chapterId,
+          ar: bookTerms.ar,
+          en: bookTerms.en,
+        })
+        .from(bookTerms)
+        .where(
+          inArray(
+            bookTerms.chapterId,
+            chapters.map(c => c.id)
+          )
+        )
+    : [];
+  const termsByChapter = new Map<string, { ar: string; en: string }[]>();
+  for (const term of terms) {
+    const list = termsByChapter.get(term.chapterId) ?? [];
+    list.push({ ar: term.ar, en: term.en });
+    termsByChapter.set(term.chapterId, list);
+  }
+
+  // Audit Phase 6/7 — the mind map must reflect real image/diagram/table
+  // content too, not just text-derived keyPoints/terms, so each chapter node
+  // gets its own visual assets (with the page they came from) alongside its
+  // keyPoints/terms. Joined through bookPages since bookVisualAssets has no
+  // chapterId of its own on older rows in some edge cases — pageId always
+  // resolves it reliably.
+  const visuals = chapters.length
+    ? await db
+        .select({
+          chapterId: bookPages.chapterId,
+          pageNumber: bookPages.pageNumber,
+          assetType: bookVisualAssets.assetType,
+          descriptionAr: bookVisualAssets.descriptionAr,
+          descriptionEn: bookVisualAssets.descriptionEn,
+        })
+        .from(bookVisualAssets)
+        .innerJoin(bookPages, eq(bookPages.id, bookVisualAssets.pageId))
+        .where(
+          inArray(
+            bookPages.chapterId,
+            chapters.map(c => c.id)
+          )
+        )
+        .orderBy(asc(bookPages.pageNumber))
+    : [];
+  const visualsByChapter = new Map<
+    string,
+    {
+      pageNumber: number;
+      assetType: string;
+      descriptionAr: string | null;
+      descriptionEn: string | null;
+    }[]
+  >();
+  for (const visual of visuals) {
+    if (!visual.chapterId) continue;
+    const list = visualsByChapter.get(visual.chapterId) ?? [];
+    list.push({
+      pageNumber: visual.pageNumber,
+      assetType: visual.assetType,
+      descriptionAr: visual.descriptionAr,
+      descriptionEn: visual.descriptionEn,
+    });
+    visualsByChapter.set(visual.chapterId, list);
+  }
+
+  return {
+    book,
+    chapters: chapters.map(chapter => ({
+      ...chapter,
+      terms: termsByChapter.get(chapter.id) ?? [],
+      visuals: visualsByChapter.get(chapter.id) ?? [],
+    })),
+  };
 }
 
 // Ordered, safe deletion (see lib/storage.ts's deleteObject/deleteObjects):
@@ -538,6 +661,24 @@ export async function resetBookChapterForRetry(chapterId: string) {
       errorMessage: null,
       updatedAt: new Date(),
     })
+    .where(eq(bookChapters.id, chapterId));
+}
+
+// Audit fix (P0) — persists one more completed sub-chunk's result onto the
+// chapter row immediately after that sub-chunk's own LLM call succeeds, so a
+// timeout/retry on a LATER sub-chunk never has to redo (or re-pay for) this
+// one. Small array (a chapter split into double digits of sub-chunks would
+// already be an extreme outlier), so read-modify-write is fine — no need
+// for a real append-only jsonb operator here.
+export async function saveChapterSubChunkProgress(
+  chapterId: string,
+  results: BookChapterAnalysis[]
+) {
+  const db = getDb();
+  if (!db) throw new Error("Database not available");
+  await db
+    .update(bookChapters)
+    .set({ subChunkResults: results, updatedAt: new Date() })
     .where(eq(bookChapters.id, chapterId));
 }
 
@@ -832,6 +973,232 @@ export async function getBookCoverageReport(bookId: string) {
   };
 }
 
+export type BookCoverageDetail = {
+  totalPages: number;
+  processedPages: number;
+  failedPages: number[];
+  missingPages: number[];
+  coverage: number;
+  status: "COMPLETE" | "PARTIAL" | "PROCESSING";
+};
+
+// Audit Phase 3 — the "real Document Coverage Engine" requirement: the
+// system itself (never the LLM's own claim) must be able to say, in exact
+// page numbers, which pages are missing/failed, and never report COMPLETE
+// while any page is missing or has failed. Pure and DB-free (same rationale
+// as computeBookRollupStatus below) so it's directly unit-testable against
+// real page-status combinations rather than mocked DB calls.
+//
+// "Processed" = a page's own two independent per-page pipelines (text
+// extraction, visual analysis) both reached a genuine terminal outcome:
+// textStatus 'complete' AND visualStatus 'complete' or 'needs_review'
+// (needs_review still means the page was actually looked at, just flagged
+// for human review — not silently skipped, so it counts as processed here).
+export function computeCoverageDetail(
+  totalPages: number,
+  pages: { pageNumber: number; textStatus: string; visualStatus: string }[]
+): BookCoverageDetail {
+  const seenPageNumbers = new Set(pages.map(page => page.pageNumber));
+  const missingPages: number[] = [];
+  for (let pageNumber = 1; pageNumber <= totalPages; pageNumber++) {
+    if (!seenPageNumbers.has(pageNumber)) missingPages.push(pageNumber);
+  }
+
+  const failedPages = pages
+    .filter(
+      page => page.textStatus === "failed" || page.visualStatus === "failed"
+    )
+    .map(page => page.pageNumber)
+    .sort((a, b) => a - b);
+
+  const processedPages = pages.filter(
+    page =>
+      page.textStatus === "complete" &&
+      (page.visualStatus === "complete" || page.visualStatus === "needs_review")
+  ).length;
+
+  const coverage =
+    totalPages > 0 ? Math.round((processedPages / totalPages) * 100) : 0;
+
+  const status: BookCoverageDetail["status"] =
+    totalPages > 0 && processedPages === totalPages && missingPages.length === 0
+      ? "COMPLETE"
+      : failedPages.length > 0 || missingPages.length > 0
+        ? "PARTIAL"
+        : "PROCESSING";
+
+  return {
+    totalPages,
+    processedPages,
+    failedPages,
+    missingPages,
+    coverage,
+    status,
+  };
+}
+
+// Thin DB wrapper around computeCoverageDetail above — books.pageCount is
+// the ground truth for "how many pages this book actually has" (set once
+// from the PDF parser's own page count in app/api/books/extract/route.ts,
+// never derived from how many pages happened to process successfully), so
+// it — not a COUNT() over book_pages — is what missingPages is measured
+// against.
+export async function getBookCoverageDetail(
+  bookId: string
+): Promise<BookCoverageDetail | null> {
+  const db = getDb();
+  if (!db) return null;
+
+  const [book] = await db
+    .select({ pageCount: books.pageCount })
+    .from(books)
+    .where(eq(books.id, bookId))
+    .limit(1);
+  if (!book) return null;
+
+  const pages = await db
+    .select({
+      pageNumber: bookPages.pageNumber,
+      textStatus: bookPages.textStatus,
+      visualStatus: bookPages.visualStatus,
+    })
+    .from(bookPages)
+    .where(eq(bookPages.bookId, bookId));
+
+  return computeCoverageDetail(book.pageCount, pages);
+}
+
+// Small helper for generateMindMapSections below — the caller has already
+// proven ownership of the chapter via getChapterForUser, so this needs no
+// ownership filter of its own (same trust-boundary reasoning as the other
+// no-filter internal helpers in this file).
+export async function getChapterTerms(chapterId: string) {
+  const db = getDb();
+  if (!db) return [];
+  return db
+    .select({ ar: bookTerms.ar, en: bookTerms.en })
+    .from(bookTerms)
+    .where(eq(bookTerms.chapterId, chapterId));
+}
+
+// Audit Phase 5 — Question Validation Agent. The caller (validateChapterMcqs
+// tRPC mutation) has already proven chapter ownership via getChapterForUser,
+// so these need no ownership filter of their own.
+export async function getChapterMcqsForValidation(chapterId: string) {
+  const db = getDb();
+  if (!db) return [];
+  return (
+    db
+      .select({
+        id: bookMcqs.id,
+        questionEn: bookMcqs.questionEn,
+        choices: bookMcqs.choices,
+        correctIndex: bookMcqs.correctIndex,
+        explanationEn: bookMcqs.explanationEn,
+        sourcePage: bookMcqs.sourcePage,
+        validationStatus: bookMcqs.validationStatus,
+      })
+      .from(bookMcqs)
+      .where(eq(bookMcqs.chapterId, chapterId))
+      // Deterministic order (oldest first) so duplicate detection always keeps
+      // the earliest-created copy of a repeated question and flags only the
+      // later one(s) — otherwise which copy gets flagged could flip between
+      // calls, including flipping an already-"valid" MCQ to "flagged" for no
+      // real reason.
+      .orderBy(asc(bookMcqs.createdAt))
+  );
+}
+
+// Audit Phase 5, part 3 — inserts the coverage-gap-filling MCQs generated by
+// validateChapterMcqs (see lib/book-analysis.ts's buildGapQuestionsMessages/
+// parseGapQuestions). Left at the schema-default "pending" validationStatus
+// — a freshly-generated question hasn't been through the validation pass
+// yet, so it isn't presumed correct just because it filled a gap.
+export async function insertBookMcqs(
+  chapterId: string,
+  mcqs: {
+    questionEn: string;
+    choices: string[];
+    correctIndex: number;
+    explanationEn: string;
+    sourcePage: number;
+  }[]
+) {
+  if (!mcqs.length) return;
+  const db = getDb();
+  if (!db) throw new Error("Database not available");
+  await db.insert(bookMcqs).values(
+    mcqs.map(mcq => ({
+      chapterId,
+      questionEn: mcq.questionEn,
+      choices: mcq.choices,
+      correctIndex: mcq.correctIndex,
+      explanationEn: mcq.explanationEn,
+      sourcePage: mcq.sourcePage,
+    }))
+  );
+}
+
+export async function saveMcqValidationResults(
+  results: { id: string; status: "valid" | "flagged"; note: string | null }[]
+) {
+  const db = getDb();
+  if (!db) throw new Error("Database not available");
+  for (const result of results) {
+    await db
+      .update(bookMcqs)
+      .set({ validationStatus: result.status, validationNote: result.note })
+      .where(eq(bookMcqs.id, result.id));
+  }
+}
+
+// Audit Phase 6 — persists the lazily-generated hierarchical mind map
+// sections for one chapter (see lib/trpc/booksRouter.ts's
+// generateMindMapSections and lib/book-analysis.ts's parseMindMapSections).
+export async function saveChapterMindMapSections(
+  chapterId: string,
+  sections: ChapterMindMapSection[]
+) {
+  const db = getDb();
+  if (!db) throw new Error("Database not available");
+  await db
+    .update(bookChapters)
+    .set({ mindMapSections: sections, updatedAt: new Date() })
+    .where(eq(bookChapters.id, chapterId));
+}
+
+// Audit Phase 7 — the caller (generateVisualInsights tRPC mutation) has
+// already proven chapter ownership via getChapterForUser, so this needs no
+// ownership filter of its own. Joined through bookPages (not
+// bookVisualAssets.chapterId directly) — same reliability reasoning as
+// getBookMindMapForUser's visuals join above.
+export async function getChapterVisualAssets(chapterId: string) {
+  const db = getDb();
+  if (!db) return [];
+  return db
+    .select({
+      pageNumber: bookPages.pageNumber,
+      assetType: bookVisualAssets.assetType,
+      descriptionAr: bookVisualAssets.descriptionAr,
+    })
+    .from(bookVisualAssets)
+    .innerJoin(bookPages, eq(bookPages.id, bookVisualAssets.pageId))
+    .where(eq(bookPages.chapterId, chapterId))
+    .orderBy(asc(bookPages.pageNumber));
+}
+
+export async function saveChapterVisualInsights(
+  chapterId: string,
+  visualInsightsAr: string
+) {
+  const db = getDb();
+  if (!db) throw new Error("Database not available");
+  await db
+    .update(bookChapters)
+    .set({ visualInsightsAr, updatedAt: new Date() })
+    .where(eq(bookChapters.id, chapterId));
+}
+
 export type BookRollupDecision = "skip" | "complete" | "partial_failed";
 
 // Pure decision logic for finalizeBookIfDone, extracted so it's directly
@@ -999,6 +1366,10 @@ export async function completeChapterAnalysis(
         keyPoints: result.keyPoints,
         chapterSummary: result.chapterSummary,
         errorMessage: null,
+        // Sub-chunk resume scaffolding (P0 audit fix) is only useful while
+        // analysis is in progress — clear it once the chapter is durably
+        // complete so it never masks a genuinely fresh re-analysis later.
+        subChunkResults: null,
         updatedAt: new Date(),
       })
       .where(eq(bookChapters.id, chapterId));
@@ -1245,6 +1616,8 @@ export async function listMcqsForUser(userId: string) {
       correctIndex: bookMcqs.correctIndex,
       explanationEn: bookMcqs.explanationEn,
       sourcePage: bookMcqs.sourcePage,
+      validationStatus: bookMcqs.validationStatus,
+      validationNote: bookMcqs.validationNote,
       chapterTitle: bookChapters.title,
       bookFileName: books.fileName,
     })
@@ -1298,6 +1671,9 @@ export async function getBookStatsForUser(userId: string) {
       accuracyPercent: 0,
       streakDays: 0,
       hoursStudied: 0,
+      fileCount: 0,
+      cardCount: 0,
+      quizQuestionsAnsweredCount: 0,
     };
   }
 
@@ -1313,6 +1689,16 @@ export async function getBookStatsForUser(userId: string) {
     })
     .from(bookMcqAttempts)
     .where(eq(bookMcqAttempts.userId, userId));
+
+  // PR18 — real counts for /account's study statistics section.
+  const [fileStats] = await db
+    .select({ total: count() })
+    .from(books)
+    .where(eq(books.userId, userId));
+  const [cardStats] = await db
+    .select({ total: count() })
+    .from(bookCards)
+    .where(eq(bookCards.userId, userId));
 
   const totalAnswered = Number(mcqStats?.total ?? 0);
   const totalCorrect = Number(mcqStats?.correct ?? 0);
@@ -1345,6 +1731,9 @@ export async function getBookStatsForUser(userId: string) {
     // fixed per-review-event cost rather than adding a new session table.
     hoursStudied:
       Math.round(((Number(reviewStats?.total ?? 0) * 1.5) / 60) * 10) / 10,
+    fileCount: Number(fileStats?.total ?? 0),
+    cardCount: Number(cardStats?.total ?? 0),
+    quizQuestionsAnsweredCount: totalAnswered,
   };
 }
 

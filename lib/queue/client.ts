@@ -58,6 +58,10 @@ function resolveDestination(message: QueueMessage): string {
       return `${base}/api/books/analyze-page-visuals`;
     case "retry_book_page_text":
       return `${base}/api/books/retry-page-text`;
+    case "extract_question_file_job":
+      return `${base}/api/books/extract-questions`;
+    case "generate_chapter_mindmap_sections":
+      return `${base}/api/books/generate-mindmap-sections`;
   }
 }
 
@@ -105,6 +109,18 @@ function defaultFlowControl(message: QueueMessage): FlowControl {
     // book's own bulk extraction/analysis traffic.
     case "retry_book_page_text":
       return { key: `books-page-text-retry-${message.pageId}`, parallelism: 1 };
+    case "extract_question_file_job":
+      return {
+        key: "question-files-pipeline",
+        parallelism: getQueueGlobalConcurrency(),
+      };
+    // Cheap, idempotent, one-per-chapter — shares the same global budget as
+    // the rest of the books text pipeline rather than a whole new env var.
+    case "generate_chapter_mindmap_sections":
+      return {
+        key: "books-pipeline",
+        parallelism: getQueueGlobalConcurrency(),
+      };
   }
 }
 

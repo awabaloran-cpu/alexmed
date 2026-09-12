@@ -5,13 +5,12 @@ import { NextResponse } from "next/server";
 
 // The one REST route this feature needs (everything else goes through tRPC)
 // — binary image data can't ride a JSON response, so this redirects to a
-// short-lived signed URL instead. Unlike app/api/files/[...key]/route.ts
-// (session-only, no ownership check — a pre-existing, unrelated gap this
-// change deliberately does not extend to page images), this route enforces
-// REAL per-book ownership: getBookPageForUser joins through books.userId,
-// so a bookId/pageNumber for a book the caller doesn't own returns null
+// short-lived signed URL instead. This route enforces REAL per-book
+// ownership: getBookPageForUser joins through books.userId, so a
+// bookId/pageNumber for a book the caller doesn't own returns null
 // regardless of whether the ids themselves are valid — never leaks whether
-// the resource even exists to an unauthorized caller.
+// the resource even exists to an unauthorized caller. (PR13 closed the same
+// gap for app/api/files/[...key]/route.ts too, via lib/db-file-access.ts.)
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ bookId: string; pageNumber: string }> }

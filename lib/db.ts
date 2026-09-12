@@ -94,6 +94,45 @@ export async function touchLastSignedIn(id: string) {
     .where(eq(users.id, id));
 }
 
+// PR18 — safe fields only (never passwordHash) for the account page's own
+// profile view; getUserById returns the full row and stays worker/auth-only.
+export async function getUserProfileForAccount(userId: string) {
+  const db = getDb();
+  if (!db) return null;
+  const [row] = await db
+    .select({
+      id: users.id,
+      email: users.email,
+      name: users.name,
+      plan: users.plan,
+      planExpiresAt: users.planExpiresAt,
+      academicYear: users.academicYear,
+      specialty: users.specialty,
+    })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+  return row ?? null;
+}
+
+export async function updateUserProfile(
+  userId: string,
+  input: { academicYear?: string | null; specialty?: string | null }
+) {
+  const db = getDb();
+  if (!db) throw new Error("Database not available");
+  await db
+    .update(users)
+    .set({
+      ...(input.academicYear !== undefined
+        ? { academicYear: input.academicYear }
+        : {}),
+      ...(input.specialty !== undefined ? { specialty: input.specialty } : {}),
+      updatedAt: new Date(),
+    })
+    .where(eq(users.id, userId));
+}
+
 export async function createDeckWithCards(
   userId: string,
   input: {

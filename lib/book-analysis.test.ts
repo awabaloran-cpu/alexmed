@@ -1,9 +1,16 @@
 import { describe, expect, it } from "vitest";
 import {
   buildChapterAnalysisMessages,
+  buildVisualInsightsMessages,
   chunkChapterPages,
+  findDuplicateMcqIds,
+  findUncoveredPages,
   mergeSubChunkResults,
   parseChapterAnalysis,
+  parseGapQuestions,
+  parseMcqValidation,
+  parseMindMapSections,
+  parseVisualInsights,
   type BookChapterAnalysis,
   type BookPageInput,
 } from "./book-analysis";
@@ -167,5 +174,160 @@ describe("parseChapterAnalysis", () => {
     const fenced = "```json\n" + JSON.stringify(analysis) + "\n```";
     const result = parseChapterAnalysis(fenced);
     expect(result).toEqual(analysis);
+  });
+});
+
+describe("parseMindMapSections", () => {
+  it("keeps sourcePages that are within this chapter's real page range", () => {
+    const content = JSON.stringify({
+      sections: [
+        {
+          title: "Section 1",
+          explanationAr: "شرح",
+          sourcePages: [1, 2],
+          concepts: [],
+        },
+      ],
+    });
+    const result = parseMindMapSections(content, [1, 2, 3]);
+    expect(result[0].sourcePages).toEqual([1, 2]);
+  });
+
+  // Audit rule: never trust the model's own page numbers as-is — a
+  // hallucinated page outside this chapter's real range must be dropped,
+  // not silently kept (same guard as analyze-chapter's card/MCQ filtering).
+  it("drops a hallucinated sourcePage outside this chapter's real range", () => {
+    const content = JSON.stringify({
+      sections: [
+        {
+          title: "Section 1",
+          explanationAr: "شرح",
+          sourcePages: [1, 99],
+          concepts: [],
+        },
+      ],
+    });
+    const result = parseMindMapSections(content, [1, 2, 3]);
+    expect(result[0].sourcePages).toEqual([1]);
+  });
+});
+
+describe("findDuplicateMcqIds", () => {
+  it("flags an exact-duplicate question, keeping the first occurrence unflagged", () => {
+    const mcqs = [
+      { id: "a", questionEn: "What causes heart failure?" },
+      { id: "b", questionEn: "What is the capital of France?" },
+      { id: "c", questionEn: "What causes heart failure?" },
+    ];
+    expect(findDuplicateMcqIds(mcqs)).toEqual(["c"]);
+  });
+
+  it("flags a near-duplicate that only differs by punctuation/case/whitespace", () => {
+    const mcqs = [
+      { id: "a", questionEn: "What causes Heart Failure?" },
+      { id: "b", questionEn: "what causes   heart failure" },
+    ];
+    expect(findDuplicateMcqIds(mcqs)).toEqual(["b"]);
+  });
+
+  it("finds no duplicates among genuinely distinct questions", () => {
+    const mcqs = [
+      { id: "a", questionEn: "What causes heart failure?" },
+      { id: "b", questionEn: "What is the treatment for heart failure?" },
+    ];
+    expect(findDuplicateMcqIds(mcqs)).toEqual([]);
+  });
+});
+
+describe("parseMcqValidation", () => {
+  it("parses a validation response into per-question results", () => {
+    const content = JSON.stringify({
+      results: [
+        { id: "a", valid: true, note: "" },
+        { id: "b", valid: false, note: "answer is wrong" },
+      ],
+    });
+    expect(parseMcqValidation(content)).toEqual([
+      { id: "a", valid: true, note: "" },
+      { id: "b", valid: false, note: "answer is wrong" },
+    ]);
+  });
+});
+
+describe("findUncoveredPages", () => {
+  it("names every page in range that has no covering question", () => {
+    expect(findUncoveredPages(1, 5, [1, 3])).toEqual([2, 4, 5]);
+  });
+
+  it("returns an empty list when every page is covered", () => {
+    expect(findUncoveredPages(1, 3, [1, 2, 3, 3])).toEqual([]);
+  });
+
+  it("treats a page with no MCQs at all as fully uncovered", () => {
+    expect(findUncoveredPages(10, 12, [])).toEqual([10, 11, 12]);
+  });
+});
+
+describe("parseGapQuestions", () => {
+  it("keeps generated questions whose sourcePage is a real gap page", () => {
+    const content = JSON.stringify({
+      mcqs: [
+        {
+          questionEn: "Q1",
+          choices: ["a", "b", "c", "d"],
+          correctIndex: 0,
+          explanationEn: "why",
+          sourcePage: 4,
+        },
+      ],
+    });
+    expect(parseGapQuestions(content, [4, 5])).toHaveLength(1);
+  });
+
+  // Audit rule: never trust the model's own page numbers as-is — a
+  // question claiming a page outside the requested gap must be dropped.
+  it("drops a generated question whose sourcePage isn't one of the requested gap pages", () => {
+    const content = JSON.stringify({
+      mcqs: [
+        {
+          questionEn: "Q1",
+          choices: ["a", "b", "c", "d"],
+          correctIndex: 0,
+          explanationEn: "why",
+          sourcePage: 99,
+        },
+      ],
+    });
+    expect(parseGapQuestions(content, [4, 5])).toEqual([]);
+  });
+});
+
+describe("parseVisualInsights", () => {
+  it("extracts the visualInsightsAr string from the response", () => {
+    const content = JSON.stringify({
+      visualInsightsAr: "الرسم في صفحة 5 يوضح دورة القلب.",
+    });
+    expect(parseVisualInsights(content)).toBe(
+      "الرسم في صفحة 5 يوضح دورة القلب."
+    );
+  });
+
+  it("passes through an empty string when the visuals add nothing new", () => {
+    const content = JSON.stringify({ visualInsightsAr: "" });
+    expect(parseVisualInsights(content)).toBe("");
+  });
+});
+
+describe("buildVisualInsightsMessages", () => {
+  it("includes every given visual's page number, type, and description", () => {
+    const messages = buildVisualInsightsMessages("Some explanation", [
+      { pageNumber: 5, assetType: "diagram", descriptionAr: "دورة القلب" },
+      { pageNumber: 7, assetType: "table", descriptionAr: null },
+    ]);
+    const userContent = messages[1].content as string;
+    expect(userContent).toContain("Page 5");
+    expect(userContent).toContain("دورة القلب");
+    expect(userContent).toContain("Page 7");
+    expect(userContent).toContain("table");
   });
 });

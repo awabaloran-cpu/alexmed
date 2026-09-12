@@ -338,6 +338,407 @@ export type MergedChapterAnalysis = {
   summaries: string[];
 };
 
+// Audit Phase 6 — real hierarchical mind map generation. Deliberately reads
+// ONLY this chapter's own already-generated explanation/keyPoints/terms
+// (never the raw PDF text again) — it is purely reorganizing content this
+// chapter already produced into Sections -> Key concepts, so it can never
+// introduce a fact the chapter's own analysis didn't already contain. The
+// real page numbers come from the chapter's own flashcards/MCQs' sourcePage
+// values (validPages), and the model's own sourcePages are then intersected
+// back against that known-real set (parseMindMapSections) so a section can
+// never claim a page this chapter never actually covered.
+export const mindMapSectionsSchema = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    sections: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          title: { type: "string" },
+          explanationAr: {
+            type: "string",
+            description:
+              "A short (1-2 sentence) Arabic explanation of this section.",
+          },
+          sourcePages: {
+            type: "array",
+            items: { type: "integer" },
+            description:
+              "Real page numbers (from the ones given below) this section covers.",
+          },
+          concepts: {
+            type: "array",
+            items: {
+              type: "object",
+              additionalProperties: false,
+              properties: {
+                termAr: { type: "string" },
+                termEn: { type: "string" },
+                explanationAr: { type: "string" },
+              },
+              required: ["termAr", "termEn", "explanationAr"],
+            },
+          },
+        },
+        required: ["title", "explanationAr", "sourcePages", "concepts"],
+      },
+    },
+  },
+  required: ["sections"],
+};
+
+export const mindMapSectionsResponseSchema = {
+  type: "json_schema" as const,
+  json_schema: {
+    name: "chapter_mind_map_sections",
+    strict: true,
+    schema: mindMapSectionsSchema,
+  },
+};
+
+export type ChapterMindMapSection = {
+  title: string;
+  explanationAr: string;
+  sourcePages: number[];
+  concepts: { termAr: string; termEn: string; explanationAr: string }[];
+};
+
+export function buildMindMapSectionsMessages(
+  chapterTitle: string,
+  explanationAr: string,
+  keyPoints: string[],
+  terms: { ar: string; en: string }[],
+  validPages: number[]
+): Message[] {
+  return [
+    {
+      role: "system",
+      content: [
+        `You organize an already-written Arabic chapter explanation into a hierarchical mind map: a few real Sections, each with its own key concepts.`,
+        `Use ONLY the content given below — do not add any fact, term, or page number that isn't already present in it.`,
+        `Every section's sourcePages must be a subset of this chapter's real pages: ${validPages.join(", ")}.`,
+        "Return JSON only.",
+      ].join("\n"),
+    },
+    {
+      role: "user",
+      content: [
+        `Chapter: "${chapterTitle}"`,
+        `Explanation:\n${explanationAr}`,
+        `Key points:\n${keyPoints.map(point => `- ${point}`).join("\n")}`,
+        `Terms:\n${terms.map(term => `- ${term.ar} / ${term.en}`).join("\n")}`,
+      ].join("\n\n"),
+    },
+  ];
+}
+
+export function parseMindMapSections(
+  content: unknown,
+  validPages: number[]
+): ChapterMindMapSection[] {
+  const parsed = parseJsonResponse(content) as unknown as {
+    sections: ChapterMindMapSection[];
+  };
+  const validPageSet = new Set(validPages);
+  return parsed.sections.map(section => ({
+    ...section,
+    // Defensive intersection (see comment above) — never trust the model's
+    // own page numbers as-is, only what this chapter can actually prove.
+    sourcePages: section.sourcePages.filter(page => validPageSet.has(page)),
+  }));
+}
+
+// Audit Phase 5 — Question Validation Agent, part 1: deterministic duplicate
+// detection (no LLM needed — two questions asking literally the same thing
+// don't need a model to notice). Pure and DB-free, same rationale as
+// computeCoverageDetail/computeBookRollupStatus.
+function normalizeForDuplicateCheck(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[^a-z0-9؀-ۿ]+/g, " ")
+    .trim();
+}
+
+export function findDuplicateMcqIds(
+  mcqs: { id: string; questionEn: string }[]
+): string[] {
+  const seen = new Map<string, string>();
+  const duplicateIds: string[] = [];
+  for (const mcq of mcqs) {
+    const key = normalizeForDuplicateCheck(mcq.questionEn);
+    if (!key) continue;
+    if (seen.has(key)) {
+      duplicateIds.push(mcq.id);
+    } else {
+      seen.set(key, mcq.id);
+    }
+  }
+  return duplicateIds;
+}
+
+// Audit Phase 5, part 2 — an LLM pass auditing the REMAINING (non-duplicate)
+// MCQs for answer correctness and source grounding against this chapter's
+// own explanation text. Never asked to invent new questions here — only to
+// judge ones that already exist, so it can't introduce new ungrounded
+// content itself.
+export const mcqValidationSchema = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    results: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          id: { type: "string" },
+          valid: {
+            type: "boolean",
+            description:
+              "true only if correctIndex is genuinely correct AND the question is answerable from the given chapter explanation.",
+          },
+          note: {
+            type: "string",
+            description:
+              "Empty string if valid. Otherwise, briefly say why (wrong answer, not grounded in the given text, etc.).",
+          },
+        },
+        required: ["id", "valid", "note"],
+      },
+    },
+  },
+  required: ["results"],
+};
+
+export const mcqValidationResponseSchema = {
+  type: "json_schema" as const,
+  json_schema: {
+    name: "mcq_validation",
+    strict: true,
+    schema: mcqValidationSchema,
+  },
+};
+
+export type McqValidationResult = { id: string; valid: boolean; note: string };
+
+export function buildMcqValidationMessages(
+  explanationEn: string,
+  mcqs: {
+    id: string;
+    questionEn: string;
+    choices: string[];
+    correctIndex: number;
+    explanationEn: string;
+  }[]
+): Message[] {
+  return [
+    {
+      role: "system",
+      content: [
+        "You are a strict exam-question auditor. For each multiple-choice question given, judge ONLY from the chapter text provided below:",
+        "1) Is the marked correct answer actually correct?",
+        "2) Is the question answerable from this text (not testing something absent from it)?",
+        "Mark valid=false for any question that fails either check. Return JSON only, one result per question id given, in the same order.",
+      ].join("\n"),
+    },
+    {
+      role: "user",
+      content: [
+        `Chapter text:\n${explanationEn}`,
+        `Questions:\n${mcqs
+          .map(
+            mcq =>
+              `id=${mcq.id}: ${mcq.questionEn}\nChoices: ${mcq.choices.join(" | ")}\nMarked correct: ${mcq.choices[mcq.correctIndex]}\nExplanation given: ${mcq.explanationEn}`
+          )
+          .join("\n\n")}`,
+      ].join("\n\n"),
+    },
+  ];
+}
+
+export function parseMcqValidation(content: unknown): McqValidationResult[] {
+  const parsed = parseJsonResponse(content) as unknown as {
+    results: McqValidationResult[];
+  };
+  return parsed.results;
+}
+
+// Audit Phase 5, part 3 — coverage-based gap-filling: pages within a
+// chapter's own real range that no trustworthy (non-flagged) MCQ currently
+// covers. Pure and DB-free, same rationale as the other compute* helpers.
+export function findUncoveredPages(
+  startPage: number,
+  endPage: number,
+  coveredPages: number[]
+): number[] {
+  const covered = new Set(coveredPages);
+  const uncovered: number[] = [];
+  for (let page = startPage; page <= endPage; page++) {
+    if (!covered.has(page)) uncovered.push(page);
+  }
+  return uncovered;
+}
+
+// Generates MCQs for exactly the given gap pages, grounded in this
+// chapter's own already-extracted page text (the same text
+// buildChapterAnalysisMessages used originally) — never invented from
+// nothing, and never asked to touch any page outside the given gap.
+export const gapQuestionsSchema = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    mcqs: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          questionEn: { type: "string" },
+          choices: {
+            type: "array",
+            items: { type: "string" },
+            minItems: 4,
+            maxItems: 4,
+          },
+          correctIndex: {
+            type: "integer",
+            description: "0-based index into choices of the correct answer.",
+          },
+          explanationEn: { type: "string" },
+          sourcePage: { type: "integer" },
+        },
+        required: [
+          "questionEn",
+          "choices",
+          "correctIndex",
+          "explanationEn",
+          "sourcePage",
+        ],
+      },
+    },
+  },
+  required: ["mcqs"],
+};
+
+export const gapQuestionsResponseSchema = {
+  type: "json_schema" as const,
+  json_schema: {
+    name: "gap_fill_mcqs",
+    strict: true,
+    schema: gapQuestionsSchema,
+  },
+};
+
+export type GapMcq = {
+  questionEn: string;
+  choices: string[];
+  correctIndex: number;
+  explanationEn: string;
+  sourcePage: number;
+};
+
+export function buildGapQuestionsMessages(
+  chapterTitle: string,
+  gapPages: BookPageInput[]
+): Message[] {
+  const source = gapPages
+    .map(page => `\n===== PDF PAGE ${page.page} =====\n${page.text}`)
+    .join("\n");
+  return [
+    {
+      role: "system",
+      content: [
+        `You write 4-option multiple-choice questions for a chapter titled "${chapterTitle}".`,
+        "One question per page given below is enough — every question's sourcePage must be one of the exact page numbers given.",
+        "Do not invent facts not present in the given text.",
+        "Return JSON only.",
+      ].join("\n"),
+    },
+    { role: "user", content: `Pages needing questions:\n${source}` },
+  ];
+}
+
+export function parseGapQuestions(
+  content: unknown,
+  gapPages: number[]
+): GapMcq[] {
+  const parsed = parseJsonResponse(content) as unknown as { mcqs: GapMcq[] };
+  const gapPageSet = new Set(gapPages);
+  return parsed.mcqs.filter(mcq => gapPageSet.has(mcq.sourcePage));
+}
+
+// Audit Phase 7 — connects a chapter's already-written explanation to its
+// real, already-extracted visual assets (images/diagrams/tables). Runs
+// LATER than and independently of chapter analysis (visual analysis itself
+// finishes on its own schedule, per-page, often after chapter analysis) —
+// this never re-reads the raw PDF and never touches explanationAr/En
+// themselves; it only writes a separate, additive note connecting the two,
+// grounded strictly in the visual descriptions given below.
+export const visualInsightsSchema = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    visualInsightsAr: {
+      type: "string",
+      description:
+        "A short Arabic paragraph (2-4 sentences) explaining how the chapter's images/diagrams/tables relate to its explanation, citing real page numbers. Empty string if the visuals given add nothing beyond what the explanation already covers.",
+    },
+  },
+  required: ["visualInsightsAr"],
+};
+
+export const visualInsightsResponseSchema = {
+  type: "json_schema" as const,
+  json_schema: {
+    name: "chapter_visual_insights",
+    strict: true,
+    schema: visualInsightsSchema,
+  },
+};
+
+export function buildVisualInsightsMessages(
+  explanationAr: string,
+  visuals: {
+    pageNumber: number;
+    assetType: string;
+    descriptionAr: string | null;
+  }[]
+): Message[] {
+  return [
+    {
+      role: "system",
+      content: [
+        "You connect a chapter's Arabic explanation to its real images/diagrams/tables, described below.",
+        "Use ONLY the descriptions given — never guess what a figure shows beyond its given description.",
+        "Cite real page numbers from the list given. If the visuals genuinely add nothing new beyond the explanation, return an empty string.",
+        "Return JSON only.",
+      ].join("\n"),
+    },
+    {
+      role: "user",
+      content: [
+        `Chapter explanation:\n${explanationAr}`,
+        `Visuals:\n${visuals
+          .map(
+            v =>
+              `Page ${v.pageNumber} (${v.assetType}): ${v.descriptionAr || "(no description)"}`
+          )
+          .join("\n")}`,
+      ].join("\n\n"),
+    },
+  ];
+}
+
+export function parseVisualInsights(content: unknown): string {
+  const parsed = parseJsonResponse(content) as unknown as {
+    visualInsightsAr: string;
+  };
+  return parsed.visualInsightsAr;
+}
+
 export function mergeSubChunkResults(
   results: BookChapterAnalysis[]
 ): MergedChapterAnalysis {

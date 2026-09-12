@@ -1,17 +1,20 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import {
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
   CircleAlert,
+  Layers3,
   Loader2,
   Mic,
+  RotateCcw,
   Search,
   Send,
+  Sparkles,
   Trash2,
   Volume2,
   VolumeX,
@@ -66,10 +69,32 @@ type PendingSelection = { selectedText: string; start: number; end: number };
 
 export default function ChapterDetailPage() {
   const params = useParams<{ bookId: string; chapterId: string }>();
+  const searchParams = useSearchParams();
   const utils = trpc.useUtils();
   const bookQuery = trpc.books.get.useQuery({ id: params.bookId });
   const chapterQuery = trpc.books.getChapter.useQuery({ id: params.chapterId });
-  const [assistantTab, setAssistantTab] = useState<AssistantTab>("explanation");
+  // Audit Phase 5 — Question Validation Agent, triggered lazily from here
+  // (same lazy/idempotent pattern as generateMindMapSections): re-fetches
+  // the chapter afterward so mcqs[].validationStatus/validationNote reflect
+  // the fresh verdicts.
+  const validateMcqs = trpc.books.validateChapterMcqs.useMutation({
+    onSuccess: () =>
+      utils.books.getChapter.invalidate({ id: params.chapterId }),
+  });
+  // Audit Phase 7 — connects the explanation to this chapter's real
+  // visuals, lazily (same pattern as the two mutations above).
+  const generateVisualInsights = trpc.books.generateVisualInsights.useMutation({
+    onSuccess: () =>
+      utils.books.getChapter.invalidate({ id: params.chapterId }),
+  });
+  // Preselected when arriving from the book page's study-tools chooser
+  // (app/books/[bookId]/page.tsx links here with ?tool=cards|mcqs|explanation).
+  const [assistantTab, setAssistantTab] = useState<AssistantTab>(() => {
+    const tool = searchParams.get("tool");
+    return tool === "cards" || tool === "mcqs" || tool === "explanation"
+      ? tool
+      : "explanation";
+  });
   const [pageIndex, setPageIndex] = useState(0);
   const [pendingSelection, setPendingSelection] =
     useState<PendingSelection | null>(null);
@@ -104,6 +129,18 @@ export default function ChapterDetailPage() {
   });
   const createCard = trpc.annotations.createCard.useMutation();
   const submitMcqAttempt = trpc.books.submitMcqAttempt.useMutation();
+
+  // ── بطاقات (PR14) — a real flip session over this chapter's existing
+  // bookCards, rating through the existing FSRS scheduler (rateBookCard).
+  // Snapshotting the queue at "ابدأ المراجعة" time keeps the session stable
+  // even if the underlying query refetches mid-session.
+  const [studyQueue, setStudyQueue] = useState<typeof cards>([]);
+  const [studyIndex, setStudyIndex] = useState(0);
+  const [studyShowAnswer, setStudyShowAnswer] = useState(false);
+  const rateCard = trpc.books.rateCard.useMutation({
+    onSuccess: () =>
+      utils.books.getChapter.invalidate({ id: params.chapterId }),
+  });
 
   const subjectId = bookQuery.data?.book.subjectId ?? null;
   const searchQueryResult = trpc.annotations.searchInSubject.useQuery(
@@ -454,10 +491,64 @@ export default function ChapterDetailPage() {
                   {chapter.explanationEn}
                 </p>
               </div>
-              {!!chapter.keyPoints?.length && (
+              {/* Audit Phase 7 — connects the explanation above to this
+                  chapter's real images/diagrams/tables (never blocks or
+                  reorders chapter/visual analysis themselves; purely an
+                  additive, on-demand enrichment — see
+                  generateVisualInsights). Only offered when the chapter
+                  actually has visuals to connect. */}
+              {pages.some(page => page.visuals.length > 0) && (
                 <div>
-                  <span className="micro-label">أهم النقاط</span>
-                  <ul>
+                  <span className="micro-label">ربط الشرح بالصور</span>
+                  {chapter.visualInsightsAr === null ? (
+                    <button
+                      type="button"
+                      className="secondary-button"
+                      disabled={generateVisualInsights.isPending}
+                      onClick={() =>
+                        generateVisualInsights.mutate({ chapterId: chapter.id })
+                      }
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 6,
+                        width: "fit-content",
+                        marginTop: 6,
+                      }}
+                    >
+                      {generateVisualInsights.isPending ? (
+                        <Loader2 size={14} className="spin" />
+                      ) : (
+                        <Sparkles size={14} />
+                      )}
+                      <span>اربط الشرح بصور هذا الفصل</span>
+                    </button>
+                  ) : chapter.visualInsightsAr ? (
+                    <p style={{ whiteSpace: "pre-line" }}>
+                      {chapter.visualInsightsAr}
+                    </p>
+                  ) : (
+                    <p style={{ fontSize: 12, color: "#9a9186" }}>
+                      لا تضيف صور هذا الفصل معلومة جديدة على الشرح.
+                    </p>
+                  )}
+                </div>
+              )}
+              {/* PR18 — "⚡ High-Yield للامتحان": the exact same real
+                  chapter.keyPoints already generated by the analysis
+                  pipeline, just labeled and emphasized for exam prep —
+                  no regeneration, no new AI call. */}
+              {!!chapter.keyPoints?.length && (
+                <div
+                  style={{
+                    padding: "12px 14px",
+                    borderRadius: 10,
+                    background: "#fff8e6",
+                    border: "1px solid #f0dba0",
+                  }}
+                >
+                  <span className="micro-label">⚡ High-Yield للامتحان</span>
+                  <ul style={{ margin: "8px 0 0" }}>
                     {chapter.keyPoints.map((point, i) => (
                       <li key={i}>{point}</li>
                     ))}
@@ -481,8 +572,21 @@ export default function ChapterDetailPage() {
             </div>
           )}
 
-          {assistantTab === "cards" && (
+          {assistantTab === "cards" && !studyQueue.length && (
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {!!cards.length && (
+                <button
+                  type="button"
+                  className="primary-button"
+                  onClick={() => {
+                    setStudyQueue(cards);
+                    setStudyIndex(0);
+                    setStudyShowAnswer(false);
+                  }}
+                >
+                  <Layers3 size={16} /> ابدأ المراجعة ({cards.length})
+                </button>
+              )}
               {(currentPage ? pageCardsAndMcqs.cards : cards).map(card => (
                 <div className="panel-card" key={card.id}>
                   <strong>{card.questionAr}</strong>
@@ -497,22 +601,179 @@ export default function ChapterDetailPage() {
             </div>
           )}
 
+          {assistantTab === "cards" &&
+            !!studyQueue.length &&
+            (studyIndex >= studyQueue.length ? (
+              <div className="panel-card" style={{ textAlign: "center" }}>
+                <span className="micro-label">انتهت المراجعة</span>
+                <p style={{ margin: "10px 0 18px" }}>
+                  راجعت {studyQueue.length} بطاقة من هذا الفصل. 🎉
+                </p>
+                <div
+                  style={{ display: "flex", gap: 8, justifyContent: "center" }}
+                >
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    onClick={() => {
+                      setStudyIndex(0);
+                      setStudyShowAnswer(false);
+                    }}
+                  >
+                    <RotateCcw size={14} /> إعادة المراجعة
+                  </button>
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    onClick={() => setStudyQueue([])}
+                  >
+                    رجوع لقائمة البطاقات
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="panel-card">
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    marginBottom: 14,
+                  }}
+                >
+                  <span className="micro-label">
+                    بطاقة {studyIndex + 1} / {studyQueue.length}
+                  </span>
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    onClick={() => setStudyQueue([])}
+                  >
+                    إنهاء
+                  </button>
+                </div>
+
+                <div>
+                  <span className="micro-label">السؤال</span>
+                  <p style={{ fontSize: 15, fontWeight: 600 }}>
+                    {studyQueue[studyIndex].questionAr}
+                  </p>
+                </div>
+
+                {!studyShowAnswer ? (
+                  <button
+                    type="button"
+                    className="primary-button"
+                    style={{ marginTop: 14 }}
+                    onClick={() => setStudyShowAnswer(true)}
+                  >
+                    إظهار الإجابة
+                  </button>
+                ) : (
+                  <>
+                    <div style={{ marginTop: 14 }}>
+                      <span className="micro-label">الإجابة</span>
+                      <p>{studyQueue[studyIndex].answerAr}</p>
+                    </div>
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "repeat(4, 1fr)",
+                        gap: 6,
+                        marginTop: 16,
+                      }}
+                    >
+                      {(
+                        [
+                          { rating: "again", label: "لم أتذكر" },
+                          { rating: "hard", label: "صعبة" },
+                          { rating: "good", label: "جيدة" },
+                          { rating: "easy", label: "سهلة" },
+                        ] as const
+                      ).map(option => (
+                        <button
+                          key={option.rating}
+                          type="button"
+                          className="secondary-button"
+                          disabled={rateCard.isPending}
+                          onClick={() => {
+                            rateCard.mutate({
+                              cardId: studyQueue[studyIndex].id,
+                              rating: option.rating,
+                            });
+                            setStudyIndex(i => i + 1);
+                            setStudyShowAnswer(false);
+                          }}
+                        >
+                          {option.label}
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
+            ))}
+
           {assistantTab === "mcqs" && (
             <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-              {(currentPage ? pageCardsAndMcqs.mcqs : mcqs).map(mcq => (
-                <McqCard
-                  key={mcq.id}
-                  mcq={{
-                    id: mcq.id,
-                    questionEn: mcq.questionEn,
-                    choices: mcq.choices as string[],
-                    correctIndex: mcq.correctIndex,
-                    explanationEn: mcq.explanationEn,
-                  }}
-                  onSubmit={(mcqId, selectedIndex) =>
-                    submitMcqAttempt.mutateAsync({ mcqId, selectedIndex })
+              {!!mcqs.length && (
+                <button
+                  type="button"
+                  className="secondary-button"
+                  disabled={validateMcqs.isPending}
+                  onClick={() =>
+                    chapter && validateMcqs.mutate({ chapterId: chapter.id })
                   }
-                />
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 6,
+                    width: "fit-content",
+                  }}
+                >
+                  {validateMcqs.isPending ? (
+                    <Loader2 size={14} className="spin" />
+                  ) : (
+                    <CheckCircle2 size={14} />
+                  )}
+                  <span>التحقق من صحة الأسئلة</span>
+                </button>
+              )}
+              {validateMcqs.data && (
+                <p style={{ fontSize: 11, color: "#5a5147" }}>
+                  صحيحة: {validateMcqs.data.valid} · تحتاج مراجعة:{" "}
+                  {validateMcqs.data.flagged}
+                  {validateMcqs.data.generated > 0 &&
+                    ` · تم توليد ${validateMcqs.data.generated} سؤال جديد لتغطية صفحات ناقصة`}
+                </p>
+              )}
+              {(currentPage ? pageCardsAndMcqs.mcqs : mcqs).map(mcq => (
+                <div key={mcq.id}>
+                  {mcq.validationStatus === "flagged" && (
+                    <div
+                      className="inline-alert warning"
+                      style={{ marginBottom: 6 }}
+                    >
+                      <CircleAlert size={14} />
+                      <span>
+                        هذا السؤال يحتاج مراجعة
+                        {mcq.validationNote ? `: ${mcq.validationNote}` : ""}
+                      </span>
+                    </div>
+                  )}
+                  <McqCard
+                    mcq={{
+                      id: mcq.id,
+                      questionEn: mcq.questionEn,
+                      choices: mcq.choices as string[],
+                      correctIndex: mcq.correctIndex,
+                      explanationEn: mcq.explanationEn,
+                    }}
+                    onSubmit={(mcqId, selectedIndex) =>
+                      submitMcqAttempt.mutateAsync({ mcqId, selectedIndex })
+                    }
+                  />
+                </div>
               ))}
               {!(currentPage ? pageCardsAndMcqs.mcqs : mcqs).length && (
                 <p>لا توجد أسئلة لهذه الصفحة.</p>

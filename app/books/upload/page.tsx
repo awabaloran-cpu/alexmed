@@ -1,9 +1,11 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
+  BookOpen,
   CircleAlert,
+  ClipboardList,
   FileText,
   Loader2,
   Upload as UploadIcon,
@@ -12,6 +14,7 @@ import {
 import { trpc } from "@/lib/trpc-client";
 
 type Stage = "idle" | "uploading" | "planning";
+type FileKind = "study_book" | "question_file";
 
 const PROFILE_LABELS: Record<string, string> = {
   general: "عام",
@@ -37,13 +40,19 @@ function formatBytes(bytes: number) {
 // QStash-signature-verified worker no longer callable from the browser.
 export default function BookUploadPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const inputRef = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState<File | null>(null);
+  const [fileKind, setFileKind] = useState<FileKind | null>(null);
   const [stage, setStage] = useState<Stage>("idle");
   const [error, setError] = useState("");
   const [dragActive, setDragActive] = useState(false);
   const [profile, setProfile] = useState("general");
-  const [subjectId, setSubjectId] = useState("");
+  // Pre-selected when arriving from a folder's "＋ إضافة ملف" button
+  // (app/subjects/[subjectId]/page.tsx links to /books/upload?subjectId=...).
+  const [subjectId, setSubjectId] = useState(
+    () => searchParams.get("subjectId") ?? ""
+  );
   const subjectsQuery = trpc.subjects.list.useQuery();
 
   function chooseFile(nextFile: File | undefined) {
@@ -57,10 +66,11 @@ export default function BookUploadPage() {
       return;
     }
     setFile(nextFile);
+    setFileKind(null);
   }
 
   async function startProcessing() {
-    if (!file) return;
+    if (!file || !fileKind) return;
     setError("");
     setStage("uploading");
 
@@ -89,6 +99,26 @@ export default function BookUploadPage() {
         );
 
       setStage("planning");
+
+      if (fileKind === "question_file") {
+        const planResponse = await fetch(
+          "/api/books/extract-questions-and-plan",
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              key: uploadUrlData.key,
+              fileName: file.name,
+            }),
+          }
+        );
+        const planData = await planResponse.json();
+        if (!planResponse.ok)
+          throw new Error(planData.error || "تعذر تجهيز ملف الأسئلة.");
+        router.push(`/books/question-files/${planData.bookId}`);
+        return;
+      }
+
       const planResponse = await fetch("/api/books/extract-and-plan", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -195,6 +225,7 @@ export default function BookUploadPage() {
                 onClick={event => {
                   event.stopPropagation();
                   setFile(null);
+                  setFileKind(null);
                 }}
               >
                 <X size={16} />
@@ -202,7 +233,47 @@ export default function BookUploadPage() {
             </div>
           )}
 
-          {stage === "idle" && (
+          {/* PR16 — file-type classification, required before any of the
+              real processing endpoints are called: a question file skips
+              the subject/profile pipeline entirely and goes to the separate
+              extraction pipeline instead. */}
+          {file && stage === "idle" && !fileKind && (
+            <div style={{ marginTop: 14 }}>
+              <span style={{ display: "block", fontSize: 12, marginBottom: 8 }}>
+                ما نوع هذا الملف؟
+              </span>
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                <button
+                  type="button"
+                  className="secondary-button"
+                  style={{
+                    flex: "1 1 160px",
+                    flexDirection: "column",
+                    minHeight: 64,
+                  }}
+                  onClick={() => setFileKind("study_book")}
+                >
+                  <BookOpen size={20} />
+                  <span>كتاب دراسي</span>
+                </button>
+                <button
+                  type="button"
+                  className="secondary-button"
+                  style={{
+                    flex: "1 1 160px",
+                    flexDirection: "column",
+                    minHeight: 64,
+                  }}
+                  onClick={() => setFileKind("question_file")}
+                >
+                  <ClipboardList size={20} />
+                  <span>ملف أسئلة</span>
+                </button>
+              </div>
+            </div>
+          )}
+
+          {file && stage === "idle" && fileKind === "study_book" && (
             <div
               style={{
                 display: "flex",
@@ -251,6 +322,14 @@ export default function BookUploadPage() {
             </div>
           )}
 
+          {file && stage === "idle" && fileKind === "question_file" && (
+            <div className="inline-alert" style={{ marginTop: 14 }}>
+              <ClipboardList size={16} />
+              سيتم استخراج الأسئلة الموجودة فعليًا في الملف — لن يتم توليد أسئلة
+              جديدة بالذكاء الاصطناعي.
+            </div>
+          )}
+
           {error && (
             <div className="inline-alert error">
               <CircleAlert size={16} />
@@ -275,7 +354,7 @@ export default function BookUploadPage() {
             </div>
           )}
 
-          {stage === "idle" && (
+          {stage === "idle" && fileKind && (
             <button
               type="button"
               className="primary-button"
@@ -283,7 +362,9 @@ export default function BookUploadPage() {
               disabled={!file}
               onClick={startProcessing}
             >
-              حوّل إلى فصول
+              {fileKind === "question_file"
+                ? "استخراج الأسئلة"
+                : "حوّل إلى فصول"}
             </button>
           )}
 

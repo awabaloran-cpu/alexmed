@@ -1,8 +1,9 @@
-import AppSidebar from "@/components/AppSidebar";
+import BottomNav from "@/components/BottomNav";
 import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
 
 // Same shell as app/books/layout.tsx and app/subjects/layout.tsx.
+// AppSidebar replaced with BottomNav (PR9) — navigation shape only.
 export default async function TodayLayout({
   children,
 }: {
@@ -15,8 +16,8 @@ export default async function TodayLayout({
 
   return (
     <div className="app-shell">
-      <AppSidebar />
       <main className="main-content">{children}</main>
+      <BottomNav />
     </div>
   );
 }

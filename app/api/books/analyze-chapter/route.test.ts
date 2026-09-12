@@ -5,12 +5,16 @@ vi.mock("@/lib/queue/concurrency", () => ({
   isUserConcurrencyExceeded: vi.fn().mockResolvedValue(false),
 }));
 vi.mock("@/lib/queue/claim", () => ({ claimBookChapter: vi.fn() }));
+vi.mock("@/lib/queue/client", () => ({
+  publishMessage: vi.fn().mockResolvedValue(undefined),
+}));
 vi.mock("@/lib/db-books", () => ({
   getChapterById: vi.fn(),
   completeChapterAnalysis: vi.fn(),
   finalizeBookIfDone: vi.fn(),
   markBookChapterFailedTerminal: vi.fn(),
   markBookChapterRetrying: vi.fn(),
+  saveChapterSubChunkProgress: vi.fn(),
 }));
 vi.mock("@/lib/llm", async importOriginal => {
   const actual = await importOriginal<typeof import("@/lib/llm")>();
@@ -19,7 +23,12 @@ vi.mock("@/lib/llm", async importOriginal => {
 
 import { verifyQStashRequest } from "@/lib/queue/verify";
 import { claimBookChapter } from "@/lib/queue/claim";
-import { completeChapterAnalysis, getChapterById } from "@/lib/db-books";
+import { publishMessage } from "@/lib/queue/client";
+import {
+  completeChapterAnalysis,
+  getChapterById,
+  saveChapterSubChunkProgress,
+} from "@/lib/db-books";
 import { invokeLLM } from "@/lib/llm";
 import { POST } from "./route";
 
@@ -30,6 +39,10 @@ const mockComplete = completeChapterAnalysis as unknown as ReturnType<
   typeof vi.fn
 >;
 const mockInvoke = invokeLLM as unknown as ReturnType<typeof vi.fn>;
+const mockSaveProgress = saveChapterSubChunkProgress as unknown as ReturnType<
+  typeof vi.fn
+>;
+const mockPublish = publishMessage as unknown as ReturnType<typeof vi.fn>;
 
 function request(body: unknown) {
   return new Request("https://app.example.com/api/books/analyze-chapter", {
@@ -61,6 +74,8 @@ describe("POST /api/books/analyze-chapter", () => {
     mockClaim.mockReset();
     mockComplete.mockReset();
     mockInvoke.mockReset();
+    mockSaveProgress.mockReset();
+    mockPublish.mockReset().mockResolvedValue(undefined);
   });
 
   it("rejects a request with an invalid QStash signature", async () => {
@@ -140,5 +155,107 @@ describe("POST /api/books/analyze-chapter", () => {
     expect(result.cards[0].sourcePage).toBe(1);
     expect(result.mcqs).toHaveLength(1);
     expect(result.mcqs[0].sourcePage).toBe(1);
+  });
+
+  // P0 audit fix: a chapter split into multiple sub-chunks (>8 pages) must
+  // resume from chapter.subChunkResults instead of re-invoking the LLM for
+  // sub-chunks that already completed on a prior (timed-out/retried) run.
+  it("resumes from a previously-saved sub-chunk instead of redoing it", async () => {
+    mockVerify.mockResolvedValue(true);
+    // 9 pages -> chunkChapterPages (default 8 pages/chunk) splits this into
+    // exactly two sub-chunks: pages 1-8, then page 9.
+    const pageTexts = Array.from({ length: 9 }, (_, i) => ({
+      page: i + 1,
+      text: `page ${i + 1} content`,
+    }));
+    const alreadySavedSubChunk = {
+      explanationAr: "شرح محفوظ مسبقاً",
+      explanationEn: "already saved",
+      keyPoints: ["old point"],
+      medicalTerms: [],
+      flashcards: [
+        {
+          questionAr: "س",
+          questionEn: "old Q",
+          answerAr: "ج",
+          answerEn: "old A",
+          relatedTermEn: "",
+          sourcePage: 1,
+        },
+      ],
+      mcqs: [],
+      chapterSummary: "old summary",
+    };
+    mockGetChapter.mockResolvedValue({
+      id: "c1",
+      bookId: "b1",
+      userId: "u1",
+      title: "Chapter 1",
+      startPage: 1,
+      endPage: 9,
+      pageTexts,
+      subChunkResults: [alreadySavedSubChunk],
+    });
+    mockClaim.mockResolvedValue({ id: "c1", bookId: "b1", attemptCount: 0 });
+    // First call = the remaining sub-chunk's own analysis. Second call =
+    // merging its summary with the already-saved sub-chunk's summary (there
+    // are now 2 summaries total, which is what triggers the merge call).
+    mockInvoke
+      .mockResolvedValueOnce({
+        choices: [
+          {
+            message: {
+              content: chapterAnalysisContent({
+                flashcards: [
+                  {
+                    questionAr: "س2",
+                    questionEn: "new Q",
+                    answerAr: "ج2",
+                    answerEn: "new A",
+                    relatedTermEn: "",
+                    sourcePage: 9,
+                  },
+                ],
+              }),
+            },
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        choices: [
+          {
+            message: { content: JSON.stringify({ chapterSummary: "merged" }) },
+          },
+        ],
+      });
+
+    const response = await POST(request({ chapterId: "c1" }));
+    expect(response.status).toBe(200);
+
+    // Exactly TWO LLM calls: one for the remaining (second) sub-chunk, one
+    // for the summary merge. The already-saved first sub-chunk must NOT
+    // trigger its own LLM call — only 2, not 3.
+    expect(mockInvoke).toHaveBeenCalledTimes(2);
+
+    // Audit Phase 6 — the automatic mind-map-section trigger fires once the
+    // chapter is durably complete.
+    expect(mockPublish).toHaveBeenCalledWith({
+      type: "generate_chapter_mindmap_sections",
+      chapterId: "c1",
+    });
+
+    // Progress is persisted with BOTH results (old + newly generated).
+    expect(mockSaveProgress).toHaveBeenCalledTimes(1);
+    expect(mockSaveProgress).toHaveBeenCalledWith("c1", [
+      alreadySavedSubChunk,
+      expect.objectContaining({ chapterSummary: "summary" }),
+    ]);
+
+    // The final merged result includes cards from both sub-chunks.
+    expect(mockComplete).toHaveBeenCalledTimes(1);
+    const [, , result] = mockComplete.mock.calls[0];
+    expect(
+      result.cards.map((card: { sourcePage: number }) => card.sourcePage)
+    ).toEqual([1, 9]);
   });
 });

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { BookOpen, Loader2 } from "lucide-react";
+import { BookOpen, CircleAlert, Loader2, Plus } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 
 const TYPE_LABELS: Record<string, string> = {
@@ -15,9 +15,18 @@ const TYPE_LABELS: Record<string, string> = {
   custom: "مخصص",
 };
 
-// Minimal subject detail: which books are in it, with a way to move any
-// book to a different subject (or unassign it) — see app/subjects/page.tsx
-// for why this stays a plain list rather than the full StudyOS dashboard.
+function formatLastUpdate(value: string | Date | null | undefined) {
+  if (!value) return null;
+  return new Intl.DateTimeFormat("ar-EG", {
+    day: "numeric",
+    month: "short",
+  }).format(new Date(value));
+}
+
+// Folder page (PR11) — real PDF cards from the existing books table, scoped
+// to this subject/folder, plus the existing move-to-another-folder control
+// (setSubject). See app/subjects/page.tsx for why folders reuse subjects
+// rather than a new Folders system.
 export default function SubjectDetailPage() {
   const params = useParams<{ subjectId: string }>();
   const subjectId = params.subjectId;
@@ -33,11 +42,35 @@ export default function SubjectDetailPage() {
     },
   });
 
+  if (subjectQuery.isError || booksQuery.isError) {
+    return (
+      <section className="cards-view">
+        <div className="empty-state">
+          <CircleAlert size={28} />
+          <h3>تعذر تحميل هذا المجلد</h3>
+          <p>تحقق من اتصالك وحاول مرة أخرى.</p>
+          <button
+            type="button"
+            className="secondary-button"
+            style={{ marginTop: 14 }}
+            onClick={() => {
+              subjectQuery.refetch();
+              booksQuery.refetch();
+            }}
+          >
+            إعادة المحاولة
+          </button>
+        </div>
+      </section>
+    );
+  }
+
   if (subjectQuery.isLoading || booksQuery.isLoading) {
     return (
       <section className="cards-view">
         <div className="empty-state">
           <Loader2 size={28} className="spin" />
+          <h3>جاري تحميل المجلد...</h3>
         </div>
       </section>
     );
@@ -47,9 +80,13 @@ export default function SubjectDetailPage() {
     return (
       <section className="cards-view">
         <div className="empty-state">
-          <h3>تعذّر العثور على هذه المادة</h3>
-          <Link href="/subjects" className="secondary-button">
-            العودة لموادي
+          <h3>تعذّر العثور على هذا المجلد</h3>
+          <Link
+            href="/subjects"
+            className="secondary-button"
+            style={{ marginTop: 14 }}
+          >
+            العودة لملفاتي
           </Link>
         </div>
       </section>
@@ -73,61 +110,81 @@ export default function SubjectDetailPage() {
             className="eyebrow"
             style={{ marginBottom: 8 }}
           >
-            <span className="eyebrow-dot" /> ‹ موادي
+            <span className="eyebrow-dot" /> ‹ ملفاتي
           </Link>
           <h1>{subject.name}</h1>
           <p>
             {TYPE_LABELS[subject.type] ?? subject.type} ·{" "}
-            {booksInSubject.length} كتاب
+            {booksInSubject.length} ملف
           </p>
+        </div>
+        <div className="header-actions">
+          <Link
+            href={`/books/upload?subjectId=${subjectId}`}
+            className="secondary-button"
+          >
+            <Plus size={16} /> إضافة ملف
+          </Link>
         </div>
       </div>
 
       {!booksInSubject.length ? (
         <div className="empty-state">
-          <h3>لا توجد كتب في هذه المادة بعد</h3>
-          <Link href="/books/upload" className="secondary-button">
-            ارفع كتابًا
+          <BookOpen size={28} />
+          <h3>لا توجد ملفات في هذا المجلد بعد</h3>
+          <Link
+            href={`/books/upload?subjectId=${subjectId}`}
+            className="primary-button"
+            style={{ marginTop: 14, width: "auto", padding: "0 22px" }}
+          >
+            <Plus size={16} /> إضافة ملف
           </Link>
         </div>
       ) : (
         <div className="library-grid">
-          {booksInSubject.map(book => (
-            <div className="library-item" key={book.id}>
-              <div className="library-item-icon">
-                <BookOpen size={18} />
+          {booksInSubject.map(book => {
+            const lastUpdate = formatLastUpdate(book.updatedAt);
+            return (
+              <div className="library-item" key={book.id}>
+                <div className="library-item-icon">
+                  <BookOpen size={18} />
+                </div>
+                <Link
+                  href={`/books/${book.id}`}
+                  className="library-item-meta"
+                  style={{ display: "block" }}
+                >
+                  <strong>{book.fileName}</strong>
+                  <span>
+                    {book.pageCount} صفحة
+                    {lastUpdate ? ` · آخر استخدام ${lastUpdate}` : ""}
+                    {book.chapterCount
+                      ? ` · ${book.completeChapterCount}/${book.chapterCount} فصل مكتمل`
+                      : ""}
+                  </span>
+                </Link>
+                <select
+                  value={subjectId}
+                  disabled={setSubject.isPending}
+                  onChange={event => {
+                    const value = event.target.value;
+                    setSubject.mutate({
+                      bookId: book.id,
+                      subjectId: value === "__none__" ? null : value,
+                    });
+                  }}
+                >
+                  <option value={subjectId}>{subject.name}</option>
+                  <option value="__none__">بدون مادة</option>
+                  {otherSubjects.map(s => (
+                    <option key={s.id} value={s.id}>
+                      {s.name}
+                    </option>
+                  ))}
+                </select>
               </div>
-              <Link
-                href={`/books/${book.id}`}
-                className="library-item-meta"
-                style={{ display: "block" }}
-              >
-                <strong>{book.fileName}</strong>
-                <span>
-                  {book.completeChapterCount}/{book.chapterCount} فصل مكتمل
-                </span>
-              </Link>
-              <select
-                value={subjectId}
-                disabled={setSubject.isPending}
-                onChange={event => {
-                  const value = event.target.value;
-                  setSubject.mutate({
-                    bookId: book.id,
-                    subjectId: value === "__none__" ? null : value,
-                  });
-                }}
-              >
-                <option value={subjectId}>{subject.name}</option>
-                <option value="__none__">بدون مادة</option>
-                {otherSubjects.map(s => (
-                  <option key={s.id} value={s.id}>
-                    {s.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </section>

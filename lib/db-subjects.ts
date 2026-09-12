@@ -6,7 +6,7 @@
 // cross-cutting concept (will eventually group books, and later
 // decks/quizzes/errors/notes — see the StudyOS plan's later phases), not
 // كتبي-specific.
-import { and, count, desc, eq } from "drizzle-orm";
+import { and, count, desc, eq, max } from "drizzle-orm";
 import { books, subjects, type Subject } from "../drizzle/schema";
 import { getDb } from "./db";
 
@@ -61,6 +61,7 @@ export async function listSubjectsForUser(userId: string) {
       targetDate: subjects.targetDate,
       createdAt: subjects.createdAt,
       bookCount: count(books.id),
+      lastUpdatedAt: max(books.updatedAt),
     })
     .from(subjects)
     .leftJoin(books, eq(books.subjectId, subjects.id))

@@ -29,7 +29,7 @@ import {
   Volume2,
 } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
-import AppSidebar from "@/components/AppSidebar";
+import BottomNav from "@/components/BottomNav";
 
 type PageText = { page: number; text: string; hasText: boolean; ocr?: boolean };
 type Card = {
@@ -404,21 +404,12 @@ export default function Home() {
     setShowAnswer(false);
   }
 
+  const miratReviewCount = cards.filter(
+    card => card.status === "needs_review"
+  ).length;
+
   return (
     <div className="app-shell">
-      <AppSidebar
-        activeMiratView={view}
-        miratCardsCount={cards.length}
-        miratReviewCount={
-          cards.filter(card => card.status === "needs_review").length
-        }
-        onMiratNavigate={(nextView, options) => {
-          setView(nextView);
-          setOnlyReview(options?.onlyReview ?? false);
-          setActiveCard(0);
-        }}
-      />
-
       <main className="main-content">
         <header className="topbar">
           <div className="breadcrumb">
@@ -436,6 +427,69 @@ export default function Home() {
             <Sparkles size={15} /> bilingual learning workspace
           </div>
         </header>
+
+        {/* Replaces AppSidebar's onMiratNavigate buttons (PR9) — same three
+            destinations, same state setters, navigation shape only. */}
+        <nav className="cards-toolbar" aria-label="أقسام مِرآة">
+          <button
+            type="button"
+            className={
+              view === "upload" ? "filter-button active" : "filter-button"
+            }
+            onClick={() => {
+              setView("upload");
+              setOnlyReview(false);
+              setActiveCard(0);
+            }}
+          >
+            <Upload size={15} /> رفع ملف جديد
+          </button>
+          <button
+            type="button"
+            className={
+              view === "cards" && !onlyReview
+                ? "filter-button active"
+                : "filter-button"
+            }
+            disabled={!cards.length}
+            onClick={() => {
+              setView("cards");
+              setOnlyReview(false);
+              setActiveCard(0);
+            }}
+          >
+            <Layers3 size={15} /> بطاقاتي ({cards.length || "—"})
+          </button>
+          <button
+            type="button"
+            className={
+              view === "cards" && onlyReview
+                ? "filter-button active"
+                : "filter-button"
+            }
+            disabled={!cards.length}
+            onClick={() => {
+              setView("cards");
+              setOnlyReview(true);
+              setActiveCard(0);
+            }}
+          >
+            <CircleAlert size={15} /> تحتاج مراجعة ({miratReviewCount || "—"})
+          </button>
+          <button
+            type="button"
+            className={
+              view === "library" ? "filter-button active" : "filter-button"
+            }
+            onClick={() => {
+              setView("library");
+              setOnlyReview(false);
+              setActiveCard(0);
+            }}
+          >
+            <Library size={15} /> مكتبتي
+          </button>
+        </nav>
 
         {view === "upload" && (
           <section className="upload-view">
@@ -1031,6 +1085,7 @@ export default function Home() {
           </section>
         )}
       </main>
+      <BottomNav />
     </div>
   );
 }

@@ -2,8 +2,19 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { CheckCircle2, CircleAlert, Loader2, RotateCcw } from "lucide-react";
+import {
+  CheckCircle2,
+  Circle,
+  CircleAlert,
+  ClipboardList,
+  Layers3,
+  Loader2,
+  NotebookText,
+  RotateCcw,
+  Workflow,
+} from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
+import PdfViewer from "@/components/PdfViewer";
 
 // Background analysis now happens entirely server-side, driven by Upstash
 // QStash workers (see app/api/books/analyze-chapter/route.ts) — this page's
@@ -17,6 +28,47 @@ const TERMINAL_BOOK_STATUSES = new Set([
   "partial_failed",
   "failed",
 ]);
+
+// Audit Phase 14 — real, granular processing stages. Deliberately reflects
+// this app's ACTUAL pipeline (three genuinely-async stages that really run
+// server-side, plus a coverage-validation gate) rather than a generic
+// example sequence — mind map generation and question validation are NOT
+// listed here because they are on-demand actions (see the mind map/chapter
+// reader pages), not automatic pipeline steps; listing them here would
+// misrepresent them as running automatically, which is exactly the "fake
+// progress" the audit forbids.
+type StageStatus = "done" | "active" | "pending" | "failed";
+
+function StageRow({
+  label,
+  status,
+  detail,
+}: {
+  label: string;
+  status: StageStatus;
+  detail?: string;
+}) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 10,
+        padding: "7px 0",
+        opacity: status === "pending" ? 0.5 : 1,
+      }}
+    >
+      {status === "done" && <CheckCircle2 size={16} color="#528c6d" />}
+      {status === "active" && <Loader2 size={16} className="spin" />}
+      {status === "failed" && <CircleAlert size={16} color="#974d49" />}
+      {status === "pending" && <Circle size={16} />}
+      <span style={{ fontSize: 12 }}>
+        {label}
+        {detail && <span style={{ color: "#9a9186" }}> — {detail}</span>}
+      </span>
+    </div>
+  );
+}
 
 export default function BookDetailPage() {
   const params = useParams<{ bookId: string }>();
@@ -62,6 +114,19 @@ export default function BookDetailPage() {
       },
     }
   );
+  // Audit Phase 3/14 — the real page-numbered coverage engine (distinct from
+  // getCoverageReport's aggregate counts above): names exactly which pages
+  // are missing/failed instead of a bare count, and its own "status" is
+  // computed from real per-page processing state, never from an LLM claim.
+  const coverageDetailQuery = trpc.books.getCoverageDetail.useQuery(
+    { bookId },
+    {
+      refetchInterval: query =>
+        query.state.data && query.state.data.status !== "COMPLETE"
+          ? POLL_INTERVAL_MS
+          : false,
+    }
+  );
   const pagesQuery = trpc.books.listPages.useQuery({ bookId });
   const failedTextPages = (pagesQuery.data ?? []).filter(
     page => page.textStatus === "failed"
@@ -105,6 +170,20 @@ export default function BookDetailPage() {
     book.status !== "complete" &&
     book.status !== "partial_failed" &&
     book.status !== "failed";
+  // "Chapter phase done" = every chapter reached a terminal state
+  // (complete or failed) — same rollup rule finalizeBookIfDone itself uses
+  // server-side (see lib/db-books.ts's computeBookRollupStatus), so this
+  // never disagrees with what actually decided book.status.
+  const chaptersPhaseDone =
+    !isExtracting && chapters.length > 0 && !isAnalyzing;
+  const pipelineReady =
+    chaptersPhaseDone &&
+    !failedChapters.length &&
+    coverageDetailQuery.data?.status === "COMPLETE";
+  // First complete chapter — study tools open here; this is a real interim
+  // destination (per-chapter tabs already exist), not a placeholder. A
+  // book-wide session across all chapters is PR14/PR15's job.
+  const firstCompleteChapter = chapters.find(c => c.status === "complete");
 
   return (
     <section className="cards-view">
@@ -142,6 +221,60 @@ export default function BookDetailPage() {
         </label>
       </div>
 
+      {/* Real PDF.js viewer of the original file (PR13) — the extract/OCR
+          pipeline keeps running server-side unchanged; this is purely an
+          additive way to actually read the real PDF, not a replacement for
+          it. fileKey can be briefly null right after upload before the
+          extraction job records it — the panel just doesn't render then. */}
+      {book.fileKey && (
+        <PdfViewer
+          src={`/api/files/${book.fileKey}`}
+          fileName={book.fileName}
+        />
+      )}
+
+      {/* Study Tools (PR12) — reuses existing bookCards/bookMcqs/
+          bookChapters.explanationAr+keyPoints via the chapter reader's own
+          tabs (?tool= preselects one). No new AI generation here. */}
+      <div className="study-tools-panel">
+        <div className="panel-heading">
+          <h2>ماذا تريد أن تفعل بهذا الملف؟</h2>
+        </div>
+        {!firstCompleteChapter ? (
+          <p style={{ fontSize: 13, color: "#8a9493" }}>
+            الأدوات ستكون متاحة بعد اكتمال تحليل أول فصل.
+          </p>
+        ) : (
+          <div className="study-tools-grid">
+            <Link
+              href={`/books/${bookId}/chapters/${firstCompleteChapter.id}?tool=cards`}
+              className="study-tool-card"
+            >
+              <Layers3 size={22} />
+              <span>بطاقات</span>
+            </Link>
+            <Link
+              href={`/books/${bookId}/chapters/${firstCompleteChapter.id}?tool=mcqs`}
+              className="study-tool-card"
+            >
+              <ClipboardList size={22} />
+              <span>اختبارات</span>
+            </Link>
+            <Link
+              href={`/books/${bookId}/chapters/${firstCompleteChapter.id}?tool=explanation`}
+              className="study-tool-card"
+            >
+              <NotebookText size={22} />
+              <span>ملخص</span>
+            </Link>
+            <Link href={`/books/${bookId}/mindmap`} className="study-tool-card">
+              <Workflow size={22} />
+              <span>خريطة ذهنية</span>
+            </Link>
+          </div>
+        )}
+      </div>
+
       {coverageQuery.data && coverageQuery.data.totalPages > 0 && (
         <div className="stats-row" style={{ marginBottom: 18 }}>
           <div className="stat-card">
@@ -170,19 +303,98 @@ export default function BookDetailPage() {
         </div>
       )}
 
-      {isExtracting && (
-        <div className="inline-alert warning wide">
-          <Loader2 size={16} className="spin" />
-          نقرأ الكتاب ونجهّزه — تقدر تسكّر الصفحة وترجع بعدين من أي جهاز، مش
-          هنفقد أي تقدم.
+      {coverageDetailQuery.data && coverageDetailQuery.data.totalPages > 0 && (
+        <div
+          className={`inline-alert wide ${coverageDetailQuery.data.status === "COMPLETE" ? "success" : "warning"}`}
+        >
+          {coverageDetailQuery.data.status === "COMPLETE" ? (
+            <CheckCircle2 size={16} />
+          ) : (
+            <Loader2 size={16} className="spin" />
+          )}
+          <span>
+            تغطية المعالجة: {coverageDetailQuery.data.coverage}% (
+            {coverageDetailQuery.data.processedPages}/
+            {coverageDetailQuery.data.totalPages} صفحة)
+            {coverageDetailQuery.data.missingPages.length > 0 && (
+              <>
+                {" "}
+                — بعض الصفحات تحتاج معالجة:{" "}
+                {coverageDetailQuery.data.missingPages.join("، ")}
+              </>
+            )}
+            {coverageDetailQuery.data.failedPages.length > 0 && (
+              <>
+                {" "}
+                — صفحات فشلت: {coverageDetailQuery.data.failedPages.join("، ")}
+              </>
+            )}
+          </span>
         </div>
       )}
 
-      {isAnalyzing && (
-        <div className="inline-alert warning wide">
-          <Loader2 size={16} className="spin" />
-          جاري تحليل الفصول — تقدر تسكّر الصفحة وترجع بعدين من أي جهاز، مش هنفقد
-          أي تقدم.
+      {!pipelineReady && book.status !== "failed" && (
+        <div className="study-tools-panel">
+          <span className="micro-label">مراحل المعالجة</span>
+          <p style={{ fontSize: 11, color: "#9a9186", margin: "2px 0 6px" }}>
+            تقدر تسكّر الصفحة وترجع بعدين من أي جهاز، مش هنفقد أي تقدم.
+          </p>
+          {/* book.status === "failed" is excluded by the wrapping condition
+              above, so reaching this row always means extraction succeeded. */}
+          <StageRow
+            label="قراءة الصفحات"
+            status={isExtracting ? "active" : "done"}
+          />
+          <StageRow
+            label="تحليل الفصول (الشرح، البطاقات، الأسئلة)"
+            status={
+              isExtracting
+                ? "pending"
+                : chaptersPhaseDone
+                  ? failedChapters.length
+                    ? "failed"
+                    : "done"
+                  : "active"
+            }
+            detail={
+              chapters.length
+                ? `${completeCount}/${chapters.length} فصل`
+                : undefined
+            }
+          />
+          <StageRow
+            label="استخراج الصور والمخططات"
+            status={
+              isExtracting
+                ? "pending"
+                : !coverageQuery.data || coverageQuery.data.totalPages === 0
+                  ? "pending"
+                  : coverageQuery.data.visualPending > 0
+                    ? "active"
+                    : "done"
+            }
+            detail={
+              coverageQuery.data && coverageQuery.data.totalPages > 0
+                ? `${coverageQuery.data.totalPages - coverageQuery.data.visualPending}/${coverageQuery.data.totalPages} صفحة`
+                : undefined
+            }
+          />
+          <StageRow
+            label="التحقق من اكتمال التغطية"
+            status={
+              !chaptersPhaseDone
+                ? "pending"
+                : coverageDetailQuery.data?.status === "COMPLETE"
+                  ? "done"
+                  : "active"
+            }
+            detail={
+              coverageDetailQuery.data &&
+              coverageDetailQuery.data.totalPages > 0
+                ? `${coverageDetailQuery.data.coverage}%`
+                : undefined
+            }
+          />
         </div>
       )}
 

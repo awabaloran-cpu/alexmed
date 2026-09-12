@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
-import { BookOpen, Loader2, Plus } from "lucide-react";
+import { BookOpen, CircleAlert, Loader2, Plus } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 
 const TYPE_LABELS: Record<string, string> = {
@@ -15,12 +15,20 @@ const TYPE_LABELS: Record<string, string> = {
   custom: "مخصص",
 };
 
-// Minimal "موادي" surface for PR2 — create/list/rename subjects and see
-// how many books each holds. Deliberately NOT the full StudyOS dashboard
-// (progress bars, weak points, exam countdown) described in later phases —
-// this PR is the schema + backend foundation (books.profile, subjects
-// table), not a full workspace redesign (see the PR-splitting rule: don't
-// mix a migration with a full UI redesign in one PR).
+function formatLastUpdate(value: string | Date | null | undefined) {
+  if (!value) return null;
+  return new Intl.DateTimeFormat("ar-EG", {
+    day: "numeric",
+    month: "short",
+  }).format(new Date(value));
+}
+
+// "الرئيسية" — ملفاتي (PR10). Folders reuse the existing subjects concept
+// (lib/db-subjects.ts, subjectsRouter) rather than a new Folders system, per
+// the confirmed architecture decision. Bottom Nav's "🏠" points here as of
+// PR10 — مِرآة itself is untouched and still lives at "/" (linked from
+// app/account/page.tsx's quick links); only the bottom nav's home
+// destination changed, not مِرآة's own route or behavior.
 export default function SubjectsPage() {
   const utils = trpc.useUtils();
   const listQuery = trpc.subjects.list.useQuery();
@@ -35,36 +43,59 @@ export default function SubjectsPage() {
   const [showForm, setShowForm] = useState(false);
   const [name, setName] = useState("");
   const [type, setType] = useState("general");
+  const [query, setQuery] = useState("");
+
+  const subjects = listQuery.data ?? [];
+  const filtered = useMemo(() => {
+    const q = query.trim();
+    if (!q) return subjects;
+    return subjects.filter(subject => subject.name.includes(q));
+  }, [subjects, query]);
 
   return (
     <section className="cards-view">
       <div className="cards-header">
         <div>
           <div className="eyebrow">
-            <span className="eyebrow-dot" /> StudyOS
+            <span className="eyebrow-dot" /> الرئيسية
           </div>
-          <h1>موادي</h1>
-          <p>نظّم كتبك ومصادرك حسب المادة.</p>
+          <h1>ملفاتي</h1>
+          <p>مجلداتك الدراسية — كل مجلد يجمع ملفاتك حسب المادة.</p>
         </div>
-        <button
-          type="button"
-          className="primary-button"
-          onClick={() => setShowForm(value => !value)}
-        >
-          <Plus size={16} /> إضافة مادة
-        </button>
+        <div className="header-actions">
+          <button
+            type="button"
+            className="secondary-button"
+            onClick={() => setShowForm(value => !value)}
+          >
+            <Plus size={16} /> إنشاء مجلد
+          </button>
+        </div>
       </div>
+
+      {!!subjects.length && (
+        <div className="cards-toolbar">
+          <div className="search-box">
+            <span>⌕</span>
+            <input
+              value={query}
+              onChange={event => setQuery(event.target.value)}
+              placeholder="ابحث عن مجلد..."
+            />
+          </div>
+        </div>
+      )}
 
       {showForm && (
         <div className="panel-card" style={{ marginBottom: 18 }}>
           <div className="panel-heading">
-            <h2>مادة جديدة</h2>
+            <h2>مجلد جديد</h2>
           </div>
           <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
             <input
               value={name}
               onChange={event => setName(event.target.value)}
-              placeholder="اسم المادة (مثال: تشريح، رياضيات ١)"
+              placeholder="اسم المجلد (مثال: تشريح، رياضيات ١)"
               style={{ flex: "1 1 220px" }}
             />
             <select
@@ -97,42 +128,72 @@ export default function SubjectsPage() {
           </div>
           {createMutation.error && (
             <p style={{ color: "#c0392b", marginTop: 8 }}>
-              تعذّر إنشاء المادة. حاول مرة أخرى.
+              تعذّر إنشاء المجلد. حاول مرة أخرى.
             </p>
           )}
         </div>
       )}
 
-      {listQuery.isLoading ? (
+      {listQuery.isError ? (
+        <div className="empty-state">
+          <CircleAlert size={28} />
+          <h3>تعذر تحميل ملفاتك</h3>
+          <p>تحقق من اتصالك وحاول مرة أخرى.</p>
+          <button
+            type="button"
+            className="secondary-button"
+            style={{ marginTop: 14 }}
+            onClick={() => listQuery.refetch()}
+          >
+            إعادة المحاولة
+          </button>
+        </div>
+      ) : listQuery.isLoading ? (
         <div className="empty-state">
           <Loader2 size={28} className="spin" />
+          <h3>جاري تحميل ملفاتك...</h3>
         </div>
-      ) : !listQuery.data?.length ? (
+      ) : !subjects.length ? (
         <div className="empty-state">
-          <h3>لا توجد مواد بعد</h3>
-          <p>أنشئ مادتك الأولى لتبدأ بتنظيم كتبك.</p>
+          <BookOpen size={28} />
+          <h3>ابدأ برفع أول ملف دراسي</h3>
+          <Link
+            href="/books/upload"
+            className="primary-button"
+            style={{ marginTop: 14, width: "auto", padding: "0 22px" }}
+          >
+            <Plus size={16} /> رفع ملف
+          </Link>
+        </div>
+      ) : !filtered.length ? (
+        <div className="empty-state">
+          <h3>لا نتائج مطابقة</h3>
+          <p>جرّب اسمًا آخر للبحث.</p>
         </div>
       ) : (
         <div className="library-grid">
-          {listQuery.data.map(subject => (
-            <Link
-              key={subject.id}
-              href={`/subjects/${subject.id}`}
-              className="library-item"
-              style={{ display: "contents" }}
-            >
-              <div className="library-item-icon">
-                <BookOpen size={18} />
-              </div>
-              <div className="library-item-meta">
-                <strong>{subject.name}</strong>
-                <span>
-                  {TYPE_LABELS[subject.type] ?? subject.type} ·{" "}
-                  {subject.bookCount} كتاب
-                </span>
-              </div>
-            </Link>
-          ))}
+          {filtered.map(subject => {
+            const lastUpdate = formatLastUpdate(subject.lastUpdatedAt);
+            return (
+              <Link
+                key={subject.id}
+                href={`/subjects/${subject.id}`}
+                className="library-item"
+                style={{ display: "contents" }}
+              >
+                <div className="library-item-icon">
+                  <BookOpen size={18} />
+                </div>
+                <div className="library-item-meta">
+                  <strong>{subject.name}</strong>
+                  <span>
+                    {subject.bookCount} ملف
+                    {lastUpdate ? ` · آخر تحديث ${lastUpdate}` : ""}
+                  </span>
+                </div>
+              </Link>
+            );
+          })}
         </div>
       )}
     </section>

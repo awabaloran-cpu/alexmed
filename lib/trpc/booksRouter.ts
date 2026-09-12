@@ -2,12 +2,15 @@ import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import {
   deleteBook,
+  getBookCoverageDetail,
   getBookCoverageReport,
   getBookForUser,
+  getBookMindMapForUser,
   getBookPageOwnedByUser,
   getBookStatsForUser,
   getChapterContentForUser,
   getChapterForUser,
+  getChapterMcqsForValidation,
   getDueCardsForUser,
   getUpcomingReviewForecastForUser,
   getWeakPointsForUser,
@@ -19,9 +22,26 @@ import {
   resetBookExtractionForRetry,
   resetBookPageTextForRetry,
   resetBookPageVisualForRetry,
+  saveMcqValidationResults,
+  insertBookMcqs,
   submitMcqAttemptForUser,
 } from "../db-books";
 import { assignBookToSubject } from "../db-subjects";
+import {
+  generateAndSaveMindMapSections,
+  generateAndSaveVisualInsights,
+} from "../book-enrichment";
+import {
+  buildGapQuestionsMessages,
+  buildMcqValidationMessages,
+  findDuplicateMcqIds,
+  findUncoveredPages,
+  gapQuestionsResponseSchema,
+  mcqValidationResponseSchema,
+  parseGapQuestions,
+  parseMcqValidation,
+} from "../book-analysis";
+import { invokeLLM } from "../llm";
 import { publishMessage } from "../queue/client";
 import { protectedProcedure, router } from "./trpc";
 
@@ -34,6 +54,16 @@ export const booksRouter = router({
     .input(z.object({ id: z.string() }))
     .query(async ({ ctx, input }) => {
       const result = await getBookForUser(ctx.user.id, input.id);
+      if (!result) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Book not found" });
+      }
+      return result;
+    }),
+
+  getMindMap: protectedProcedure
+    .input(z.object({ id: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const result = await getBookMindMapForUser(ctx.user.id, input.id);
       if (!result) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Book not found" });
       }
@@ -240,6 +270,199 @@ export const booksRouter = router({
         throw new TRPCError({ code: "NOT_FOUND", message: "Book not found" });
       }
       return getBookCoverageReport(input.bookId);
+    }),
+
+  // Audit Phase 3 — the real page-numbered Document Coverage Engine, distinct
+  // from getCoverageReport above (which only returns aggregate counts): this
+  // names the exact missing/failed page numbers so a caller never has to
+  // trust an aggregate count (or the LLM) as proof of completeness.
+  getCoverageDetail: protectedProcedure
+    .input(z.object({ bookId: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const owned = await getBookForUser(ctx.user.id, input.bookId);
+      if (!owned) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Book not found" });
+      }
+      return getBookCoverageDetail(input.bookId);
+    }),
+
+  // Audit Phase 6 — generates (and caches) this chapter's hierarchical mind
+  // map sections on first request (or returns whatever the automatic
+  // QStash trigger already generated — see app/api/books/analyze-chapter/
+  // route.ts and app/api/books/generate-mindmap-sections/route.ts). The
+  // actual generation is shared with that automatic path via
+  // lib/book-enrichment.ts; this procedure's own job is just the ownership/
+  // status checks a worker route doesn't need.
+  generateMindMapSections: protectedProcedure
+    .input(z.object({ chapterId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const chapter = await getChapterForUser(ctx.user.id, input.chapterId);
+      if (!chapter) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Chapter not found",
+        });
+      }
+      if (chapter.status !== "complete") {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Chapter analysis must complete first",
+        });
+      }
+      return generateAndSaveMindMapSections(chapter.id);
+    }),
+
+  // Audit Phase 7 — connects this chapter's explanation to its real visual
+  // assets (images/diagrams/tables). Lazy + idempotent; only meaningful
+  // once BOTH chapter analysis AND page-visual analysis have produced
+  // something, which finish on independent schedules — so this stays a
+  // student-triggered action here rather than an automatic one (unlike
+  // generateMindMapSections above, which only needs the chapter itself).
+  // Generation logic shared via lib/book-enrichment.ts.
+  generateVisualInsights: protectedProcedure
+    .input(z.object({ chapterId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const chapter = await getChapterForUser(ctx.user.id, input.chapterId);
+      if (!chapter) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Chapter not found",
+        });
+      }
+      if (chapter.status !== "complete") {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Chapter analysis must complete first",
+        });
+      }
+      const visualInsightsAr = await generateAndSaveVisualInsights(chapter.id);
+      return { visualInsightsAr: visualInsightsAr ?? "" };
+    }),
+
+  // Audit Phase 5 — Question Validation Agent. Lazy + idempotent, same
+  // pattern as generateMindMapSections above: skips straight to using the
+  // cached statuses once every MCQ in the chapter has already been checked,
+  // so re-opening a quiz never re-runs (or re-pays for) validation.
+  // Duplicates are caught deterministically first (findDuplicateMcqIds, no
+  // LLM needed); only the remaining, non-duplicate MCQs go through the LLM
+  // correctness/grounding check against this chapter's own explanation.
+  //
+  // Coverage-based gap-filling (audit Phase 5's "generate additional
+  // questions for uncovered sections") then runs on every call, using the
+  // FINAL statuses above: a page whose only MCQ just got flagged is a gap
+  // again just as much as a page that never had one. New questions are
+  // generated only from this chapter's own already-stored page text (never
+  // invented), and only for the exact pages still missing coverage.
+  validateChapterMcqs: protectedProcedure
+    .input(z.object({ chapterId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const chapter = await getChapterForUser(ctx.user.id, input.chapterId);
+      if (!chapter) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Chapter not found",
+        });
+      }
+      if (chapter.status !== "complete") {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Chapter analysis must complete first",
+        });
+      }
+
+      let mcqs = await getChapterMcqsForValidation(chapter.id);
+      const alreadyValidated = mcqs.every(
+        mcq => mcq.validationStatus !== "pending"
+      );
+
+      if (!alreadyValidated) {
+        // Only the still-pending ones — duplicates are checked across the
+        // WHOLE chapter (a fresh gap-filled question can duplicate an
+        // already-valid older one), but an already-valid/flagged MCQ is
+        // never re-sent to the LLM just because some other MCQ in the same
+        // chapter is still pending.
+        const duplicateIds = new Set(findDuplicateMcqIds(mcqs));
+        const toValidate = mcqs.filter(
+          mcq => !duplicateIds.has(mcq.id) && mcq.validationStatus === "pending"
+        );
+
+        const results: {
+          id: string;
+          status: "valid" | "flagged";
+          note: string | null;
+        }[] = Array.from(duplicateIds, id => ({
+          id,
+          status: "flagged" as const,
+          note: "سؤال مكرر داخل هذا الفصل.",
+        }));
+
+        if (toValidate.length) {
+          const response = await invokeLLM({
+            max_tokens: 2000,
+            messages: buildMcqValidationMessages(
+              chapter.explanationEn ?? "",
+              toValidate
+            ),
+            response_format: mcqValidationResponseSchema,
+          });
+          const validation = parseMcqValidation(
+            response.choices[0]?.message.content
+          );
+          const validationById = new Map(validation.map(v => [v.id, v]));
+          for (const mcq of toValidate) {
+            const result = validationById.get(mcq.id);
+            results.push({
+              id: mcq.id,
+              status: result?.valid ? "valid" : "flagged",
+              note: result?.valid ? null : (result?.note ?? "لم يجتز التحقق."),
+            });
+          }
+        }
+
+        await saveMcqValidationResults(results);
+        const resultById = new Map(results.map(r => [r.id, r]));
+        mcqs = mcqs.map(mcq => {
+          const result = resultById.get(mcq.id);
+          return result ? { ...mcq, validationStatus: result.status } : mcq;
+        });
+      }
+
+      const coveredPages = mcqs
+        .filter(mcq => mcq.validationStatus !== "flagged")
+        .map(mcq => mcq.sourcePage);
+      const uncoveredPages = findUncoveredPages(
+        chapter.startPage,
+        chapter.endPage,
+        coveredPages
+      );
+      let generatedCount = 0;
+      if (uncoveredPages.length && chapter.pageTexts?.length) {
+        const gapPages = chapter.pageTexts.filter(page =>
+          uncoveredPages.includes(page.page)
+        );
+        if (gapPages.length) {
+          const response = await invokeLLM({
+            max_tokens: 2000,
+            messages: buildGapQuestionsMessages(chapter.title, gapPages),
+            response_format: gapQuestionsResponseSchema,
+          });
+          const generated = parseGapQuestions(
+            response.choices[0]?.message.content,
+            uncoveredPages
+          );
+          if (generated.length) {
+            await insertBookMcqs(chapter.id, generated);
+            generatedCount = generated.length;
+          }
+        }
+      }
+
+      return {
+        total: mcqs.length + generatedCount,
+        valid: mcqs.filter(mcq => mcq.validationStatus === "valid").length,
+        flagged: mcqs.filter(mcq => mcq.validationStatus === "flagged").length,
+        generated: generatedCount,
+      };
     }),
 
   // Student/admin-initiated retry for a page whose visual analysis failed —

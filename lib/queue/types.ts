@@ -17,7 +17,15 @@ export type QueueMessage =
     }
   | { type: "finalize_admin_material"; materialId: string }
   | { type: "analyze_book_page_visuals"; bookId: string }
-  | { type: "retry_book_page_text"; pageId: string };
+  | { type: "retry_book_page_text"; pageId: string }
+  | { type: "extract_question_file_job"; bookId: string }
+  // Audit Phase 6 — fired once, best-effort, right after a chapter reaches
+  // "complete" (see app/api/books/analyze-chapter/route.ts). Deliberately a
+  // separate async job rather than an inline call in that same request:
+  // analyze-chapter is already tight against Vercel's 60s ceiling (see its
+  // own comments on sub-chunking), so a second LLM call there would
+  // reintroduce exactly the timeout risk the P0 audit fix just removed.
+  | { type: "generate_chapter_mindmap_sections"; chapterId: string };
 
 function readIntEnv(name: string, fallback: number): number {
   const raw = process.env[name];
