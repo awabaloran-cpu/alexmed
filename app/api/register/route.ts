@@ -21,15 +21,20 @@ export async function POST(request: Request) {
 
   const { email, password, name } = parsed.data;
 
-  const existing = await getUserByEmail(email.toLowerCase().trim());
-  if (existing) {
-    return NextResponse.json(
-      { error: "An account with this email already exists." },
-      { status: 409 }
-    );
-  }
-
+  // Wrapping the existence check too (not just createUser below) — a
+  // transient DB error here previously propagated as an unhandled
+  // exception, which Next.js turns into a bodyless 500 the client's
+  // `response.json()` can't parse, surfacing as a generic "unexpected
+  // error" instead of a real, actionable message.
   try {
+    const existing = await getUserByEmail(email.toLowerCase().trim());
+    if (existing) {
+      return NextResponse.json(
+        { error: "An account with this email already exists." },
+        { status: 409 }
+      );
+    }
+
     const user = await createUser({ email, password, name });
     return NextResponse.json(
       { id: user.id, email: user.email },
