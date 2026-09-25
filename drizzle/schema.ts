@@ -1160,11 +1160,25 @@ export const bookCards = pgTable(
     fsrsStability: real("fsrsStability"),
     fsrsDifficulty: real("fsrsDifficulty"),
     lastReviewedAt: timestamp("lastReviewedAt", { withTimezone: true }),
+    // 🧠 Knowledge-based generation (lib/knowledge-study.ts): the Exam Focus
+    // fact (Knowledge Item) this card was derived from, every page that fact
+    // cites, and what kind of recall it tests. All null for V1 cards
+    // generated straight from page text. SET NULL: regenerating the Exam
+    // Focus deck never deletes a student's cards or their review history.
+    knowledgeItemId: uuid("knowledgeItemId").references(
+      () => examFocusCards.id,
+      { onDelete: "set null" }
+    ),
+    sourcePages: jsonb("sourcePages").$type<number[]>(),
+    cardType: text("cardType"),
     createdAt: timestamp("createdAt", { withTimezone: true })
       .defaultNow()
       .notNull(),
   },
   table => ({
+    knowledgeItemIdx: index("book_cards_knowledge_item_id_idx").on(
+      table.knowledgeItemId
+    ),
     userDueIdx: index("book_cards_user_id_due_at_idx").on(
       table.userId,
       table.dueAt
@@ -1201,6 +1215,16 @@ export const bookMcqs = pgTable("book_mcqs", {
   // duplicate of another MCQ in the same chapter, etc.) — null while
   // pending/valid.
   validationNote: text("validationNote"),
+  // 🧠 Knowledge-based generation (see bookCards above): the primary Exam
+  // Focus fact this question tests, any second fact it contrasts it with
+  // (differentiation questions), the pages behind them, and the question
+  // type (recall / clinical_vignette / next_best_step / …). Null for V1.
+  knowledgeItemId: uuid("knowledgeItemId").references(() => examFocusCards.id, {
+    onDelete: "set null",
+  }),
+  relatedKnowledgeItemIds: jsonb("relatedKnowledgeItemIds").$type<string[]>(),
+  sourcePages: jsonb("sourcePages").$type<number[]>(),
+  questionType: text("questionType"),
   createdAt: timestamp("createdAt", { withTimezone: true })
     .defaultNow()
     .notNull(),

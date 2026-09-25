@@ -70,12 +70,12 @@ const CHUNK_CONCURRENCY = 3;
 // reasoning counts against max_tokens — observed live 2026-09-24, a 5000-token
 // mind-map budget ran out before any JSON was written, on every model.
 // max_tokens is a ceiling, not a cost: short answers still stop early.
-const REASONING_HEADROOM_TOKENS = 6000;
-function generationBudget(answerTokens: number): number {
+export const REASONING_HEADROOM_TOKENS = 6000;
+export function generationBudget(answerTokens: number): number {
   return Math.min(16000, REASONING_HEADROOM_TOKENS + 1500 + answerTokens);
 }
 
-async function mapWithConcurrency<T, R>(
+export async function mapWithConcurrency<T, R>(
   items: T[],
   limit: number,
   fn: (item: T, index: number) => Promise<R>

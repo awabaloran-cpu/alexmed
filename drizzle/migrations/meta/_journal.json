@@ -253,6 +253,13 @@
       "when": 1790312245081,
       "tag": "0035_study_pack_sharing",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1790371362853,
+      "tag": "0036_knowledge_items",
+      "breakpoints": true
     }
   ]
 }

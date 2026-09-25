@@ -61,6 +61,11 @@ import {
   parseMcqValidation,
 } from "../book-analysis";
 import { invokeLLM } from "../llm";
+import { generationBudget } from "../chapter-generation";
+import {
+  getChapterOutputSources,
+  getKnowledgeCoverageMatrix,
+} from "../db-knowledge";
 import { staleBookChapterProcessingCutoff } from "../queue/claim";
 import { publishMessage } from "../queue/client";
 import { protectedProcedure, router } from "./trpc";
@@ -108,11 +113,7 @@ async function throwOwnerOnlyOrNotFound(
 async function requireOwnedChapter(userId: string, chapterId: string) {
   const chapter = await getChapterForUser(userId, chapterId);
   if (!chapter) {
-    return throwOwnerOnlyOrNotFound(
-      userId,
-      { chapterId },
-      "Chapter not found"
-    );
+    return throwOwnerOnlyOrNotFound(userId, { chapterId }, "Chapter not found");
   }
   return chapter;
 }
@@ -219,6 +220,28 @@ export const booksRouter = router({
         cards: await personalizeCards(result.cards, access, ctx.user.id),
         access: accessInfo(access),
       };
+    }),
+
+  // 🧠 Coverage Matrix: every Knowledge Item (Exam Focus fact) → the
+  // flashcards and questions derived from it → source pages, plus how many
+  // V1 (page-text) cards/questions each chapter still has, so the study
+  // page can offer to rebuild them from the knowledge base.
+  getKnowledgeCoverage: protectedProcedure
+    .input(z.object({ bookId: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const access = await requireBookAccess(ctx.user.id, input.bookId);
+      const matrix = await getKnowledgeCoverageMatrix(input.bookId);
+      const content = await getBookStudyContentForUser(
+        access.ownerId,
+        input.bookId
+      );
+      const chapters = await Promise.all(
+        (content?.chapters ?? []).map(async chapter => ({
+          chapterId: chapter.id,
+          ...(await getChapterOutputSources(chapter.id)),
+        }))
+      );
+      return { ...matrix, chapters };
     }),
 
   getMindMap: protectedProcedure
@@ -515,8 +538,10 @@ export const booksRouter = router({
 
   // البطاقات والاختبار صاروا اختياريين — لا يتولّدون تلقائيًا مع تحليل
   // الفصل، بس عند طلب الطالب. نفس نمط generateVisualInsights فوق تمامًا.
+  // `rebuild`: replace this chapter's V1 (page-text) cards with cards
+  // derived from the book's Knowledge Items — explicit student action only.
   generateChapterFlashcards: protectedProcedure
-    .input(z.object({ chapterId: z.string() }))
+    .input(z.object({ chapterId: z.string(), rebuild: z.boolean().optional() }))
     .mutation(async ({ ctx, input }) => {
       const chapter = await requireOwnedChapter(ctx.user.id, input.chapterId);
       if (chapter.status !== "complete") {
@@ -525,12 +550,14 @@ export const booksRouter = router({
           message: "Chapter analysis must complete first",
         });
       }
-      const flashcards = await generateAndSaveChapterFlashcards(chapter.id);
+      const flashcards = await generateAndSaveChapterFlashcards(chapter.id, {
+        rebuild: input.rebuild,
+      });
       return { count: flashcards?.length ?? 0 };
     }),
 
   generateChapterMcqs: protectedProcedure
-    .input(z.object({ chapterId: z.string() }))
+    .input(z.object({ chapterId: z.string(), rebuild: z.boolean().optional() }))
     .mutation(async ({ ctx, input }) => {
       const chapter = await requireOwnedChapter(ctx.user.id, input.chapterId);
       if (chapter.status !== "complete") {
@@ -539,7 +566,9 @@ export const booksRouter = router({
           message: "Chapter analysis must complete first",
         });
       }
-      const mcqs = await generateAndSaveChapterMcqs(chapter.id);
+      const mcqs = await generateAndSaveChapterMcqs(chapter.id, {
+        rebuild: input.rebuild,
+      });
       return { count: mcqs?.length ?? 0 };
     }),
 
@@ -608,8 +637,10 @@ export const booksRouter = router({
         }));
 
         if (toValidate.length) {
+          // Reasoning models spend hidden tokens first — the old flat 2000
+          // could end before any JSON was written, flagging every question.
           const response = await invokeLLM({
-            max_tokens: 2000,
+            max_tokens: generationBudget(toValidate.length * 120),
             messages: buildMcqValidationMessages(
               chapter.explanationEn ?? "",
               toValidate
@@ -653,7 +684,7 @@ export const booksRouter = router({
         );
         if (gapPages.length) {
           const response = await invokeLLM({
-            max_tokens: 2000,
+            max_tokens: generationBudget(gapPages.length * 500),
             messages: buildGapQuestionsMessages(chapter.title, gapPages),
             response_format: gapQuestionsResponseSchema,
           });

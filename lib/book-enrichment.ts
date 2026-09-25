@@ -50,7 +50,25 @@ import {
   generateChapterMindMapCovered,
   generateChapterNotesCovered,
 } from "./chapter-generation";
-import { buildChapterManifest, type OutputCoverage } from "./document-coverage";
+import {
+  buildChapterManifest,
+  buildDocumentChunks,
+  classifyPages,
+  validateOutputCoverage,
+  worstStatus,
+  type OutputCoverage,
+} from "./document-coverage";
+import {
+  deleteChapterV1Output,
+  getBookKnowledge,
+  getChapterOutputSources,
+} from "./db-knowledge";
+import {
+  generateKnowledgeFlashcards,
+  generateKnowledgeMcqs,
+  itemsForPageRange,
+  type KnowledgeCoverage,
+} from "./knowledge-study";
 import type { MedicalNotePage } from "./medical-note-composer";
 import { invokeLLM } from "./llm";
 
@@ -169,11 +187,86 @@ export async function generateAndSaveVisualInsights(
 // visual-insights generators above (count-check instead of a cached-field
 // check, since cards/mcqs are their own normalized tables, not a column on
 // bookChapters).
+// 🧠 Knowledge path: when the book's Exam Focus deck is finished, the
+// chapter's Knowledge Items (facts whose first page is in the chapter) are
+// the ONLY source of its cards/questions — never a fresh read of the page
+// text, and never V1 on top (a chapter with no facts, e.g. the lecturer /
+// objectives pages, simply gets none). Without a finished deck, V1 runs
+// exactly as before. `rebuild` replaces a chapter's V1 output with
+// knowledge-based output (explicit student action only).
+async function chapterKnowledge(chapter: LoadedChapter) {
+  const knowledge = await getBookKnowledge(chapter.bookId);
+  if (!knowledge.ready) return null;
+  return itemsForPageRange(knowledge.items, chapter.startPage, chapter.endPage);
+}
+
+// Chunk-level gate (same as V1, from the facts' pages) + the per-fact
+// verdict; the stricter of the two wins.
+function knowledgeOutputCoverage(
+  kind: "flashcards" | "mcqs",
+  chapter: LoadedChapter,
+  itemPages: number[][],
+  knowledge: KnowledgeCoverage,
+  errors: string[]
+): OutputCoverage {
+  const pages = chapter.pageTexts ?? [];
+  const chunkCoverage = validateOutputCoverage(
+    kind,
+    buildDocumentChunks(pages).chunks,
+    classifyPages(pages),
+    itemPages
+  );
+  return {
+    ...chunkCoverage,
+    status: worstStatus([chunkCoverage.status, knowledge.status]),
+    reasons: [
+      ...chunkCoverage.reasons,
+      ...(knowledge.uncoveredItemIds.length
+        ? [
+            `${knowledge.uncoveredItemIds.length} of ${knowledge.totalItems} knowledge items have no ${kind === "flashcards" ? "card" : "question"}.`,
+          ]
+        : []),
+      ...errors,
+    ],
+    knowledge,
+  };
+}
+
 export async function generateAndSaveChapterFlashcards(
-  chapterId: string
+  chapterId: string,
+  options: { rebuild?: boolean } = {}
 ): Promise<ChapterFlashcard[] | null> {
   const chapter = await getChapterById(chapterId);
   if (!chapter || chapter.status !== "complete") return null;
+
+  const knowledge = await chapterKnowledge(chapter);
+  if (knowledge) {
+    const sources = await getChapterOutputSources(chapter.id);
+    if (sources.cards.knowledge > 0) return null;
+    if (sources.cards.v1 > 0 && !options.rebuild) return null;
+    const result = await generateKnowledgeFlashcards(
+      chapter.title,
+      knowledge,
+      invokeLLM
+    );
+    if (!result.items.length && result.errors.length) {
+      throw new Error(result.errors[0]);
+    }
+    if (options.rebuild) await deleteChapterV1Output(chapter.id, "cards");
+    await insertBookCards(chapter.id, chapter.userId, result.items);
+    const coverage = knowledgeOutputCoverage(
+      "flashcards",
+      chapter,
+      result.items.map(card => card.sourcePages),
+      result.coverage,
+      result.errors
+    );
+    logGate(chapter.id, coverage);
+    await recordCoverage(chapter, coverage, result.errors);
+    return result.items;
+  }
+  if (options.rebuild) return null;
+
   if ((await getChapterCardCount(chapterId)) > 0) return null;
   if (!chapter.pageTexts?.length) return [];
 
@@ -194,10 +287,40 @@ export async function generateAndSaveChapterFlashcards(
 }
 
 export async function generateAndSaveChapterMcqs(
-  chapterId: string
+  chapterId: string,
+  options: { rebuild?: boolean } = {}
 ): Promise<ChapterMcq[] | null> {
   const chapter = await getChapterById(chapterId);
   if (!chapter || chapter.status !== "complete") return null;
+
+  const knowledge = await chapterKnowledge(chapter);
+  if (knowledge) {
+    const sources = await getChapterOutputSources(chapter.id);
+    if (sources.mcqs.knowledge > 0) return null;
+    if (sources.mcqs.v1 > 0 && !options.rebuild) return null;
+    const result = await generateKnowledgeMcqs(
+      chapter.title,
+      knowledge,
+      invokeLLM
+    );
+    if (!result.items.length && result.errors.length) {
+      throw new Error(result.errors[0]);
+    }
+    if (options.rebuild) await deleteChapterV1Output(chapter.id, "mcqs");
+    await insertBookMcqs(chapter.id, result.items);
+    const coverage = knowledgeOutputCoverage(
+      "mcqs",
+      chapter,
+      result.items.map(mcq => mcq.sourcePages),
+      result.coverage,
+      result.errors
+    );
+    logGate(chapter.id, coverage);
+    await recordCoverage(chapter, coverage, result.errors);
+    return result.items;
+  }
+  if (options.rebuild) return null;
+
   if ((await getChapterMcqCount(chapterId)) > 0) return null;
   if (!chapter.pageTexts?.length) return [];
 

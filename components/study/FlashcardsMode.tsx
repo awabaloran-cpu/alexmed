@@ -27,6 +27,8 @@ export type StudyCard = {
   relatedTermEn?: string | null;
   relatedTermAr?: string | null;
   sourcePage: number;
+  // 🧠 Knowledge-based cards: what the card tests (تعريف / آلية / …).
+  cardType?: string;
 };
 
 type Rating = "again" | "hard" | "good" | "easy";
@@ -321,6 +323,7 @@ export default function FlashcardsMode({
                 }
               >
                 {flipped ? "الإجابة" : "السؤال"}
+                {!flipped && card.cardType && <> · {card.cardType}</>}
               </span>
               <button
                 type="button"

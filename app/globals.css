@@ -8250,3 +8250,69 @@ button.sh-student:focus-visible {
     display: none;
   }
 }
+
+/* ---------- 🧠 Knowledge coverage (study page) ---------- */
+.knowledge-link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+.knowledge-link:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+.knowledge-matrix {
+  max-height: 82vh;
+}
+.knowledge-matrix-hint {
+  margin: 0 0 8px;
+  color: #64748b;
+  font-size: 13px;
+}
+.knowledge-matrix-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  overflow-y: auto;
+}
+.knowledge-matrix-list li {
+  display: grid;
+  gap: 2px;
+  padding: 9px 10px;
+  border-bottom: 1px solid rgba(100, 116, 139, 0.18);
+}
+.knowledge-matrix-list li.is-uncovered {
+  border-radius: 10px;
+  background: rgba(245, 158, 11, 0.12);
+}
+.knowledge-matrix-title {
+  font-size: 14px;
+  line-height: 1.5;
+}
+.knowledge-matrix-list small {
+  color: #64748b;
+  font-size: 12px;
+}
+.quiz-type {
+  display: inline-block;
+  margin-inline-end: 8px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(37, 99, 235, 0.1);
+  color: #1d4ed8;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+/* The generation progress bar inside the (column) empty state: flex: 1
+   there grew it vertically into a blob. */
+.study-empty .flash-progress-track {
+  flex: none;
+  height: 6px;
+}

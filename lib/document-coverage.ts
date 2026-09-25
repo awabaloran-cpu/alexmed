@@ -8,6 +8,7 @@
 // tracked at three levels — pages extracted, pages placed into chunks, and
 // chunks that actually produced output (via each item's sourcePages) — and
 // the Quality Gate judges the last one.
+import type { KnowledgeCoverage } from "./knowledge-study";
 import { chunkChapterPages, type BookPageInput } from "./book-analysis";
 
 // ── Page classification ──────────────────────────────────────────────────
@@ -212,6 +213,9 @@ export type OutputCoverage = {
   chunkCoveragePercent: number;
   status: CoverageStatus;
   reasons: string[];
+  // 🧠 Set when the output was derived from Knowledge Items (Exam Focus
+  // facts) — coverage judged per fact, not only per chunk.
+  knowledge?: KnowledgeCoverage;
 };
 
 // A chunk "requires" output when it holds any non-metadata text — a chunk

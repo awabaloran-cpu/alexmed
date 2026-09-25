@@ -1247,6 +1247,12 @@ export async function insertBookMcqs(
     correctIndex: number;
     explanationEn: string;
     sourcePage: number;
+    // 🧠 Knowledge-based questions (lib/knowledge-study.ts) only.
+    knowledgeItemId?: string;
+    relatedKnowledgeItemIds?: string[];
+    sourcePages?: number[];
+    questionType?: string;
+    validationStatus?: "pending" | "valid";
   }[]
 ) {
   if (!mcqs.length) return;
@@ -1260,6 +1266,11 @@ export async function insertBookMcqs(
       correctIndex: mcq.correctIndex,
       explanationEn: mcq.explanationEn,
       sourcePage: mcq.sourcePage,
+      knowledgeItemId: mcq.knowledgeItemId ?? null,
+      relatedKnowledgeItemIds: mcq.relatedKnowledgeItemIds ?? null,
+      sourcePages: mcq.sourcePages ?? null,
+      questionType: mcq.questionType ?? null,
+      validationStatus: mcq.validationStatus ?? "pending",
     }))
   );
 }
@@ -1278,6 +1289,10 @@ export async function insertBookCards(
     answerEn: string;
     relatedTermEn: string;
     sourcePage: number;
+    // 🧠 Knowledge-based cards (lib/knowledge-study.ts) only.
+    knowledgeItemId?: string;
+    sourcePages?: number[];
+    cardType?: string;
   }[]
 ) {
   if (!cards.length) return;
@@ -1293,6 +1308,9 @@ export async function insertBookCards(
       answerEn: card.answerEn,
       relatedTermEn: card.relatedTermEn,
       sourcePage: card.sourcePage,
+      knowledgeItemId: card.knowledgeItemId ?? null,
+      sourcePages: card.sourcePages ?? null,
+      cardType: card.cardType ?? null,
     }))
   );
 }

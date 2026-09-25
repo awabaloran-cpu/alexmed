@@ -29,6 +29,9 @@ export type QuizMcq = {
   // Real PDF page the question was generated from — shown so every
   // question is traceable to its source (full-document coverage).
   sourcePage?: number;
+  // 🧠 Knowledge-based questions: the kind of thinking it tests, already
+  // as an Arabic label (حالة سريرية / الخطوة التالية / …); "" for V1.
+  questionType?: string;
 };
 
 type Answer = { selected: number } & McqSubmitResult;
@@ -317,6 +320,9 @@ export default function QuizMode({
           <div className="quiz-body">
             <div className="quiz-meta">
               <span>
+                {mcq.questionType && (
+                  <small className="quiz-type">{mcq.questionType}</small>
+                )}
                 السؤال {index + 1} من {mcqs.length}
                 {mcq.sourcePage !== undefined && (
                   <small className="quiz-source">
