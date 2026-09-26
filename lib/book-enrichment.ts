@@ -59,9 +59,9 @@ import {
   type OutputCoverage,
 } from "./document-coverage";
 import {
-  deleteChapterV1Output,
   getBookKnowledge,
   getChapterOutputSources,
+  saveChapterOutputOnce,
 } from "./db-knowledge";
 import {
   generateKnowledgeFlashcards,
@@ -232,9 +232,37 @@ function knowledgeOutputCoverage(
   };
 }
 
-export async function generateAndSaveChapterFlashcards(
+// Requests for a part that is already being generated on this server join
+// that run instead of paying for a second one (the database check in
+// saveChapterOutputOnce covers requests landing on another instance).
+const inFlight = new Map<string, Promise<unknown>>();
+function once<T>(key: string, run: () => Promise<T>): Promise<T> {
+  const running = inFlight.get(key) as Promise<T> | undefined;
+  if (running) return running;
+  const promise = run().finally(() => inFlight.delete(key));
+  inFlight.set(key, promise);
+  return promise;
+}
+
+export function generateAndSaveChapterFlashcards(
   chapterId: string,
   options: { rebuild?: boolean } = {}
+): Promise<ChapterFlashcard[] | null> {
+  return once(`cards:${chapterId}`, () =>
+    generateFlashcardsNow(chapterId, options)
+  );
+}
+
+export function generateAndSaveChapterMcqs(
+  chapterId: string,
+  options: { rebuild?: boolean } = {}
+): Promise<ChapterMcq[] | null> {
+  return once(`mcqs:${chapterId}`, () => generateMcqsNow(chapterId, options));
+}
+
+async function generateFlashcardsNow(
+  chapterId: string,
+  options: { rebuild?: boolean }
 ): Promise<ChapterFlashcard[] | null> {
   const chapter = await getChapterById(chapterId);
   if (!chapter || chapter.status !== "complete") return null;
@@ -252,8 +280,13 @@ export async function generateAndSaveChapterFlashcards(
     if (!result.items.length && result.errors.length) {
       throw new Error(result.errors[0]);
     }
-    if (options.rebuild) await deleteChapterV1Output(chapter.id, "cards");
-    await insertBookCards(chapter.id, chapter.userId, result.items);
+    const saved = await saveChapterOutputOnce(
+      chapter.id,
+      "cards",
+      options.rebuild ? "rebuild" : "fresh",
+      tx => insertBookCards(chapter.id, chapter.userId, result.items, tx)
+    );
+    if (!saved) return null;
     const coverage = knowledgeOutputCoverage(
       "flashcards",
       chapter,
@@ -280,15 +313,18 @@ export async function generateAndSaveChapterFlashcards(
   if (!result.items.length && result.errors.length) {
     throw new Error(result.errors[0]);
   }
-  await insertBookCards(chapter.id, chapter.userId, result.items);
+  const saved = await saveChapterOutputOnce(chapter.id, "cards", "fresh", tx =>
+    insertBookCards(chapter.id, chapter.userId, result.items, tx)
+  );
+  if (!saved) return null;
   logGate(chapter.id, result.coverage);
   await recordCoverage(chapter, result.coverage, result.errors);
   return result.items;
 }
 
-export async function generateAndSaveChapterMcqs(
+async function generateMcqsNow(
   chapterId: string,
-  options: { rebuild?: boolean } = {}
+  options: { rebuild?: boolean }
 ): Promise<ChapterMcq[] | null> {
   const chapter = await getChapterById(chapterId);
   if (!chapter || chapter.status !== "complete") return null;
@@ -306,8 +342,13 @@ export async function generateAndSaveChapterMcqs(
     if (!result.items.length && result.errors.length) {
       throw new Error(result.errors[0]);
     }
-    if (options.rebuild) await deleteChapterV1Output(chapter.id, "mcqs");
-    await insertBookMcqs(chapter.id, result.items);
+    const saved = await saveChapterOutputOnce(
+      chapter.id,
+      "mcqs",
+      options.rebuild ? "rebuild" : "fresh",
+      tx => insertBookMcqs(chapter.id, result.items, tx)
+    );
+    if (!saved) return null;
     const coverage = knowledgeOutputCoverage(
       "mcqs",
       chapter,
@@ -332,7 +373,10 @@ export async function generateAndSaveChapterMcqs(
   if (!result.items.length && result.errors.length) {
     throw new Error(result.errors[0]);
   }
-  await insertBookMcqs(chapter.id, result.items);
+  const saved = await saveChapterOutputOnce(chapter.id, "mcqs", "fresh", tx =>
+    insertBookMcqs(chapter.id, result.items, tx)
+  );
+  if (!saved) return null;
   logGate(chapter.id, result.coverage);
   await recordCoverage(chapter, result.coverage, result.errors);
   return result.items;

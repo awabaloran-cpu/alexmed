@@ -224,7 +224,8 @@ export default function BookDetailPage() {
 
   const { book, chapters, totalCards, totalMcqs, access } = bookQuery.data;
   const ownerLabel =
-    access.ownerName || (access.ownerUsername ? `@${access.ownerUsername}` : "");
+    access.ownerName ||
+    (access.ownerUsername ? `@${access.ownerUsername}` : "");
   const completeCount = chapters.filter(c => c.status === "complete").length;
   const failedChapters = chapters.filter(c => c.status === "failed");
   const isExtracting = book.status === "extracting";
@@ -523,8 +524,8 @@ export default function BookDetailPage() {
               <div>
                 <strong>{book.fileName}</strong>
                 <span>
-                  {new Date(book.createdAt).toLocaleDateString("ar-u-nu-latn")} ·{" "}
-                  {book.pageCount} صفحة
+                  {new Date(book.createdAt).toLocaleDateString("ar-u-nu-latn")}{" "}
+                  · {book.pageCount} صفحة
                 </span>
               </div>
             </div>
@@ -734,27 +735,16 @@ export default function BookDetailPage() {
         </div>
       )}
 
-      <div className="library-grid">
-        {chapters.map(chapter => (
-          <div className="library-item" key={chapter.id}>
-            {chapter.status === "complete" ? (
-              <Link
-                href={`/books/${bookId}/chapters/${chapter.id}`}
-                className="library-item-icon"
-                style={{ display: "contents" }}
-              >
-                <div className="library-item-icon">
-                  <CheckCircle2 size={18} />
-                </div>
-                <div className="library-item-meta">
-                  <strong>{chapter.title}</strong>
-                  <span>
-                    صفحة {chapter.startPage}–{chapter.endPage} · مكتمل
-                  </span>
-                </div>
-              </Link>
-            ) : (
-              <>
+      {/* Parts are processing units, not a place to study: a finished part
+          is not listed or opened (the file is studied as a whole above).
+          Only parts still being analyzed, or that failed, are shown — the
+          owner needs their progress and the retry button. */}
+      {chapters.some(chapter => chapter.status !== "complete") && (
+        <div className="library-grid">
+          {chapters
+            .filter(chapter => chapter.status !== "complete")
+            .map(chapter => (
+              <div className="library-item" key={chapter.id}>
                 <div className="library-item-icon">
                   {chapter.status === "failed" ? (
                     <CircleAlert size={18} />
@@ -783,11 +773,10 @@ export default function BookDetailPage() {
                     <RotateCcw size={14} /> إعادة المحاولة
                   </button>
                 )}
-              </>
-            )}
-          </div>
-        ))}
-      </div>
+              </div>
+            ))}
+        </div>
+      )}
     </section>
   );
 }

@@ -71,7 +71,7 @@ export default function WeakPointsPage() {
                 {data.chapters.map(chapter => (
                   <Link
                     key={chapter.chapterId}
-                    href={`/books/${chapter.bookId}/chapters/${chapter.chapterId}`}
+                    href={`/books/${chapter.bookId}/study?tool=mcqs`}
                     className="nav-item"
                     style={{ justifyContent: "space-between" }}
                   >

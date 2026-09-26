@@ -232,7 +232,7 @@ export default function ReviewPage() {
           <span className="card-tag">{card.tag}</span>
           {card.source === "book" && card.bookId && card.chapterId && (
             <Link
-              href={`/books/${card.bookId}/chapters/${card.chapterId}?page=${card.sourcePage}&focusCard=${card.id}`}
+              href={`/books/${card.bookId}/read?page=${card.sourcePage}`}
               className="card-source-link"
             >
               <BookOpen size={13} />
@@ -242,7 +242,9 @@ export default function ReviewPage() {
         </div>
         <div className="question-block">
           <span className="micro-label">QUESTION / السؤال</span>
-          <h2 className="en" dir="ltr">{card.questionEn}</h2>
+          <h2 className="en" dir="ltr">
+            {card.questionEn}
+          </h2>
           <p>{card.questionAr}</p>
         </div>
         <div className={showAnswer ? "answer-block revealed" : "answer-block"}>
@@ -250,7 +252,9 @@ export default function ReviewPage() {
             <>
               <span className="micro-label">ANSWER / الإجابة</span>
               <div className="answer-pair">
-                <strong className="en" dir="ltr">{card.answerEn}</strong>
+                <strong className="en" dir="ltr">
+                  {card.answerEn}
+                </strong>
                 <span>{card.answerAr}</span>
               </div>
               {card.relatedTermEn && (

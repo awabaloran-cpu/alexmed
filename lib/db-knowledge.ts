@@ -22,6 +22,7 @@ import {
   examFocusDecks,
 } from "../drizzle/schema";
 import { getDb } from "./db";
+import type { DbExecutor } from "./db-books";
 import type { KnowledgeItem } from "./knowledge-study";
 
 export type BookKnowledge = {
@@ -160,32 +161,52 @@ export async function getBookOutputSources(bookId: string) {
   }));
 }
 
-// Explicit "rebuild from the knowledge base" only: removes the chapter's V1
-// (page-text) cards or questions. Knowledge-based ones are never touched.
-// Review history of the removed cards goes with them (cascade) — the UI
-// says so before the student confirms.
-export async function deleteChapterV1Output(
+// The one place generated cards / MCQs are saved. Generation takes a
+// while (several AI calls), so two requests for the same part — two tabs,
+// a double tap — could each see "nothing yet" and both save. Here the part's
+// row is locked for the transaction and the check is repeated before
+// inserting, so the second one saves nothing:
+//   mode "fresh"   — only if the part has none of this kind yet;
+//   mode "rebuild" — only if it has no knowledge-based ones yet; its V1
+//                    (page-text) ones are replaced in the same transaction.
+// Returns false when it skipped because another request got there first.
+export async function saveChapterOutputOnce(
   chapterId: string,
-  kind: "cards" | "mcqs"
-) {
+  kind: "cards" | "mcqs",
+  mode: "fresh" | "rebuild",
+  write: (executor: DbExecutor) => Promise<void>
+): Promise<boolean> {
   const db = getDb();
   if (!db) throw new Error("Database not available");
-  if (kind === "cards") {
-    await db
-      .delete(bookCards)
+  return db.transaction(async tx => {
+    await tx
+      .select({ id: bookChapters.id })
+      .from(bookChapters)
+      .where(eq(bookChapters.id, chapterId))
+      .for("update");
+    const table = kind === "cards" ? bookCards : bookMcqs;
+    const [existing] = await tx
+      .select({ c: count() })
+      .from(table)
       .where(
-        and(
-          eq(bookCards.chapterId, chapterId),
-          isNull(bookCards.knowledgeItemId)
-        )
+        mode === "fresh"
+          ? eq(table.chapterId, chapterId)
+          : and(
+              eq(table.chapterId, chapterId),
+              isNotNull(table.knowledgeItemId)
+            )
       );
-  } else {
-    await db
-      .delete(bookMcqs)
-      .where(
-        and(eq(bookMcqs.chapterId, chapterId), isNull(bookMcqs.knowledgeItemId))
-      );
-  }
+    if (Number(existing?.c ?? 0) > 0) return false;
+    if (mode === "rebuild") {
+      await tx
+        .delete(table)
+        .where(
+          and(eq(table.chapterId, chapterId), isNull(table.knowledgeItemId))
+        );
+    }
+    await write(tx);
+    return true;
+  });
 }
 
 export type CoverageMatrixRow = {

@@ -1239,6 +1239,9 @@ export async function getChapterMcqsForValidation(chapterId: string) {
 // parseGapQuestions). Left at the schema-default "pending" validationStatus
 // — a freshly-generated question hasn't been through the validation pass
 // yet, so it isn't presumed correct just because it filled a gap.
+// The main connection or an open transaction — both can insert.
+export type DbExecutor = Pick<NonNullable<ReturnType<typeof getDb>>, "insert">;
+
 export async function insertBookMcqs(
   chapterId: string,
   mcqs: {
@@ -1253,10 +1256,13 @@ export async function insertBookMcqs(
     sourcePages?: number[];
     questionType?: string;
     validationStatus?: "pending" | "valid";
-  }[]
+  }[],
+  // Inside a transaction (lib/db-knowledge.ts's saveChapterOutputOnce) the
+  // caller passes its tx so the insert commits with the duplicate check.
+  executor?: DbExecutor
 ) {
   if (!mcqs.length) return;
-  const db = getDb();
+  const db = executor ?? getDb();
   if (!db) throw new Error("Database not available");
   await db.insert(bookMcqs).values(
     mcqs.map(mcq => ({
@@ -1293,10 +1299,13 @@ export async function insertBookCards(
     knowledgeItemId?: string;
     sourcePages?: number[];
     cardType?: string;
-  }[]
+  }[],
+  // Inside a transaction (lib/db-knowledge.ts's saveChapterOutputOnce) the
+  // caller passes its tx so the insert commits with the duplicate check.
+  executor?: DbExecutor
 ) {
   if (!cards.length) return;
-  const db = getDb();
+  const db = executor ?? getDb();
   if (!db) throw new Error("Database not available");
   await db.insert(bookCards).values(
     cards.map(card => ({
