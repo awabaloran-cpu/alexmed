@@ -82,6 +82,8 @@ export default function AdminUserDetailPage() {
   }
 
   const { user, stats } = detailQuery.data;
+  // Phone sign-up accounts have no email.
+  const accountId = user.email ?? user.phone ?? "";
   const plan = planDraft ?? user.plan;
   const expiresAt = expiresDraft ?? toDateInputValue(user.planExpiresAt);
   const isSuspended = !!user.suspendedAt;
@@ -99,7 +101,9 @@ export default function AdminUserDetailPage() {
 
       <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-2xl font-bold">{user.email}</h1>
+          <h1 className="text-2xl font-bold">
+            <bdi dir="ltr">{accountId}</bdi>
+          </h1>
           <p className="text-sm text-muted-foreground">
             {user.name || "بدون اسم"} · انضم في {formatDate(user.createdAt)}
           </p>
@@ -272,16 +276,18 @@ export default function AdminUserDetailPage() {
       <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>حذف {user.email} نهائيًا؟</AlertDialogTitle>
+            <AlertDialogTitle>
+              حذف <bdi dir="ltr">{accountId}</bdi> نهائيًا؟
+            </AlertDialogTitle>
             <AlertDialogDescription>
               هذا الإجراء نهائي ولا يمكن التراجع عنه. للتأكيد، اكتب البريد
-              الإلكتروني للمستخدم بالكامل أدناه.
+              الإلكتروني (أو رقم الهاتف) للمستخدم بالكامل أدناه.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <Input
             value={confirmEmail}
             onChange={event => setConfirmEmail(event.target.value)}
-            placeholder={user.email}
+            placeholder={accountId}
             autoComplete="off"
           />
           {deleteUser.isError && (
@@ -299,7 +305,7 @@ export default function AdminUserDetailPage() {
             </Button>
             <Button
               variant="destructive"
-              disabled={confirmEmail !== user.email || deleteUser.isPending}
+              disabled={confirmEmail !== accountId || deleteUser.isPending}
               onClick={() => deleteUser.mutate({ userId: params.userId })}
             >
               {deleteUser.isPending ? (

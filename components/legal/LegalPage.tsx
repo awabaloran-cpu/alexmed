@@ -6,7 +6,7 @@ import type { ReactNode } from "react";
 // login needed — Google Play and new visitors must be able to open these.
 export const LEGAL_APP_NAME = "NiroLearn";
 export const LEGAL_CONTACT_EMAIL = "awabalomran2001@gmail.com";
-export const LEGAL_UPDATED_AT = "25 سبتمبر 2026";
+export const LEGAL_UPDATED_AT = "26 سبتمبر 2026";
 
 export type LegalSection = { id: string; title: string; body: ReactNode };
 

@@ -9,7 +9,13 @@ import {
   users,
   verificationTokens,
 } from "../drizzle/schema";
-import { getUserByEmail, requireDb, touchLastSignedIn } from "./db";
+import {
+  getUserByEmail,
+  getUserByPhone,
+  requireDb,
+  touchLastSignedIn,
+} from "./db";
+import { looksLikePhone, parsePhone } from "./phone";
 import {
   LoginRateLimitedError,
   assertLoginAllowed,
@@ -56,21 +62,40 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   providers: [
     Credentials({
       name: "credentials",
+      // One "identifier" field: a phone number (phone sign-up accounts,
+      // typed locally or internationally) or an email (accounts created
+      // before phone sign-up). `email` is still accepted from older clients.
       credentials: {
+        identifier: { label: "Phone or email", type: "text" },
         email: { label: "Email", type: "email" },
         password: { label: "Password", type: "password" },
       },
       async authorize(credentials) {
-        const email =
-          typeof credentials?.email === "string"
-            ? credentials.email.toLowerCase().trim()
-            : "";
+        const raw =
+          typeof credentials?.identifier === "string" && credentials.identifier
+            ? credentials.identifier
+            : typeof credentials?.email === "string"
+              ? credentials.email
+              : "";
         const password =
           typeof credentials?.password === "string" ? credentials.password : "";
-        if (!email || !password) return null;
+        if (!raw.trim() || !password) return null;
+
+        // The rate-limit key is the normalized identifier (E.164 number or
+        // lower-cased email), so "079…" and "+96279…" share one budget.
+        let key: string;
+        let byPhone = false;
+        if (looksLikePhone(raw)) {
+          const phone = parsePhone(raw);
+          if (!phone.ok) return null;
+          key = phone.e164;
+          byPhone = true;
+        } else {
+          key = raw.toLowerCase().trim();
+        }
 
         try {
-          await assertLoginAllowed(email);
+          await assertLoginAllowed(key);
         } catch (error) {
           if (error instanceof LoginRateLimitedError) {
             throw new TooManyAttemptsError();
@@ -78,20 +103,22 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           throw error;
         }
 
-        const user = await getUserByEmail(email);
+        const user = byPhone
+          ? await getUserByPhone(key)
+          : await getUserByEmail(key);
         if (!user) {
-          await recordFailedLogin(email);
+          await recordFailedLogin(key);
           return null;
         }
         // Google-only accounts have no password to compare against.
         if (!user.passwordHash) {
-          await recordFailedLogin(email);
+          await recordFailedLogin(key);
           return null;
         }
 
         const valid = await bcrypt.compare(password, user.passwordHash);
         if (!valid) {
-          await recordFailedLogin(email);
+          await recordFailedLogin(key);
           return null;
         }
 
@@ -101,7 +128,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
         return {
           id: user.id,
-          email: user.email,
+          email: user.email ?? undefined,
           name: user.name ?? undefined,
           role: user.role,
         };

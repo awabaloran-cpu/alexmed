@@ -31,7 +31,11 @@ export async function listUsersForAdmin(params: {
   const search = params.search?.trim();
 
   const whereClause = search
-    ? or(ilike(users.email, `%${search}%`), ilike(users.name, `%${search}%`))
+    ? or(
+        ilike(users.email, `%${search}%`),
+        ilike(users.name, `%${search}%`),
+        ilike(users.phone, `%${search.replace(/[s-]/g, "")}%`)
+      )
     : undefined;
 
   const [rows, [{ total }]] = await Promise.all([
@@ -39,6 +43,7 @@ export async function listUsersForAdmin(params: {
       .select({
         id: users.id,
         email: users.email,
+        phone: users.phone,
         name: users.name,
         role: users.role,
         plan: users.plan,
@@ -66,6 +71,7 @@ export async function getUserDetailForAdmin(userId: string) {
     .select({
       id: users.id,
       email: users.email,
+      phone: users.phone,
       name: users.name,
       role: users.role,
       plan: users.plan,

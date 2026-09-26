@@ -8316,3 +8316,111 @@ button.sh-student:focus-visible {
   height: 6px;
 }
 
+
+/* ---------- 📱 Phone sign-up (RegisterForm) ---------- */
+.signup-steps {
+  display: flex;
+  gap: 6px;
+  margin: 0 0 18px;
+  padding: 0;
+  list-style: none;
+}
+.signup-steps li {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  color: #94a3b8;
+  font-size: 11px;
+  font-weight: 700;
+  text-align: center;
+}
+.signup-steps li span {
+  display: grid;
+  width: 26px;
+  height: 26px;
+  place-items: center;
+  border: 2px solid #e2e8f0;
+  border-radius: 50%;
+  background: #fff;
+  font-size: 12px;
+  transition: all 0.2s ease;
+}
+.signup-steps li.is-current {
+  color: #1e2a5a;
+}
+.signup-steps li.is-current span {
+  border-color: #2563eb;
+  color: #2563eb;
+  box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.12);
+}
+.signup-steps li.is-done {
+  color: #15803d;
+}
+.signup-steps li.is-done span {
+  border-color: #16a34a;
+  background: #16a34a;
+  color: #fff;
+}
+.signup-phone {
+  display: flex;
+  gap: 8px;
+}
+.signup-phone select {
+  flex-shrink: 0;
+  height: 40px;
+  padding: 0 8px;
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: 10px;
+  background: var(--background, #fff);
+  font-size: 15px;
+}
+.signup-phone input {
+  flex: 1;
+  min-width: 0;
+  font-size: 16px;
+  letter-spacing: 0.5px;
+}
+.signup-sent {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(37, 99, 235, 0.07);
+  color: #1e2a5a;
+  font-size: 14px;
+}
+.signup-sent p {
+  flex: 1;
+  margin: 0;
+}
+.signup-sent button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: #2563eb;
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.signup-otp {
+  display: flex;
+  justify-content: center;
+}
+.signup-otp [data-slot="input-otp-slot"] {
+  width: 44px;
+  height: 52px;
+  font-size: 22px;
+  font-weight: 800;
+}
+@media (max-width: 360px) {
+  .signup-otp [data-slot="input-otp-slot"] {
+    width: 38px;
+    height: 48px;
+  }
+}
+.signup-sent bdi {
+  white-space: nowrap;
+}

@@ -2,6 +2,7 @@ import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { signOut } from "../auth";
 import { getUserProfileForAccount, updateUserProfile } from "../db";
+import { parsePhone } from "../phone";
 import { deleteAccountCompletely } from "../db-account";
 import { adminJobsRouter } from "./adminJobsRouter";
 import { adminMaterialsRouter } from "./adminMaterialsRouter";
@@ -50,17 +51,31 @@ export const appRouter = router({
     // "حذف حسابي" (/account) — permanent: the account, every file and all
     // study data (lib/db-account.ts; promised in app/privacy/page.tsx).
     // Always the session's own account; the student re-types their email
-    // so it can't happen by accident.
+    // — or, for a phone sign-up account (no email), their phone number —
+    // so it can't happen by accident. `confirmEmail` is the older name.
     deleteAccount: protectedProcedure
-      .input(z.object({ confirmEmail: z.string().trim().max(320) }))
+      .input(
+        z.object({
+          confirm: z.string().trim().max(320).optional(),
+          confirmEmail: z.string().trim().max(320).optional(),
+        })
+      )
       .mutation(async ({ ctx, input }) => {
-        if (
-          !ctx.user.email ||
-          input.confirmEmail.toLowerCase() !== ctx.user.email.toLowerCase()
-        ) {
+        const typed = (input.confirm ?? input.confirmEmail ?? "").trim();
+        const profile = await getUserProfileForAccount(ctx.user.id);
+        const email = profile?.email ?? ctx.user.email ?? "";
+        const phone = profile?.phone ?? null;
+        const typedPhone = parsePhone(typed);
+        const matches =
+          (!!email && typed.toLowerCase() === email.toLowerCase()) ||
+          (!!phone && typedPhone.ok && typedPhone.e164 === phone);
+        if (!typed || !matches) {
           throw new TRPCError({
             code: "BAD_REQUEST",
-            message: "البريد الإلكتروني غير مطابق لبريد حسابك.",
+            message:
+              phone && !email
+                ? "رقم الهاتف غير مطابق لرقم حسابك."
+                : "البريد الإلكتروني غير مطابق لبريد حسابك.",
           });
         }
         await deleteAccountCompletely(ctx.user.id);

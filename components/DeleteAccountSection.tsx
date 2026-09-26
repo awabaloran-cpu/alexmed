@@ -4,19 +4,33 @@ import { useEffect, useRef, useState } from "react";
 import { signOut } from "next-auth/react";
 import { Loader2, Trash2 } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
+import { formatPhoneForDisplay, parsePhone } from "@/lib/phone";
 
 // "حذف حسابي" on /account (linked from the privacy policy as
 // /account#delete-account, and required by Google Play for apps with
 // accounts). Permanent — the server deletes the account, every file and all
-// study data (lib/db-account.ts). The student re-types their email first.
-export default function DeleteAccountSection({ email }: { email: string }) {
+// study data (lib/db-account.ts). The student re-types their email first —
+// or their phone number, for a phone sign-up account without an email.
+export default function DeleteAccountSection({
+  identifier,
+  kind,
+}: {
+  identifier: string;
+  kind: "email" | "phone";
+}) {
   const [open, setOpen] = useState(false);
   const [confirm, setConfirm] = useState("");
   const remove = trpc.auth.deleteAccount.useMutation({
     onSuccess: () => signOut({ callbackUrl: "/login?deleted=1" }),
   });
+  const typed = confirm.trim();
   const matches =
-    !!email && confirm.trim().toLowerCase() === email.trim().toLowerCase();
+    kind === "email"
+      ? typed.toLowerCase() === identifier.trim().toLowerCase()
+      : (() => {
+          const parsed = parsePhone(typed);
+          return parsed.ok && parsed.e164 === identifier;
+        })();
 
   // The policy links here as /account#delete-account; this section renders
   // after the page loads, so the browser's own anchor jump misses it.
@@ -48,18 +62,30 @@ export default function DeleteAccountSection({ email }: { email: string }) {
         <form
           onSubmit={event => {
             event.preventDefault();
-            if (matches) remove.mutate({ confirmEmail: confirm });
+            if (matches) remove.mutate({ confirm: typed });
           }}
         >
           <label>
-            للتأكيد اكتب بريدك الإلكتروني: <bdi dir="ltr">{email}</bdi>
+            {kind === "email"
+              ? "للتأكيد اكتب بريدك الإلكتروني:"
+              : "للتأكيد اكتب رقم هاتفك:"}{" "}
+            <bdi dir="ltr">
+              {kind === "phone"
+                ? formatPhoneForDisplay(identifier)
+                : identifier}
+            </bdi>
             <input
-              type="email"
+              type={kind === "email" ? "email" : "tel"}
+              inputMode={kind === "email" ? "email" : "tel"}
               dir="ltr"
               value={confirm}
               onChange={event => setConfirm(event.target.value)}
               autoComplete="off"
-              placeholder={email}
+              placeholder={
+                kind === "phone"
+                  ? formatPhoneForDisplay(identifier)
+                  : identifier
+              }
             />
           </label>
           {remove.error && (

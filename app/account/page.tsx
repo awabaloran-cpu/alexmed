@@ -12,6 +12,7 @@ import {
   Users,
 } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
+import { formatPhoneForDisplay } from "@/lib/phone";
 import { UsernameCard } from "@/components/sharing/UsernameCard";
 import DeleteAccountSection from "@/components/DeleteAccountSection";
 
@@ -65,7 +66,12 @@ export default function AccountPage() {
           <h1>
             مرحبًا، <em>{session?.user?.name || "طالب"}.</em>
           </h1>
-          <p>{session?.user?.email}</p>
+          <p dir="ltr" style={{ textAlign: "right" }}>
+            {session?.user?.email ||
+              (profileQuery.data?.phone
+                ? formatPhoneForDisplay(profileQuery.data.phone)
+                : "")}
+          </p>
         </div>
       </div>
 
@@ -200,9 +206,17 @@ export default function AccountPage() {
         · <Link href="/terms">سياسة الاستخدام</Link>
       </p>
 
-      {session?.user?.email && (
-        <DeleteAccountSection email={session.user.email} />
-      )}
+      {profileQuery.data?.email ? (
+        <DeleteAccountSection
+          identifier={profileQuery.data.email}
+          kind="email"
+        />
+      ) : profileQuery.data?.phone ? (
+        <DeleteAccountSection
+          identifier={profileQuery.data.phone}
+          kind="phone"
+        />
+      ) : null}
     </section>
   );
 }

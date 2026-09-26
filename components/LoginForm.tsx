@@ -22,7 +22,8 @@ export default function LoginForm({
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [email, setEmail] = useState("");
+  // Phone number (phone sign-up accounts) or email (older / email accounts).
+  const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   // The Google OAuth path (unlike Credentials' redirect:false) does a full
   // redirect back here with ?error=... on failure — e.g. after
@@ -41,7 +42,7 @@ export default function LoginForm({
     setLoading(true);
 
     const result = await signIn("credentials", {
-      email,
+      identifier,
       password,
       redirect: false,
     });
@@ -58,7 +59,7 @@ export default function LoginForm({
           ? SUSPENDED_MESSAGE_AR
           : result.code === "too_many_attempts"
             ? TOO_MANY_ATTEMPTS_MESSAGE_AR
-            : "البريد الإلكتروني أو كلمة المرور غير صحيحة."
+            : "رقم الهاتف (أو البريد) أو كلمة المرور غير صحيحة."
       );
       return;
     }
@@ -92,15 +93,17 @@ export default function LoginForm({
 
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="space-y-2">
-          <Label htmlFor="email">البريد الإلكتروني</Label>
+          <Label htmlFor="identifier">رقم الهاتف أو البريد الإلكتروني</Label>
           <Input
-            id="email"
-            type="email"
+            id="identifier"
+            type="text"
+            inputMode="email"
             required
             dir="ltr"
-            value={email}
-            onChange={e => setEmail(e.target.value)}
-            autoComplete="email"
+            value={identifier}
+            onChange={e => setIdentifier(e.target.value)}
+            autoComplete="username"
+            placeholder="07X XXX XXXX"
           />
         </div>
         <div className="space-y-2">

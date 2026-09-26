@@ -1,54 +1,49 @@
-import { createUser, getUserByEmail } from "@/lib/db";
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { createAccountWithVerifiedPhone } from "@/lib/db-phone";
+import { phoneSignupError } from "@/lib/phone-signup-http";
 
+// Step 3 of phone sign-up (RegisterForm): creates the account from a phone
+// number whose SMS code was already confirmed (verificationId). There is
+// no other way to create a password account — a number is mandatory and
+// verified; Google sign-in (lib/auth.ts) stays as it is.
 const registerSchema = z.object({
-  email: z.string().email().max(320),
-  // bcrypt only uses the first 72 bytes; the cap stops megabyte-long
+  verificationId: z.string().uuid(),
+  // bcrypt only uses the first 72 bytes; the caps stop megabyte-long
   // passwords/names from being hashed or stored at all.
   password: z
     .string()
-    .min(8, "Password must be at least 8 characters")
-    .max(128, "Password is too long"),
-  name: z.string().max(100).optional(),
+    .min(8, "كلمة المرور لازم تكون 8 أحرف على الأقل.")
+    .max(128, "كلمة المرور طويلة جداً."),
+  name: z
+    .string()
+    .trim()
+    .min(2, "اكتب اسمك (حرفين على الأقل).")
+    .max(100, "الاسم طويل جداً."),
 });
 
 export async function POST(request: Request) {
-  const body = await request.json().catch(() => null);
-  const parsed = registerSchema.safeParse(body);
-
+  const parsed = registerSchema.safeParse(
+    await request.json().catch(() => null)
+  );
   if (!parsed.success) {
     return NextResponse.json(
-      { error: parsed.error.issues[0]?.message ?? "Invalid input" },
+      { error: parsed.error.issues[0]?.message ?? "بيانات غير صالحة." },
       { status: 400 }
     );
   }
 
-  const { email, password, name } = parsed.data;
-
-  // Wrapping the existence check too (not just createUser below) — a
-  // transient DB error here previously propagated as an unhandled
-  // exception, which Next.js turns into a bodyless 500 the client's
-  // `response.json()` can't parse, surfacing as a generic "unexpected
-  // error" instead of a real, actionable message.
   try {
-    const existing = await getUserByEmail(email.toLowerCase().trim());
-    if (existing) {
-      return NextResponse.json(
-        { error: "An account with this email already exists." },
-        { status: 409 }
-      );
-    }
-
-    const user = await createUser({ email, password, name });
+    const result = await createAccountWithVerifiedPhone(parsed.data);
+    if (!result.ok) return phoneSignupError(result.error);
     return NextResponse.json(
-      { id: user.id, email: user.email },
+      { id: result.userId, phone: result.phone },
       { status: 201 }
     );
   } catch (error) {
     console.error("[Register] Failed to create user:", error);
     return NextResponse.json(
-      { error: "Could not create account." },
+      { error: "تعذّر إنشاء الحساب. حاول مرة ثانية." },
       { status: 500 }
     );
   }

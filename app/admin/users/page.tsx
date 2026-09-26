@@ -112,7 +112,7 @@ export default function AdminUsersPage() {
                       href={`/admin/users/${user.id}`}
                       className="hover:underline"
                     >
-                      {user.email}
+                      <bdi dir="ltr">{user.email ?? user.phone ?? "—"}</bdi>
                     </Link>
                   </TableCell>
                   <TableCell>{user.name || "—"}</TableCell>

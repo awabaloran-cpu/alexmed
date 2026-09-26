@@ -39,7 +39,13 @@ export const userPlanEnum = pgEnum("user_plan", ["free", "premium"]);
  */
 export const users = pgTable("users", {
   id: uuid("id").defaultRandom().primaryKey(),
-  email: varchar("email", { length: 320 }).notNull().unique(),
+  // Nullable since phone sign-up: a phone account has no email. Existing
+  // email / Google accounts keep theirs (unique still holds for non-null).
+  email: varchar("email", { length: 320 }).unique(),
+  // Verified mobile number in E.164 (+9627…) — set only after an SMS code
+  // was confirmed (lib/db-phone.ts). Login by phone matches this column.
+  phone: varchar("phone", { length: 20 }).unique(),
+  phoneVerifiedAt: timestamp("phoneVerifiedAt", { withTimezone: true }),
   passwordHash: text("passwordHash"),
   name: text("name"),
   emailVerified: timestamp("emailVerified", { withTimezone: true }),
@@ -2259,3 +2265,39 @@ export const examFocusBookmarks = pgTable(
 
 export type BookShare = typeof bookShares.$inferSelect;
 export type Notification = typeof notifications.$inferSelect;
+
+// 📱 One row per SMS verification code sent (Vonage Verify, lib/sms/vonage.ts).
+// Drives the send limits (per number and per device), links a confirmed
+// number to exactly one account creation (status → consumed), and expires.
+// ipHash is a salted SHA-256 of the requester's IP — enough for rate
+// limiting, never the raw address.
+export const phoneVerifications = pgTable(
+  "phone_verifications",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    phone: varchar("phone", { length: 20 }).notNull(),
+    purpose: text("purpose").default("signup").notNull(),
+    providerRequestId: text("providerRequestId"),
+    // pending → verified → consumed; failed when the code can't be checked
+    // any more (too many wrong codes / expired at the provider).
+    status: text("status").default("pending").notNull(),
+    attempts: integer("attempts").default(0).notNull(),
+    ipHash: varchar("ipHash", { length: 64 }),
+    createdAt: timestamp("createdAt", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    expiresAt: timestamp("expiresAt", { withTimezone: true }).notNull(),
+    verifiedAt: timestamp("verifiedAt", { withTimezone: true }),
+    consumedAt: timestamp("consumedAt", { withTimezone: true }),
+  },
+  table => ({
+    phoneCreatedIdx: index("phone_verifications_phone_created_at_idx").on(
+      table.phone,
+      table.createdAt
+    ),
+    ipCreatedIdx: index("phone_verifications_ip_created_at_idx").on(
+      table.ipHash,
+      table.createdAt
+    ),
+  })
+);

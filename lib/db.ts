@@ -1,11 +1,9 @@
-import bcrypt from "bcryptjs";
 import { and, count, desc, eq, inArray } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import {
   cards,
   decks,
-  InsertUser,
   mirrorBatches,
   mirrorJobs,
   mirrorPageImages,
@@ -67,33 +65,24 @@ export async function getUserByEmail(email: string) {
   return result.length > 0 ? result[0] : undefined;
 }
 
+// Phone login — `phone` must already be E.164 (lib/phone.ts's parsePhone).
+export async function getUserByPhone(phone: string) {
+  const db = getDb();
+  if (!db) return undefined;
+  const result = await db
+    .select()
+    .from(users)
+    .where(eq(users.phone, phone))
+    .limit(1);
+  return result.length > 0 ? result[0] : undefined;
+}
+
 export async function getUserById(id: string) {
   const db = getDb();
   if (!db) return undefined;
 
   const result = await db.select().from(users).where(eq(users.id, id)).limit(1);
   return result.length > 0 ? result[0] : undefined;
-}
-
-export async function createUser(input: {
-  email: string;
-  password: string;
-  name?: string | null;
-}) {
-  const db = getDb();
-  if (!db) {
-    throw new Error("Database not available");
-  }
-
-  const passwordHash = await bcrypt.hash(input.password, 10);
-  const values: InsertUser = {
-    email: input.email.toLowerCase().trim(),
-    passwordHash,
-    name: input.name ?? null,
-  };
-
-  const [created] = await db.insert(users).values(values).returning();
-  return created;
 }
 
 export async function touchLastSignedIn(id: string) {
@@ -114,6 +103,7 @@ export async function getUserProfileForAccount(userId: string) {
     .select({
       id: users.id,
       email: users.email,
+      phone: users.phone,
       name: users.name,
       plan: users.plan,
       planExpiresAt: users.planExpiresAt,
