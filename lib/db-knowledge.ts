@@ -3,7 +3,17 @@
 // only reads them for the generators, cleans V1 output on an explicit
 // rebuild, and assembles the Coverage Matrix:
 //   Knowledge Item → Exam Focus card → Flashcard(s) → Question(s) → pages.
-import { and, asc, count, eq, inArray, isNotNull, isNull } from "drizzle-orm";
+import {
+  and,
+  asc,
+  count,
+  eq,
+  inArray,
+  isNotNull,
+  isNull,
+  sql,
+  type AnyColumn,
+} from "drizzle-orm";
 import {
   bookCards,
   bookChapters,
@@ -96,6 +106,58 @@ export async function getChapterOutputSources(chapterId: string) {
     cards: { knowledge: counted(cardKnowledge), v1: counted(cardV1) },
     mcqs: { knowledge: counted(mcqKnowledge), v1: counted(mcqV1) },
   };
+}
+
+// Same counts for every chapter of a book in two grouped queries (the
+// coverage panel needs all of them at once — never one round trip per
+// chapter).
+export async function getBookOutputSources(bookId: string) {
+  const db = getDb();
+  if (!db) return [];
+  const chapters = await db
+    .select({ id: bookChapters.id })
+    .from(bookChapters)
+    .where(eq(bookChapters.bookId, bookId));
+  const ids = chapters.map(chapter => chapter.id);
+  if (!ids.length) return [];
+  const knowledgeFlag = (column: AnyColumn) =>
+    sql<boolean>`${column} is not null`;
+  const [cardRows, mcqRows] = await Promise.all([
+    db
+      .select({
+        chapterId: bookCards.chapterId,
+        fromKnowledge: knowledgeFlag(bookCards.knowledgeItemId),
+        n: count(),
+      })
+      .from(bookCards)
+      .where(inArray(bookCards.chapterId, ids))
+      .groupBy(bookCards.chapterId, knowledgeFlag(bookCards.knowledgeItemId)),
+    db
+      .select({
+        chapterId: bookMcqs.chapterId,
+        fromKnowledge: knowledgeFlag(bookMcqs.knowledgeItemId),
+        n: count(),
+      })
+      .from(bookMcqs)
+      .where(inArray(bookMcqs.chapterId, ids))
+      .groupBy(bookMcqs.chapterId, knowledgeFlag(bookMcqs.knowledgeItemId)),
+  ]);
+  const tally = (
+    rows: { chapterId: string; fromKnowledge: boolean; n: number }[],
+    chapterId: string
+  ) => {
+    const out = { knowledge: 0, v1: 0 };
+    for (const row of rows) {
+      if (row.chapterId !== chapterId) continue;
+      out[row.fromKnowledge ? "knowledge" : "v1"] += Number(row.n);
+    }
+    return out;
+  };
+  return ids.map(chapterId => ({
+    chapterId,
+    cards: tally(cardRows, chapterId),
+    mcqs: tally(mcqRows, chapterId),
+  }));
 }
 
 // Explicit "rebuild from the knowledge base" only: removes the chapter's V1

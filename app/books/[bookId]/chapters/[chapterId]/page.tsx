@@ -8,12 +8,10 @@ import {
   ChevronLeft,
   ChevronRight,
   CircleAlert,
-  Layers3,
   Loader2,
   List,
   Mic,
   Printer,
-  RotateCcw,
   Search,
   Send,
   Sparkles,
@@ -24,10 +22,11 @@ import {
 import { trpc } from "@/lib/trpc-client";
 import { findSourceHighlight } from "@/lib/text-source-match";
 import BookPageViewer from "@/components/BookPageViewer";
-import McqCard from "@/components/McqCard";
 import QuizMode from "@/components/study/QuizMode";
 import FlashcardsMode from "@/components/study/FlashcardsMode";
 import SummaryMode from "@/components/study/SummaryMode";
+import PartStudyLauncher from "@/components/study/PartStudyLauncher";
+import { CARD_TYPE_LABEL_AR, questionTypeLabel } from "@/lib/knowledge-labels";
 import RichText from "@/components/assistant/RichText";
 import {
   isSpeechRecognitionSupported,
@@ -62,10 +61,9 @@ const CHAT_SCOPE_LABELS: Record<ChatScope, string> = {
 // instead of a tab — everything else (شرح/مصطلحات/بطاقات/اختبار/ملاحظاتي/
 // اسألني) moved into a persistent right-hand assistant panel, per StudyOS's
 // reader layout: [فصول الكتاب] [صفحة PDF] [المساعد + تبويبات]. "اسألني" is
-// now real (PR5: RAG chat) — "اختبرني الآن" (an adaptive quiz FLOW, distinct
-// from just asking the chat to quiz you conversationally) stays a
-// placeholder for PR6's error-tracking/quiz work; showing "قريبًا" there is
-// honest, not a stub pretending to work.
+// now real (PR5: RAG chat). The disabled "اختبرني الآن" (قريبًا) tab was
+// removed: a placeholder for a feature that never shipped, and it pushed
+// the tab bar off-screen on desktop.
 const ASSISTANT_TABS: { id: AssistantTab; label: string }[] = [
   { id: "explanation", label: "الشرح" },
   { id: "terms", label: "المصطلحات" },
@@ -74,90 +72,8 @@ const ASSISTANT_TABS: { id: AssistantTab; label: string }[] = [
   { id: "notes", label: "ملاحظاتي" },
   { id: "chat", label: "اسألني" },
 ];
-const COMING_SOON_TABS = ["اختبرني الآن"];
 
 type PendingSelection = { selectedText: string; start: number; end: number };
-
-type FlashcardPreviewData = {
-  questionEn: string;
-  questionAr: string;
-  answerEn: string;
-  answerAr: string;
-  relatedTermEn?: string | null;
-  relatedTermAr?: string | null;
-  sourcePage?: number;
-};
-
-function FlashcardPreview({ card }: { card: FlashcardPreviewData }) {
-  const [revealed, setRevealed] = useState(false);
-  return (
-    <div
-      className="panel-card"
-      style={{ display: "flex", flexDirection: "column", gap: 10 }}
-    >
-      <span className="micro-label">QUESTION / السؤال</span>
-      <strong className="en" dir="ltr" style={{ fontSize: 15 }}>
-        {card.questionEn}
-      </strong>
-      <p style={{ margin: 0, color: "#8a9493", fontSize: 13 }}>
-        {card.questionAr}
-      </p>
-      {!revealed ? (
-        <button
-          type="button"
-          className="secondary-button"
-          onClick={() => setRevealed(true)}
-          style={{ alignSelf: "flex-start", marginTop: 4 }}
-        >
-          إظهار الإجابة <span className="en">· Show answer</span>
-        </button>
-      ) : (
-        <div style={{ borderTop: "1px solid #eee6dc", paddingTop: 12 }}>
-          <span className="micro-label">ANSWER / الإجابة</span>
-          <p
-            className="en"
-            dir="ltr"
-            style={{
-              whiteSpace: "pre-line",
-              fontWeight: 600,
-              margin: "8px 0 6px",
-            }}
-          >
-            {card.answerEn}
-          </p>
-          <p style={{ whiteSpace: "pre-line", margin: 0, color: "#65716f" }}>
-            {card.answerAr}
-          </p>
-          {(card.relatedTermEn || card.relatedTermAr) && (
-            <div
-              style={{
-                marginTop: 10,
-                padding: "8px 10px",
-                background: "#f6f2eb",
-                borderRadius: 8,
-              }}
-            >
-              <span className="micro-label">TERM / المصطلح</span>
-              <strong
-                className="en"
-                dir="ltr"
-                style={{ display: "block", marginTop: 4 }}
-              >
-                {card.relatedTermEn}
-              </strong>
-              {card.relatedTermAr && <small>{card.relatedTermAr}</small>}
-            </div>
-          )}
-          {card.sourcePage && (
-            <small style={{ display: "block", marginTop: 8, color: "#9a9186" }}>
-              Source page / صفحة المصدر: {card.sourcePage}
-            </small>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
 
 export default function ChapterDetailPage() {
   const params = useParams<{ bookId: string; chapterId: string }>();
@@ -334,13 +250,8 @@ export default function ChapterDetailPage() {
   const createCard = trpc.annotations.createCard.useMutation();
   const submitMcqAttempt = trpc.books.submitMcqAttempt.useMutation();
 
-  // ── بطاقات (PR14) — a real flip session over this chapter's existing
-  // bookCards, rating through the existing FSRS scheduler (rateBookCard).
-  // Snapshotting the queue at "ابدأ المراجعة" time keeps the session stable
-  // even if the underlying query refetches mid-session.
-  const [studyQueue, setStudyQueue] = useState<typeof cards>([]);
-  const [studyIndex, setStudyIndex] = useState(0);
-  const [studyShowAnswer, setStudyShowAnswer] = useState(false);
+  // Ratings from the full-screen FlashcardsMode go through the FSRS
+  // scheduler (rateBookCard) — the one review implementation.
   const rateCard = trpc.books.rateCard.useMutation({
     onSuccess: () =>
       utils.books.getChapter.invalidate({ id: params.chapterId }),
@@ -481,6 +392,8 @@ export default function ChapterDetailPage() {
           explanationEn: mcq.explanationEn,
           validationStatus: mcq.validationStatus,
           validationNote: mcq.validationNote,
+          sourcePage: mcq.sourcePage,
+          questionType: questionTypeLabel(mcq.questionType),
         }))}
         onBack={closeStudyMode}
         onSubmit={(mcqId, selectedIndex) =>
@@ -513,6 +426,11 @@ export default function ChapterDetailPage() {
             term => term.en.toLowerCase() === card.relatedTermEn?.toLowerCase()
           )?.ar,
           sourcePage: card.sourcePage,
+          cardType: card.cardType
+            ? CARD_TYPE_LABEL_AR[
+                card.cardType as keyof typeof CARD_TYPE_LABEL_AR
+              ]
+            : undefined,
         }))}
         onBack={closeStudyMode}
         onRate={(cardId, rating) => rateCard.mutate({ cardId, rating })}
@@ -753,7 +671,10 @@ export default function ChapterDetailPage() {
 
         {/* عمود المساعد — تبويبات الشرح/المصطلحات/البطاقات/الاختبار/ملاحظاتي */}
         <aside style={{ flex: "2 1 280px", minWidth: 260 }}>
-          <div className="cards-toolbar" style={{ gap: 6, marginBottom: 14 }}>
+          <div
+            className="cards-toolbar"
+            style={{ gap: 6, marginBottom: 14, flexWrap: "wrap" }}
+          >
             {ASSISTANT_TABS.map(t => (
               <button
                 type="button"
@@ -772,18 +693,6 @@ export default function ChapterDetailPage() {
                 }}
               >
                 {t.label}
-              </button>
-            ))}
-            {COMING_SOON_TABS.map(label => (
-              <button
-                type="button"
-                key={label}
-                className="filter-button"
-                disabled
-                title="قريبًا"
-                style={{ opacity: 0.5, cursor: "not-allowed" }}
-              >
-                {label}
               </button>
             ))}
           </div>
@@ -1258,289 +1167,56 @@ export default function ChapterDetailPage() {
             </div>
           )}
 
-          {assistantTab === "cards" && !studyQueue.length && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              {!!cards.length && (
-                <button
-                  type="button"
-                  className="primary-button"
-                  onClick={() => {
-                    setStudyQueue(cards);
-                    setStudyIndex(0);
-                    setStudyShowAnswer(false);
-                  }}
-                >
-                  <Layers3 size={16} /> ابدأ المراجعة ({cards.length})
-                </button>
-              )}
-              {(currentPage ? pageCardsAndMcqs.cards : cards).map(card => {
-                const relatedTerm = terms.find(
-                  term =>
-                    term.en.toLowerCase() === card.relatedTermEn?.toLowerCase()
-                );
-                return (
-                  <FlashcardPreview
-                    key={card.id}
-                    card={{
-                      questionEn: card.questionEn,
-                      questionAr: card.questionAr,
-                      answerEn: card.answerEn,
-                      answerAr: card.answerAr,
-                      relatedTermEn: card.relatedTermEn,
-                      relatedTermAr: relatedTerm?.ar,
-                      sourcePage: card.sourcePage,
-                    }}
-                  />
-                );
-              })}
-              {!cards.length ? (
-                <button
-                  type="button"
-                  className="secondary-button"
-                  disabled={generateFlashcards.isPending}
-                  onClick={() =>
-                    generateFlashcards.mutate({ chapterId: params.chapterId })
-                  }
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 6,
-                    width: "fit-content",
-                  }}
-                >
-                  {generateFlashcards.isPending ? (
-                    <Loader2 size={14} className="spin" />
-                  ) : (
-                    <Sparkles size={14} />
-                  )}
-                  <span>توليد البطاقات لهذا الفصل</span>
-                </button>
-              ) : (
-                !(currentPage ? pageCardsAndMcqs.cards : cards).length && (
-                  <p>لا توجد بطاقات لهذه الصفحة.</p>
-                )
-              )}
-            </div>
-          )}
-
-          {assistantTab === "cards" &&
-            !!studyQueue.length &&
-            (studyIndex >= studyQueue.length ? (
-              <div className="panel-card" style={{ textAlign: "center" }}>
-                <span className="micro-label">انتهت المراجعة</span>
-                <p style={{ margin: "10px 0 18px" }}>
-                  راجعت {studyQueue.length} بطاقة من هذا الفصل. 🎉
-                </p>
-                <div
-                  style={{ display: "flex", gap: 8, justifyContent: "center" }}
-                >
-                  <button
-                    type="button"
-                    className="secondary-button"
-                    onClick={() => {
-                      setStudyIndex(0);
-                      setStudyShowAnswer(false);
-                    }}
-                  >
-                    <RotateCcw size={14} /> إعادة المراجعة
-                  </button>
-                  <button
-                    type="button"
-                    className="secondary-button"
-                    onClick={() => setStudyQueue([])}
-                  >
-                    رجوع لقائمة البطاقات
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <div className="panel-card">
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                    marginBottom: 14,
-                  }}
-                >
-                  <span className="micro-label">
-                    بطاقة {studyIndex + 1} / {studyQueue.length}
-                  </span>
-                  <button
-                    type="button"
-                    className="secondary-button"
-                    onClick={() => setStudyQueue([])}
-                  >
-                    إنهاء
-                  </button>
-                </div>
-
-                <div>
-                  <span className="micro-label">QUESTION / السؤال</span>
-                  <p
-                    className="en"
-                    dir="ltr"
-                    style={{ fontSize: 15, fontWeight: 600 }}
-                  >
-                    {studyQueue[studyIndex].questionEn}
-                  </p>
-                  <p style={{ color: "#8a9493", fontSize: 13 }}>
-                    {studyQueue[studyIndex].questionAr}
-                  </p>
-                </div>
-
-                {!studyShowAnswer ? (
-                  <button
-                    type="button"
-                    className="primary-button"
-                    style={{ marginTop: 14 }}
-                    onClick={() => setStudyShowAnswer(true)}
-                  >
-                    إظهار الإجابة
-                  </button>
-                ) : (
-                  <>
-                    <div style={{ marginTop: 14 }}>
-                      <span className="micro-label">ANSWER / الإجابة</span>
-                      <p
-                        className="en"
-                        dir="ltr"
-                        style={{ whiteSpace: "pre-line", fontWeight: 600 }}
-                      >
-                        {studyQueue[studyIndex].answerEn}
-                      </p>
-                      <p style={{ whiteSpace: "pre-line", color: "#65716f" }}>
-                        {studyQueue[studyIndex].answerAr}
-                      </p>
-                    </div>
-                    <div
-                      style={{
-                        display: "grid",
-                        gridTemplateColumns: "repeat(4, 1fr)",
-                        gap: 6,
-                        marginTop: 16,
-                      }}
-                    >
-                      {(
-                        [
-                          { rating: "again", label: "لم أتذكر" },
-                          { rating: "hard", label: "صعبة" },
-                          { rating: "good", label: "جيدة" },
-                          { rating: "easy", label: "سهلة" },
-                        ] as const
-                      ).map(option => (
-                        <button
-                          key={option.rating}
-                          type="button"
-                          className="secondary-button"
-                          disabled={rateCard.isPending}
-                          onClick={() => {
-                            rateCard.mutate({
-                              cardId: studyQueue[studyIndex].id,
-                              rating: option.rating,
-                            });
-                            setStudyIndex(i => i + 1);
-                            setStudyShowAnswer(false);
-                          }}
-                        >
-                          {option.label}
-                        </button>
-                      ))}
-                    </div>
-                  </>
-                )}
-              </div>
-            ))}
-
-          {assistantTab === "mcqs" && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-              {!!mcqs.length && (
-                <button
-                  type="button"
-                  className="secondary-button"
-                  disabled={validateMcqs.isPending}
-                  onClick={() =>
-                    chapter && validateMcqs.mutate({ chapterId: chapter.id })
-                  }
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 6,
-                    width: "fit-content",
-                  }}
-                >
-                  {validateMcqs.isPending ? (
-                    <Loader2 size={14} className="spin" />
-                  ) : (
-                    <CheckCircle2 size={14} />
-                  )}
-                  <span>التحقق من صحة الأسئلة</span>
-                </button>
-              )}
-              {validateMcqs.data && (
-                <p style={{ fontSize: 11, color: "#5a5147" }}>
-                  صحيحة: {validateMcqs.data.valid} · تحتاج مراجعة:{" "}
-                  {validateMcqs.data.flagged}
-                  {validateMcqs.data.generated > 0 &&
-                    ` · تم توليد ${validateMcqs.data.generated} سؤال جديد لتغطية صفحات ناقصة`}
-                </p>
-              )}
-              {(currentPage ? pageCardsAndMcqs.mcqs : mcqs).map(mcq => (
-                <div key={mcq.id}>
-                  {mcq.validationStatus === "flagged" && (
-                    <div
-                      className="inline-alert warning"
-                      style={{ marginBottom: 6 }}
-                    >
-                      <CircleAlert size={14} />
-                      <span>
-                        هذا السؤال يحتاج مراجعة
-                        {mcq.validationNote ? `: ${mcq.validationNote}` : ""}
-                      </span>
-                    </div>
-                  )}
-                  <McqCard
-                    mcq={{
-                      id: mcq.id,
-                      questionEn: mcq.questionEn,
-                      choices: mcq.choices as string[],
-                      correctIndex: mcq.correctIndex,
-                      explanationEn: mcq.explanationEn,
-                    }}
-                    onSubmit={(mcqId, selectedIndex) =>
-                      submitMcqAttempt.mutateAsync({ mcqId, selectedIndex })
+          {(assistantTab === "cards" || assistantTab === "mcqs") && (
+            <PartStudyLauncher
+              kind={assistantTab}
+              bookId={params.bookId}
+              startPage={chapter.startPage}
+              endPage={chapter.endPage}
+              total={assistantTab === "cards" ? cards.length : mcqs.length}
+              flagged={
+                assistantTab === "mcqs"
+                  ? mcqs.filter(mcq => mcq.validationStatus === "flagged")
+                      .length
+                  : 0
+              }
+              onThisPage={
+                assistantTab === "cards"
+                  ? pageCardsAndMcqs.cards.length
+                  : pageCardsAndMcqs.mcqs.length
+              }
+              currentPageNumber={currentPage?.pageNumber}
+              onOpen={() => setStudyMode(assistantTab)}
+              onGenerate={
+                isSharedPack
+                  ? undefined
+                  : () =>
+                      (assistantTab === "cards"
+                        ? generateFlashcards
+                        : generateMcqs
+                      ).mutate({ chapterId: params.chapterId })
+              }
+              generating={
+                assistantTab === "cards"
+                  ? generateFlashcards.isPending
+                  : generateMcqs.isPending
+              }
+              error={
+                (assistantTab === "cards"
+                  ? generateFlashcards.error
+                  : (generateMcqs.error ?? validateMcqs.error)
+                )?.message
+              }
+              validation={
+                assistantTab === "mcqs" && mcqs.length && !isSharedPack
+                  ? {
+                      pending: validateMcqs.isPending,
+                      result: validateMcqs.data ?? null,
+                      run: () => validateMcqs.mutate({ chapterId: chapter.id }),
                     }
-                  />
-                </div>
-              ))}
-              {!mcqs.length ? (
-                <button
-                  type="button"
-                  className="secondary-button"
-                  disabled={generateMcqs.isPending}
-                  onClick={() =>
-                    generateMcqs.mutate({ chapterId: params.chapterId })
-                  }
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 6,
-                    width: "fit-content",
-                  }}
-                >
-                  {generateMcqs.isPending ? (
-                    <Loader2 size={14} className="spin" />
-                  ) : (
-                    <Sparkles size={14} />
-                  )}
-                  <span>توليد اختبار لهذا الفصل</span>
-                </button>
-              ) : (
-                !(currentPage ? pageCardsAndMcqs.mcqs : mcqs).length && (
-                  <p>لا توجد أسئلة لهذه الصفحة.</p>
-                )
-              )}
-            </div>
+                  : undefined
+              }
+            />
           )}
 
           {assistantTab === "notes" && (

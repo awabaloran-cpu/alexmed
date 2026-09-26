@@ -119,7 +119,7 @@ export default function BookUploadPage() {
         body: JSON.stringify({
           fileName: file.name,
           fileSize: file.size,
-          contentType: file.type || "application/pdf",
+          contentType: "application/pdf",
         }),
       });
       const uploadUrlData = await uploadUrlResponse.json();
@@ -129,7 +129,7 @@ export default function BookUploadPage() {
       await putFileWithProgress(
         uploadUrlData.uploadUrl,
         file,
-        file.type || "application/pdf",
+        "application/pdf",
         setUploadProgress
       );
 

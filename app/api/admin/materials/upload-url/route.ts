@@ -59,7 +59,10 @@ export async function POST(request: Request) {
   }
 
   const key = `admin-materials/${randomUUID()}-${fileName.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
-  const contentType = body.contentType || "application/pdf";
+  // Always PDF: only .pdf names are accepted above, and the type is signed
+  // into the upload URL — a client-chosen type (e.g. text/html) would let a
+  // file be served back from storage as a web page.
+  const contentType = "application/pdf";
 
   try {
     const uploadUrl = await storageGetUploadUrl(key, contentType);

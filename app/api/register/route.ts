@@ -3,9 +3,14 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 const registerSchema = z.object({
-  email: z.string().email(),
-  password: z.string().min(8, "Password must be at least 8 characters"),
-  name: z.string().optional(),
+  email: z.string().email().max(320),
+  // bcrypt only uses the first 72 bytes; the cap stops megabyte-long
+  // passwords/names from being hashed or stored at all.
+  password: z
+    .string()
+    .min(8, "Password must be at least 8 characters")
+    .max(128, "Password is too long"),
+  name: z.string().max(100).optional(),
 });
 
 export async function POST(request: Request) {

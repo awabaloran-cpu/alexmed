@@ -63,7 +63,7 @@ import {
 import { invokeLLM } from "../llm";
 import { generationBudget } from "../chapter-generation";
 import {
-  getChapterOutputSources,
+  getBookOutputSources,
   getKnowledgeCoverageMatrix,
 } from "../db-knowledge";
 import { staleBookChapterProcessingCutoff } from "../queue/claim";
@@ -229,18 +229,11 @@ export const booksRouter = router({
   getKnowledgeCoverage: protectedProcedure
     .input(z.object({ bookId: z.string() }))
     .query(async ({ ctx, input }) => {
-      const access = await requireBookAccess(ctx.user.id, input.bookId);
-      const matrix = await getKnowledgeCoverageMatrix(input.bookId);
-      const content = await getBookStudyContentForUser(
-        access.ownerId,
-        input.bookId
-      );
-      const chapters = await Promise.all(
-        (content?.chapters ?? []).map(async chapter => ({
-          chapterId: chapter.id,
-          ...(await getChapterOutputSources(chapter.id)),
-        }))
-      );
+      await requireBookAccess(ctx.user.id, input.bookId);
+      const [matrix, chapters] = await Promise.all([
+        getKnowledgeCoverageMatrix(input.bookId),
+        getBookOutputSources(input.bookId),
+      ]);
       return { ...matrix, chapters };
     }),
 

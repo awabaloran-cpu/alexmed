@@ -87,7 +87,7 @@ export default function AdminMaterialUploadPage() {
         body: JSON.stringify({
           fileName: file.name,
           fileSize: file.size,
-          contentType: file.type || "application/pdf",
+          contentType: "application/pdf",
         }),
       });
       const uploadData = await uploadUrlResponse.json();
@@ -96,7 +96,7 @@ export default function AdminMaterialUploadPage() {
 
       const putResponse = await fetch(uploadData.uploadUrl, {
         method: "PUT",
-        headers: { "Content-Type": file.type || "application/pdf" },
+        headers: { "Content-Type": "application/pdf" },
         body: file,
       });
       if (!putResponse.ok)
