@@ -2968,8 +2968,191 @@ export const questionSetAuditEvents = pgTable(
   })
 );
 
+// Public Telegram-style exams: an access/session layer over the EXISTING
+// question-file pipeline. The questions remain in extracted_questions; these
+// tables only publish a safe public entry point and store server-authoritative
+// progress/results for guests and signed-in users.
+export const publicExamStatusEnum = pgEnum("public_exam_status", [
+  "draft",
+  "published",
+  "paused",
+  "archived",
+]);
+
+export const publicExamSessionStatusEnum = pgEnum("public_exam_session_status", [
+  "active",
+  "submitted",
+  "abandoned",
+  "expired",
+]);
+
+export const publicExams = pgTable(
+  "public_exams",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    bookId: uuid("bookId")
+      .notNull()
+      .references(() => books.id, { onDelete: "cascade" }),
+    createdById: uuid("createdById").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    slug: varchar("slug", { length: 160 }).notNull(),
+    title: text("title").notNull(),
+    description: text("description"),
+    status: publicExamStatusEnum("status").default("draft").notNull(),
+    freeQuestionsBeforeLogin: integer("freeQuestionsBeforeLogin")
+      .default(40)
+      .notNull(),
+    questionLimit: integer("questionLimit"),
+    shuffleQuestions: boolean("shuffleQuestions").default(true).notNull(),
+    shuffleOptions: boolean("shuffleOptions").default(false).notNull(),
+    durationSeconds: integer("durationSeconds"),
+    startsAt: timestamp("startsAt", { withTimezone: true }),
+    endsAt: timestamp("endsAt", { withTimezone: true }),
+    publishedAt: timestamp("publishedAt", { withTimezone: true }),
+    pausedAt: timestamp("pausedAt", { withTimezone: true }),
+    archivedAt: timestamp("archivedAt", { withTimezone: true }),
+    createdAt: timestamp("createdAt", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updatedAt", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  table => ({
+    slugUnique: uniqueIndex("public_exams_slug_idx").on(table.slug),
+    statusCreatedIdx: index("public_exams_status_created_at_idx").on(
+      table.status,
+      table.createdAt
+    ),
+    bookIdx: index("public_exams_book_id_idx").on(table.bookId),
+    windowCheck: check(
+      "public_exams_window_check",
+      sql`"startsAt" IS NULL OR "endsAt" IS NULL OR "endsAt" > "startsAt"`
+    ),
+    loginGateCheck: check(
+      "public_exams_free_questions_check",
+      sql`"freeQuestionsBeforeLogin" >= 1`
+    ),
+  })
+);
+
+export const publicExamSessions = pgTable(
+  "public_exam_sessions",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    examId: uuid("examId")
+      .notNull()
+      .references(() => publicExams.id, { onDelete: "cascade" }),
+    userId: uuid("userId").references(() => users.id, { onDelete: "set null" }),
+    anonymousId: varchar("anonymousId", { length: 120 }).notNull(),
+    status: publicExamSessionStatusEnum("status").default("active").notNull(),
+    source: varchar("source", { length: 80 }),
+    utmSource: varchar("utmSource", { length: 120 }),
+    utmMedium: varchar("utmMedium", { length: 120 }),
+    utmCampaign: varchar("utmCampaign", { length: 160 }),
+    utmContent: varchar("utmContent", { length: 160 }),
+    utmTerm: varchar("utmTerm", { length: 160 }),
+    telegramPayload: jsonb("telegramPayload").$type<Record<string, unknown>>(),
+    questionOrder: jsonb("questionOrder").$type<string[]>().notNull(),
+    optionOrderByQuestion: jsonb("optionOrderByQuestion").$type<
+      Record<string, number[]>
+    >(),
+    currentQuestionIndex: integer("currentQuestionIndex").default(0).notNull(),
+    startedAt: timestamp("startedAt", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    expiresAt: timestamp("expiresAt", { withTimezone: true }),
+    submittedAt: timestamp("submittedAt", { withTimezone: true }),
+    score: integer("score"),
+    result: jsonb("result").$type<Record<string, unknown>>(),
+    createdAt: timestamp("createdAt", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updatedAt", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  table => ({
+    examStatusIdx: index("public_exam_sessions_exam_status_idx").on(
+      table.examId,
+      table.status
+    ),
+    userExamIdx: index("public_exam_sessions_user_exam_idx").on(
+      table.userId,
+      table.examId
+    ),
+    anonExamIdx: index("public_exam_sessions_anon_exam_idx").on(
+      table.anonymousId,
+      table.examId
+    ),
+  })
+);
+
+export const publicExamAnswers = pgTable(
+  "public_exam_answers",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    sessionId: uuid("sessionId")
+      .notNull()
+      .references(() => publicExamSessions.id, { onDelete: "cascade" }),
+    questionId: uuid("questionId")
+      .notNull()
+      .references(() => extractedQuestions.id, { onDelete: "cascade" }),
+    questionIndex: integer("questionIndex").notNull(),
+    selectedIndex: integer("selectedIndex").notNull(),
+    correctIndex: integer("correctIndex"),
+    isCorrect: boolean("isCorrect").notNull(),
+    answeredAt: timestamp("answeredAt", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  table => ({
+    sessionQuestionUnique: uniqueIndex(
+      "public_exam_answers_session_question_idx"
+    ).on(table.sessionId, table.questionId),
+    sessionIndexIdx: index("public_exam_answers_session_index_idx").on(
+      table.sessionId,
+      table.questionIndex
+    ),
+  })
+);
+
+export const publicExamEvents = pgTable(
+  "public_exam_events",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    examId: uuid("examId").references(() => publicExams.id, {
+      onDelete: "cascade",
+    }),
+    sessionId: uuid("sessionId").references(() => publicExamSessions.id, {
+      onDelete: "cascade",
+    }),
+    actorId: uuid("actorId").references(() => users.id, { onDelete: "set null" }),
+    anonymousId: varchar("anonymousId", { length: 120 }),
+    event: varchar("event", { length: 48 }).notNull(),
+    meta: jsonb("meta").$type<Record<string, string | number | boolean>>(),
+    createdAt: timestamp("createdAt", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  table => ({
+    examCreatedIdx: index("public_exam_events_exam_created_idx").on(
+      table.examId,
+      table.createdAt
+    ),
+    sessionCreatedIdx: index("public_exam_events_session_created_idx").on(
+      table.sessionId,
+      table.createdAt
+    ),
+  })
+);
+
 export type DoctorProfile = typeof doctorProfiles.$inferSelect;
 export type QuestionSet = typeof questionSets.$inferSelect;
 export type QuestionSetAccessCode = typeof questionSetAccessCodes.$inferSelect;
 export type QuestionSetEntitlement =
   typeof questionSetEntitlements.$inferSelect;
+export type PublicExam = typeof publicExams.$inferSelect;
+export type PublicExamSession = typeof publicExamSessions.$inferSelect;
+export type PublicExamAnswer = typeof publicExamAnswers.$inferSelect;

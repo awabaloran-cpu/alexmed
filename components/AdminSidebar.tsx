@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { signOut, useSession } from "next-auth/react";
 import {
   BarChart3,
+  BookOpenCheck,
   Briefcase,
   GraduationCap,
   LayoutDashboard,
@@ -33,6 +34,12 @@ const NAV_ITEMS = [
     exact: false,
   },
   { href: "/admin/jobs", label: "الوظائف", icon: Briefcase, exact: false },
+  {
+    href: "/admin/public-exams",
+    label: "الامتحانات العامة",
+    icon: BookOpenCheck,
+    exact: false,
+  },
   // 🔒 Protected Doctor Question Sets (pages show a notice while the
   // feature flag is off).
   {

@@ -56,68 +56,11 @@ export async function POST(request: Request) {
     );
   }
 
-<<<<<<< HEAD
-  // Verify idToken with Google
-  const response = await fetch(
-    `https://oauth2.googleapis.com/tokeninfo?id_token=${idToken}`
-  );
-  if (!response.ok) {
-    return NextResponse.json(
-      { error: "رمز Google غير صالح.", code: "invalid_token" },
-      { status: 401, headers: NO_STORE }
-    );
-  }
-
-  const tokenData = await response.json();
-
-  // Robust Audience & Issuer Verification
-  const { aud, iss } = tokenData;
-  const isValidAudience = aud === process.env.GOOGLE_CLIENT_ID;
-  const isValidIssuer = iss === "https://accounts.google.com" || iss === "accounts.google.com";
-
-  if (!isValidAudience) {
-    return NextResponse.json(
-      { error: "رمز Google غير صالح.", code: "invalid_token" },
-      { status: 401, headers: NO_STORE }
-    );
-  }
-
-  if (!isValidIssuer) {
-    return NextResponse.json(
-      { error: "جهة إصدار رمز Google غير صالحة.", code: "invalid_token" },
-      { status: 401, headers: NO_STORE }
-    );
-  }
-
-  const email = tokenData.email as string | undefined;
-  // An ID token without a verified email can neither map to nor create an
-  // account. Refusing here also stops getUserByEmail(undefined) from matching
-  // a phone-only account whose email column is NULL.
-  if (!email) {
-    return NextResponse.json(
-      { error: "لم يصل البريد في الرمز.", code: "invalid_token" },
-      { status: 400, headers: NO_STORE }
-    );
-  }
-
-  const name = tokenData.name as string | undefined;
-
-  // Find or create the user, linking by email as the web's Google provider
-  // does. `id` is left to the database (gen_random_uuid()) — users.id is a
-  // uuid column and rejects app-generated id strings.
   let claims;
   try {
     claims = await verifyGoogleIdToken(parsed.data.idToken, {
       audiences: [APP_WEB_CLIENT_ID, webClientId],
       authorizedParties: mobileClientIds(),
-    });
-=======
-  let claims;
-  try {
-    claims = await verifyGoogleIdToken(parsed.data.idToken, {
-      audiences: [APP_WEB_CLIENT_ID, webClientId],
-      authorizedParties: mobileClientIds(),
->>>>>>> main
     });
   } catch (error) {
     if (error instanceof GoogleTokenError) {

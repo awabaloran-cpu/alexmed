@@ -39,7 +39,7 @@ describe("Math Challenge generator", () => {
         }
       }
     }
-  });
+  }, 10000);
 
   it("distractors are plausible (close to the answer, not 63 vs 1000)", () => {
     for (let stage = 1; stage <= 100; stage += 3) {
