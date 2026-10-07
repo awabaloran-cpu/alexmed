@@ -7,8 +7,6 @@ const PROTECTED_PREFIXES = [
   "doctor.",
   "adminQuestionSets.",
   "adminDoctors.",
-  "publicExams.",
-  "adminPublicExams.",
 ];
 
 const handler = (request: Request) =>

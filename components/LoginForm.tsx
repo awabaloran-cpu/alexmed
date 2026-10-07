@@ -15,10 +15,6 @@ const SUSPENDED_MESSAGE_AR =
 const TOO_MANY_ATTEMPTS_MESSAGE_AR =
   "محاولات دخول كثيرة على هذا البريد. حاول بعد شوي.";
 
-function safeCallbackUrl(value: string | null) {
-  return value?.startsWith("/") && !value.startsWith("//") ? value : "/subjects";
-}
-
 export default function LoginForm({
   googleEnabled,
 }: {
@@ -39,7 +35,6 @@ export default function LoginForm({
   );
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
-  const callbackUrl = safeCallbackUrl(searchParams.get("callbackUrl"));
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
@@ -69,13 +64,13 @@ export default function LoginForm({
       return;
     }
 
-    router.push(callbackUrl);
+    router.push("/subjects");
     router.refresh();
   }
 
   async function handleGoogle() {
     setGoogleLoading(true);
-    await signIn("google", { callbackUrl });
+    await signIn("google", { callbackUrl: "/subjects" });
   }
 
   return (
@@ -148,10 +143,7 @@ export default function LoginForm({
 
       <p className="mt-6 text-center text-sm text-muted-foreground">
         ليس لديك حساب؟{" "}
-        <a
-          href={`/register?callbackUrl=${encodeURIComponent(callbackUrl)}`}
-          className="text-primary underline"
-        >
+        <a href="/register" className="text-primary underline">
           أنشئ حسابًا
         </a>
       </p>

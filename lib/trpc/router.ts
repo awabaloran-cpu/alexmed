@@ -31,7 +31,6 @@ import { studentMaterialsRouter } from "./studentMaterialsRouter";
 import { subjectsRouter } from "./subjectsRouter";
 import { protectedProcedure, publicProcedure, router } from "./trpc";
 import { systemRouter } from "./systemRouter";
-import { adminPublicExamsRouter, publicExamsRouter } from "./publicExamsRouter";
 
 export const appRouter = router({
   system: systemRouter,
@@ -115,7 +114,6 @@ export const appRouter = router({
   mirror: mirrorRouter,
   subjects: subjectsRouter,
   questionFiles: questionFilesRouter,
-  publicExams: publicExamsRouter,
   annotations: annotationsRouter,
   cardMarks: cardMarksRouter,
   chat: chatRouter,
@@ -131,7 +129,6 @@ export const appRouter = router({
   // Admin dashboard's user management (users list/detail/plan/suspend/
   // delete + platform-wide stats) — same adminProcedure gating pattern.
   adminUsers: adminUsersRouter,
-  adminPublicExams: adminPublicExamsRouter,
   // 🔒 Protected Doctor Question Sets (behind DOCTOR_SETS_ENABLED): the
   // doctor's side, the student's side, and admin moderation. Read
   // authorization lives in lib/question-set-access.ts.

@@ -9,7 +9,7 @@ import {
   InputOTPSlot,
 } from "@/components/ui/input-otp";
 import { signIn } from "next-auth/react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { MessageSquareText, Pencil } from "lucide-react";
 import NiroAuthScene from "@/components/niro/NiroAuthScene";
@@ -30,10 +30,6 @@ const STEPS: { id: Step; label: string }[] = [
   { id: "code", label: "كود التحقق" },
   { id: "details", label: "بياناتك" },
 ];
-
-function safeCallbackUrl(value: string | null) {
-  return value?.startsWith("/") && !value.startsWith("//") ? value : "/subjects";
-}
 
 async function postJson(url: string, body: unknown) {
   const response = await fetch(url, {
@@ -57,8 +53,6 @@ export default function RegisterForm({
   googleEnabled: boolean;
 }) {
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const callbackUrl = safeCallbackUrl(searchParams.get("callbackUrl"));
   const [step, setStep] = useState<Step>("phone");
   const [country, setCountry] = useState(DEFAULT_PHONE_COUNTRY);
   const [phoneInput, setPhoneInput] = useState("");
@@ -167,7 +161,7 @@ export default function RegisterForm({
         router.push("/login");
         return;
       }
-      router.push(callbackUrl);
+      router.push("/subjects");
       router.refresh();
     } catch {
       setError("حدث خطأ غير متوقع.");
@@ -178,7 +172,7 @@ export default function RegisterForm({
 
   async function handleGoogle() {
     setGoogleLoading(true);
-    await signIn("google", { callbackUrl });
+    await signIn("google", { callbackUrl: "/subjects" });
   }
 
   const stepIndex = STEPS.findIndex(s => s.id === step);
@@ -416,10 +410,7 @@ export default function RegisterForm({
 
         <p className="mt-4 text-center text-sm text-muted-foreground">
           لديك حساب؟{" "}
-          <a
-            href={`/login?callbackUrl=${encodeURIComponent(callbackUrl)}`}
-            className="text-primary underline"
-          >
+          <a href="/login" className="text-primary underline">
             سجّل الدخول
           </a>
         </p>
