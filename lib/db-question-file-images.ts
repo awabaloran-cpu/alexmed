@@ -168,10 +168,30 @@ export async function saveImageOwnerDecision(
   }
 }
 
+// The next question stage 3 should explain, in file order.
+//
+// Stage 3 runs WHILE stage 2 is still walking the pages (a 5,000-page bank
+// spends hours there, and students were left without explanations for all
+// of it). A question is only handed out once every page that could still
+// give it a picture is settled, so its explanation is as image-aware as
+// before: pages are taken in order, so that means every question before
+// the last one that starts ahead of the first unsettled page. (That last
+// one may run onto the unsettled page — lib/question-file-analysis.ts's
+// pageQuestionCandidates.) With no unsettled page there is no bound.
+//
+// Table names are written out: ${table.column} renders unqualified here
+// and would bind to the inner table.
 export async function getNextPendingExtractedQuestion(bookId: string) {
   const maxAttempts = 3;
   const db = getDb();
   if (!db) return null;
+  // A page stage 2 has yet to finish. One left "processing" by a crashed
+  // run stops counting after a while, as stage 2 itself never returns to it.
+  const unsettledPage = sql`p."bookId" = ${bookId} and (
+    p."status" = 'pending'
+    or (p."status" = 'failed' and p."attemptCount" < ${maxAttempts})
+    or (p."status" = 'processing' and p."updatedAt" > now() - interval '10 minutes')
+  )`;
   const [question] = await db
     .select()
     .from(extractedQuestions)
@@ -179,7 +199,25 @@ export async function getNextPendingExtractedQuestion(bookId: string) {
       and(
         eq(extractedQuestions.bookId, bookId),
         inArray(extractedQuestions.aiStatus, ["pending", "failed"]),
-        sql`${extractedQuestions.aiAttemptCount} < ${maxAttempts}`
+        sql`${extractedQuestions.aiAttemptCount} < ${maxAttempts}`,
+        sql`(
+          not exists (select 1 from "question_file_pages" p where ${unsettledPage})
+          or "extracted_questions"."orderIndex" < (
+            select max(q2."orderIndex") from "extracted_questions" q2
+            where q2."bookId" = ${bookId}
+              and q2."orderIndex" < coalesce(
+                (
+                  select min(q3."orderIndex") from "extracted_questions" q3
+                  where q3."bookId" = ${bookId}
+                    and q3."sourcePage" >= (
+                      select min(p."pageNumber") from "question_file_pages" p
+                      where ${unsettledPage}
+                    )
+                ),
+                2147483647
+              )
+          )
+        )`
       )
     )
     .orderBy(asc(extractedQuestions.orderIndex))
@@ -332,7 +370,9 @@ export async function getQuestionFileCoverage(
 
 // How many of a file's extracted items a student can actually answer (two
 // options or more) — for lib/question-file-quality.ts.
-export async function countAnswerableQuestions(bookId: string): Promise<number> {
+export async function countAnswerableQuestions(
+  bookId: string
+): Promise<number> {
   const db = getDb();
   if (!db) return 0;
   const [row] = await db

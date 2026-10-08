@@ -287,12 +287,45 @@ describe("POST /api/books/extract-question-images", () => {
       { type: "extract_question_file_images", bookId: "b1" },
       { flowControl: { key: "question-file-images-b1", parallelism: 1 } }
     );
+    // Explanations start for the questions behind the page front — the
+    // student does not wait for every page of a long file.
+    expect(mockPublish).toHaveBeenCalledWith(
+      { type: "generate_question_file_content", bookId: "b1" },
+      { flowControl: { key: "question-file-content-b1", parallelism: 1 } }
+    );
     // Text-only pages: no image, so no ownership decision to save.
     expect(mockSaveDecision).not.toHaveBeenCalled();
     // Exactly PAGES_PER_INVOCATION (12) claims per invocation, never more —
     // the batch cap is what makes self-chaining necessary in the first
     // place, and what keeps one invocation's AI-call volume bounded.
     expect(mockClaim).toHaveBeenCalledTimes(12);
+  });
+
+  it("keeps walking the pages when starting the explanations fails", async () => {
+    mockNextPage.mockResolvedValue({ id: "p1", bookId: "b1", pageNumber: 1 });
+    mockClaim.mockResolvedValue({
+      id: "p1",
+      bookId: "b1",
+      pageNumber: 1,
+      attemptCount: 1,
+    });
+    mockInvoke.mockResolvedValue(classificationResponse(false));
+    mockPublish.mockImplementation(async (message: { type: string }) => {
+      if (message.type === "generate_question_file_content") {
+        throw new Error("queue down");
+      }
+    });
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const response = await POST(request({ bookId: "b1" }));
+    const body = await response.json();
+    logged.mockRestore();
+
+    expect(body.status).toBe("processing");
+    expect(mockPublish).toHaveBeenCalledWith(
+      { type: "extract_question_file_images", bookId: "b1" },
+      { flowControl: { key: "question-file-images-b1", parallelism: 1 } }
+    );
   });
 
   it("hands off to stage 3 once no pages remain pending", async () => {

@@ -42,7 +42,11 @@ import { PDFParse } from "pdf-parse";
 // only → a link to ONE question when the structure or a confident verdict
 // supports it; otherwise no link and the candidates are flagged for the
 // doctor. A cover / introduction / answer-key page is never looked at.
-// When no pages remain, stage 3 takes over.
+// Stage 3 (explanations) is started after every batch of pages, not only
+// at the end: it takes the questions whose pages are settled
+// (getNextPendingExtractedQuestion) and stops when it reaches the page
+// front, so students get explanations from the first minutes of a long
+// file.
 const PAGES_PER_INVOCATION = 12;
 
 export async function POST(request: Request) {
@@ -173,6 +177,21 @@ export async function POST(request: Request) {
 
     const remaining = await getNextPendingQuestionFilePage(bookId);
     if (remaining) {
+      // Explanations for the questions behind the page front. Best-effort:
+      // the last batch starts stage 3 again for whatever is left.
+      try {
+        await publishMessage(
+          { type: "generate_question_file_content", bookId },
+          {
+            flowControl: {
+              key: `question-file-content-${bookId}`,
+              parallelism: 1,
+            },
+          }
+        );
+      } catch (error) {
+        console.error("[QuestionFiles] Could not start explanations", error);
+      }
       await publishMessage(
         { type: "extract_question_file_images", bookId },
         {

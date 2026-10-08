@@ -24,7 +24,9 @@ import { NextResponse } from "next/server";
 // automatically for EVERY extracted question (image-bearing or not, per
 // product decision), producing keywords/aiExplanationAr/inferredAnswerIndex.
 // Self-chaining (per-book Flow Control key, parallelism 1) so a file with
-// hundreds of questions is never silently cut off partway through. Needs no
+// hundreds of questions is never silently cut off partway through. Started
+// by stage 2 after each batch of pages: it only ever sees the questions
+// whose pages are settled, and ends when none is left for now. Needs no
 // access to the source PDF itself — an image-bearing question's screenshot
 // was already uploaded to object storage in stage 2, so this only ever
 // signs a GET url for that already-stored key.
