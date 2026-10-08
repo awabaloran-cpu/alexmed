@@ -16,7 +16,12 @@ import {
   setPendingKind,
   type AccountContext,
 } from "./accounts";
-import { answerCallback, sendMessage, type InlineButton } from "./api";
+import {
+  answerCallback,
+  isChatGone,
+  sendMessage,
+  type InlineButton,
+} from "./api";
 import {
   guestFreeUploads,
   telegramAccountBurstLimit,
@@ -28,6 +33,7 @@ import { retryTelegramUpload } from "./intake";
 import { parsePhone } from "../phone";
 import {
   getOrCreateShareLink,
+  isJoinMilestone,
   joinByShareLink,
   listSharedFilesForUser,
   parseShareCode,
@@ -271,6 +277,35 @@ async function handleFilesList(context: AccountContext, chatId: number) {
   await sendMessage(chatId, TEXT.filesHeader, { inline_keyboard: rows });
 }
 
+// The owner of a shared file hears that classmates are joining, with the
+// link to send on — at milestones only. Never allowed to fail the join.
+async function tellOwnerAboutJoin(
+  ownerId: string,
+  title: string,
+  code: string,
+  joinCount: number
+) {
+  if (!isJoinMilestone(joinCount)) return;
+  try {
+    const owner = await findTelegramAccountByUserId(ownerId);
+    const url = shareLinkUrl(code);
+    if (!owner || owner.account.blockedAt || !url) return;
+    await sendMessage(
+      owner.account.chatId,
+      TEXT.shareJoined(title, joinCount),
+      {
+        inline_keyboard: [
+          [{ text: LABELS.sendToFriends, url: shareUrl(url, TEXT.fileShare) }],
+        ],
+      }
+    );
+  } catch (error) {
+    if (!isChatGone(error)) {
+      console.error("[Telegram] Could not tell the owner about a join", error);
+    }
+  }
+}
+
 // Someone opened a share link: give them the file (once) and a button to
 // open it. A dead link and a student the owner removed get the same answer.
 async function handleSharedFile(
@@ -284,6 +319,9 @@ async function handleSharedFile(
     return;
   }
   const isBook = joined.kind === "book";
+  if (joined.role === "joined" && joined.joinCount) {
+    await tellOwnerAboutJoin(joined.ownerId, joined.title, code, joined.joinCount);
+  }
   await sendMessage(
     chatId,
     joined.role === "own"

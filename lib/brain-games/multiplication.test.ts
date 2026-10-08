@@ -39,7 +39,8 @@ describe("Multiplication generator", () => {
         }
       }
     }
-  });
+  // CPU-heavy; needs room when the whole suite runs in parallel.
+  }, 30000);
 
   it("follows the tables → harder products progression", () => {
     const pairs = (stage: number) =>

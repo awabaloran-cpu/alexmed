@@ -219,6 +219,9 @@ export type JoinOutcome =
       ownerName: string | null;
       // "own": the person opening the link owns the file.
       role: "own" | "joined" | "already";
+      // How many classmates have joined, this one included — only on
+      // "joined", for telling the owner.
+      joinCount?: number;
     }
   | { ok: false; reason: "invalid" | "refused" };
 
@@ -307,6 +310,7 @@ export async function joinByShareLink(
     if (personal) return { ok: false, reason: "refused" };
   }
 
+  let joinCount = 0;
   try {
     await db.transaction(async tx => {
       const now = new Date();
@@ -348,10 +352,12 @@ export async function joinByShareLink(
         actorId: userId,
         event: "joined_by_link",
       });
-      await tx
+      const [counted] = await tx
         .update(fileShareLinks)
         .set({ joinCount: sql`${fileShareLinks.joinCount} + 1` })
-        .where(eq(fileShareLinks.id, link.id));
+        .where(eq(fileShareLinks.id, link.id))
+        .returning({ joinCount: fileShareLinks.joinCount });
+      joinCount = counted?.joinCount ?? 0;
     });
   } catch (error) {
     // The same student tapping the link twice at once: the other request
@@ -359,7 +365,7 @@ export async function joinByShareLink(
     if (!isUniqueViolation(error)) throw error;
     return { ok: true, ...file, role: "already" };
   }
-  return { ok: true, ...file, role: "joined" };
+  return { ok: true, ...file, role: "joined", joinCount };
 }
 
 // A classmate reports a file shared with them. Once per student per file;
@@ -488,3 +494,9 @@ export async function listSharedFilesForUser(userId: string, limit = 6) {
     .orderBy(desc(bookShares.respondedAt))
     .limit(limit);
 }
+
+// The owner hears about classmates joining at these counts only — the
+// first one, then widening steps — never a message per classmate.
+const JOIN_MILESTONES = [1, 3, 5, 10, 25, 50, 100, 250, 500, 1000];
+export const isJoinMilestone = (joinCount: number) =>
+  JOIN_MILESTONES.includes(joinCount);

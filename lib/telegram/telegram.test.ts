@@ -1485,6 +1485,36 @@ describe("Sharing a file by link through the bot", () => {
     ).toHaveLength(0);
   });
 
+  it("the owner is told when classmates join — at milestones, with the link to send on, never per classmate", async () => {
+    const { code } = await ownerSharesFile();
+    const toOwner = () => tg.sendMessage.mock.calls.filter(call => call[0] === OWNER_TG);
+    tg.sendMessage.mockClear();
+
+    await handleTelegramUpdate(textUpdate(`/start sh_${code}`, FRIEND_TG));
+    expect(toOwner()).toHaveLength(1);
+    expect(toOwner()[0][1]).toBe(TEXT.shareJoined("Pediatrics_MCQs.pdf", 1));
+    expect(JSON.stringify(toOwner()[0][2])).toContain(encodeURIComponent(`start=sh_${code}`));
+
+    // The same classmate again, then a second one: no new message; the third is a milestone.
+    await handleTelegramUpdate(textUpdate(`/start sh_${code}`, FRIEND_TG));
+    await handleTelegramUpdate(textUpdate(`/start sh_${code}`, 820003));
+    expect(toOwner()).toHaveLength(1);
+    await handleTelegramUpdate(textUpdate(`/start sh_${code}`, 820004));
+    expect(toOwner()).toHaveLength(2);
+    expect(toOwner()[1][1]).toBe(TEXT.shareJoined("Pediatrics_MCQs.pdf", 3));
+  });
+
+  it("a failure to reach the owner never costs the classmate their file", async () => {
+    const { code, bookId } = await ownerSharesFile();
+    tg.sendMessage.mockImplementation(async (chat: number) => {
+      if (chat === OWNER_TG) throw new Error("bot was blocked by the user");
+      return 1;
+    });
+    await handleTelegramUpdate(textUpdate(`/start sh_${code}`, FRIEND_TG));
+    expect(lastSent().text).toContain("Pediatrics_MCQs.pdf");
+    expect(await rows(`SELECT id FROM book_shares WHERE "bookId" = $1`, [bookId])).toHaveLength(1);
+  });
+
   it("the owner opening their own link is shown their file", async () => {
     const { code } = await ownerSharesFile();
     await handleTelegramUpdate(textUpdate(`/start sh_${code}`, OWNER_TG));

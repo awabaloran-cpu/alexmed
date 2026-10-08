@@ -97,6 +97,12 @@ export const TEXT = {
   sharedBook: (title: string, owner: string | null) =>
     `📖 ${owner ?? "زميلك"} شارك معك كتابًا\n\n«${title}»\n\nافتحه وادرس من ملخصاته وبطاقاته.`,
   sharedOwn: "هذا ملفك أنت 🙂 افتحه من هنا:",
+  // To the owner, at a milestone (lib/share-links.ts isJoinMilestone).
+  shareJoined: (title: string, joined: number) =>
+    (joined === 1
+      ? "🎉 أول زميل فتح ملفك المشارَك"
+      : `🎉 ${joined} من زملائك يدرسون الآن من ملفك`) +
+    `\n\n«${title}»\n\nأرسل الرابط لمجموعة الدفعة ليستفيد الجميع 👇`,
   sharedInvalid:
     "⚠️ رابط المشاركة غير صالح أو أوقفه صاحبه. اطلب من زميلك رابطًا جديدًا.",
 
