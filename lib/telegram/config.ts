@@ -81,6 +81,12 @@ export function webLoginLinkTtlMinutes(): number {
   return readInt("TELEGRAM_LINK_TTL_MINUTES", 24 * 60);
 }
 
+// Bot buttons open NiroLearn inside Telegram (a Mini App) unless this is
+// switched off — then they are ordinary links to the browser.
+export function miniAppEnabled(): boolean {
+  return process.env.TELEGRAM_MINI_APP !== "false";
+}
+
 export function webUrl(path: string): string {
   return `${SITE_URL}${path.startsWith("/") ? path : `/${path}`}`;
 }

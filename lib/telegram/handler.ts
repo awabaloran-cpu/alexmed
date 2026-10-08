@@ -24,7 +24,7 @@ import {
 } from "./config";
 import { isDocumentKind, type DocumentKind } from "./detect";
 import { retryTelegramUpload } from "./intake";
-import { connectLink, openLink } from "./links";
+import { connectLink, openButton } from "./links";
 import {
   BUTTONS,
   filePath,
@@ -81,7 +81,7 @@ async function openSiteButton(
   label: string,
   path: string
 ) {
-  return urlButton(label, await openLink(context.user, path));
+  return { inline_keyboard: [[await openButton(context.user, label, path)]] };
 }
 
 function isPdf(document: TelegramDocument): boolean {
@@ -204,10 +204,11 @@ async function handleFilesList(context: AccountContext, chatId: number) {
     const kind: DocumentKind =
       file.sourceType === "question_file" ? "question_file" : "book";
     rows.push([
-      {
-        text: `${kind === "book" ? "📚" : "📄"} ${file.fileName}`.slice(0, 60),
-        url: await openLink(context.user, filePath(kind, file.bookId)),
-      },
+      await openButton(
+        context.user,
+        `${kind === "book" ? "📚" : "📄"} ${file.fileName}`.slice(0, 60),
+        filePath(kind, file.bookId)
+      ),
     ]);
   }
   await sendMessage(chatId, TEXT.filesHeader, { inline_keyboard: rows });

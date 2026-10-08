@@ -16,6 +16,8 @@ export class TelegramApiError extends Error {
 
 export type InlineButton =
   | { text: string; url: string }
+  // Opens the page inside Telegram as a Mini App (private chats only).
+  | { text: string; web_app: { url: string } }
   | { text: string; callback_data: string };
 
 export type ReplyMarkup =

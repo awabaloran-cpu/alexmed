@@ -38,7 +38,7 @@ import {
   resolveDocumentKind,
   type DocumentKind,
 } from "./detect";
-import { openLink } from "./links";
+import { openButton as linkButton } from "./links";
 import { CALLBACK, filePath, LABELS, TEXT } from "./messages";
 import { readLeadingPages } from "./pdf-sample";
 import {
@@ -116,7 +116,7 @@ async function openButton(
   label: string,
   path: string
 ): Promise<InlineButton[][]> {
-  return [[{ text: label, url: await openLink(await userFor(context), path) }]];
+  return [[await linkButton(await userFor(context), label, path)]];
 }
 
 // ── Intake ──────────────────────────────────────────────────────────────

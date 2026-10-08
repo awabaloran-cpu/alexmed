@@ -41,6 +41,22 @@ const nextConfig: NextConfig = {
           },
         ],
       },
+      // The Mini App's front door (app/tg) — the ONE page Telegram Web may
+      // show in a frame (it displays Mini Apps that way; the phone and
+      // desktop apps use their own web view and are not affected). The page
+      // holds nothing: it only passes Telegram's launch data on and leaves.
+      // Listed after the rule above so this policy replaces it for /tg;
+      // browsers that honour frame-ancestors ignore X-Frame-Options.
+      {
+        source: "/tg",
+        headers: [
+          {
+            key: "Content-Security-Policy",
+            value:
+              "frame-ancestors 'self' https://web.telegram.org; object-src 'none'; base-uri 'self'",
+          },
+        ],
+      },
     ];
   },
 };

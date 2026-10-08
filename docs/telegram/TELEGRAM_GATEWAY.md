@@ -67,6 +67,33 @@ Button ──► /t/<token> ──POST──► /api/telegram/session ──► 
 - One Telegram per account, one account per Telegram: a second is refused
   until the first is unlinked from حسابي.
 
+## Mini App (bot buttons open inside Telegram)
+
+Added 2026-10-08. Every "open" button the bot sends is a Telegram *web app*
+button to `/tg?to=<path>` (`lib/telegram/links.ts`, `openButton`):
+
+- `app/tg/page.tsx` loads Telegram's SDK, takes `initData` (Telegram's
+  signed launch data) and posts it to `/api/telegram/webapp-session`.
+- The server checks the signature with the bot token
+  (`lib/telegram/webapp.ts`, Telegram's documented HMAC; data older than one
+  hour is refused), finds — or creates as a guest — the account of that
+  Telegram user, and sets the ordinary session cookie. The page then goes
+  to `to`. No link token is involved, so nothing can be forwarded.
+- This signs a **registered** account in too. That is deliberate and
+  different from a link: the proof is the Telegram account itself, the same
+  trust as "log in with Telegram". Unlinking Telegram on حسابي ends it.
+- Telegram Web shows Mini Apps in a frame, where the session cookie would be
+  a third-party cookie. There the page opens the ordinary link (below) in a
+  new tab instead. `/tg` is the only page whose headers allow that frame
+  (`next.config.ts`).
+- `TELEGRAM_MINI_APP=false` turns every button back into an ordinary link.
+- The chat's menu button is set with `setChatMenuButton` (type `web_app`,
+  url `https://<domain>/tg`); the command list and descriptions with
+  `setMyCommands` / `setMyDescription`. These live in Telegram, not in the
+  code: after creating a new bot they must be set again.
+- **Verified:** the signature check and the session route by tests. **Not
+  verified from here:** the real launch on a phone.
+
 ## Links and security
 
 - `/t/<token>`: 32 random bytes, only the SHA-256 is stored, expires

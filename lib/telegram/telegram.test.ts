@@ -2,6 +2,7 @@
 // the bot's handling of a file, the queue steps, links and sessions.
 // Telegram itself, the queue, storage and the plan guard are replaced by
 // spies — everything between them is the real code and the real SQL.
+import { createHmac } from "node:crypto";
 import { NextResponse } from "next/server";
 import {
   afterEach,
@@ -71,6 +72,7 @@ import {
   revokeLinkTokens,
   safeInternalPath,
 } from "./tokens";
+import { validateInitData } from "./webapp";
 import { isSameOriginPost, resolveWebLogin } from "./web-session";
 
 let test: TestDb;
@@ -183,6 +185,7 @@ beforeEach(async () => {
   delete process.env.TELEGRAM_DAILY_UPLOAD_CAP;
   delete process.env.TELEGRAM_ACCOUNT_BURST_LIMIT;
   delete process.env.TELEGRAM_GUEST_FREE_UPLOADS;
+  delete process.env.TELEGRAM_MINI_APP;
   let messageId = 100;
   tg.sendMessage.mockImplementation(async () => messageId++);
   tg.editMessage.mockResolvedValue(true);
@@ -630,7 +633,27 @@ describe("Watch: reporting the pipeline's status in the chat", () => {
     );
   });
 
-  it("announces a finished question file with its count and a guest link that hides every internal key", async () => {
+  it("announces a finished question file with a button that opens it inside Telegram", async () => {
+    const upload = await uploadAndIntake();
+    await finishQuestions(upload.bookId!, 80);
+
+    expect(await runTelegramWatch(upload.id)).toBe("done");
+    const { text, markup } = lastSent();
+    expect(text).toBe(TEXT.questionsReady(80));
+    const button = (markup as { inline_keyboard: Record<string, unknown>[][] }).inline_keyboard[0][0];
+    // A Mini App button: no token and no storage key in it — the student is
+    // identified by Telegram's own signed launch data.
+    expect(button).toEqual({
+      text: LABELS.startQuestions,
+      web_app: {
+        url: `https://nirolearn.com/tg?to=${encodeURIComponent(`/books/question-files/${upload.bookId}`)}`,
+      },
+    });
+    expect(await rows(`SELECT id FROM access_link_tokens`)).toHaveLength(0);
+  });
+
+  it("with the Mini App switched off: a guest link that hides every internal key", async () => {
+    process.env.TELEGRAM_MINI_APP = "false";
     const upload = await uploadAndIntake();
     await finishQuestions(upload.bookId!, 80);
 
@@ -674,7 +697,8 @@ describe("Watch: reporting the pipeline's status in the chat", () => {
     expect(lastSent().text).toBe(TEXT.bookReady(120));
   });
 
-  it("a registered user gets the page itself, never a link that signs them in", async () => {
+  it("with the Mini App switched off: a registered user gets the page itself, never a link that signs them in", async () => {
+    process.env.TELEGRAM_MINI_APP = "false";
     const upload = await uploadAndIntake();
     await test.client.exec(`UPDATE users SET phone = '+962790000002', "passwordHash" = 'x'`);
     await finishQuestions(upload.bookId!, 3);
@@ -954,6 +978,103 @@ describe("Connecting a guest to an account from the web (/connect)", () => {
     expect((await open("/books/abc")).headers.get("location")).toBe("/books/abc");
     expect((await open("https://evil.example/x")).headers.get("location")).toBe("/subjects");
     expect((await open("//evil.example")).headers.get("location")).toBe("/subjects");
+  });
+});
+
+describe("Mini App sign-in (Telegram's signed launch data)", () => {
+  const BOT_TOKEN = "123:test-token";
+
+  function signedInitData(
+    fields: Record<string, string>,
+    token = BOT_TOKEN
+  ): string {
+    const dataCheckString = Object.entries(fields)
+      .map(([key, value]) => `${key}=${value}`)
+      .sort()
+      .join("\n");
+    const secret = createHmac("sha256", "WebAppData").update(token).digest();
+    const hash = createHmac("sha256", secret).update(dataCheckString).digest("hex");
+    return new URLSearchParams({ ...fields, hash }).toString();
+  }
+  const now = () => String(Math.floor(Date.now() / 1000));
+  const launch = (userId = TG_USER, authDate = now()) =>
+    signedInitData({
+      auth_date: authDate,
+      query_id: "AAF",
+      user: JSON.stringify({ id: userId, first_name: "Awab", language_code: "ar" }),
+    });
+
+  it("accepts genuine launch data and reads the Telegram user", () => {
+    expect(validateInitData(launch(), BOT_TOKEN)).toEqual({
+      telegramUserId: TG_USER,
+      languageCode: "ar",
+    });
+  });
+
+  it("refuses forged, altered, stale and malformed launch data", () => {
+    // Signed with another bot's token.
+    expect(validateInitData(signedInitData({ auth_date: now(), user: '{"id":1}' }, "999:other"), BOT_TOKEN)).toBeNull();
+    // A field changed after signing (someone else's id).
+    const altered = new URLSearchParams(launch());
+    altered.set("user", JSON.stringify({ id: 42, first_name: "Awab", language_code: "ar" }));
+    expect(validateInitData(altered.toString(), BOT_TOKEN)).toBeNull();
+    // Older than an hour.
+    expect(validateInitData(launch(TG_USER, String(Math.floor(Date.now() / 1000) - 2 * 60 * 60)), BOT_TOKEN)).toBeNull();
+    expect(validateInitData("", BOT_TOKEN)).toBeNull();
+    expect(validateInitData("hash=zz&user=%7B%7D", BOT_TOKEN)).toBeNull();
+    expect(validateInitData(signedInitData({ auth_date: now(), user: '{"id":"7"}' }), BOT_TOKEN)).toBeNull();
+    expect(validateInitData(signedInitData({ auth_date: now(), user: '{"id":7,"is_bot":true}' }), BOT_TOKEN)).toBeNull();
+  });
+
+  async function post(body: unknown, headers: Record<string, string> = {}) {
+    const { POST } = await import("@/app/api/telegram/webapp-session/route");
+    return POST(
+      new Request("https://nirolearn.com/api/telegram/webapp-session", {
+        method: "POST",
+        headers: { "content-type": "application/json", "sec-fetch-site": "same-origin", ...headers },
+        body: JSON.stringify(body),
+      })
+    );
+  }
+
+  it("signs in the account this Telegram user is connected to and says where to go", async () => {
+    await insertUser(test.client, { id: REGISTERED });
+    const code = await createLinkToken({ userId: REGISTERED, purpose: "telegram_link", ttlMinutes: 10 });
+    await linkTelegramToAccount(code, { telegramUserId: TG_USER, chatId: TG_USER });
+
+    const response = await post({ initData: launch(), to: "/books/question-files/abc" });
+    expect(response.status).toBe(200);
+    expect(response.headers.get("set-cookie")).toMatch(/authjs\.session-token=.+HttpOnly/i);
+    expect(await response.json()).toEqual({
+      to: "/books/question-files/abc",
+      external: `https://nirolearn.com/api/telegram/open?to=${encodeURIComponent("/books/question-files/abc")}`,
+    });
+    // Still exactly one account for this Telegram user: the registered one.
+    expect((await findTelegramAccount(TG_USER))?.user.id).toBe(REGISTERED);
+  });
+
+  it("a first-time Telegram user gets a guest account, and an outside destination is never followed", async () => {
+    const response = await post({ initData: launch(700700), to: "https://evil.example/x" });
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as { to: string; external: string };
+    expect(body.to).toBe("/subjects");
+    expect(body.external).toMatch(/^https:\/\/nirolearn\.com\/t\/[A-Za-z0-9_-]{43}$/);
+    expect((await findTelegramAccount(700700))?.user.isGuest).toBe(true);
+  });
+
+  it("refuses bad launch data, a cross-site post and a suspended account — with no cookie", async () => {
+    const forged = await post({ initData: "user=%7B%22id%22%3A1%7D&hash=" + "0".repeat(64), to: "/" });
+    expect(forged.status).toBe(401);
+    expect(forged.headers.get("set-cookie")).toBeNull();
+
+    const crossSite = await post({ initData: launch(), to: "/" }, { "sec-fetch-site": "cross-site" });
+    expect(crossSite.status).toBe(403);
+
+    await ensureTelegramAccount({ telegramUserId: TG_USER, chatId: TG_USER });
+    await test.client.exec(`UPDATE users SET "suspendedAt" = now()`);
+    const suspended = await post({ initData: launch(), to: "/" });
+    expect(suspended.status).toBe(403);
+    expect(suspended.headers.get("set-cookie")).toBeNull();
   });
 });
 
