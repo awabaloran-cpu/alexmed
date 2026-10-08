@@ -34,10 +34,25 @@ async function cameFromTelegram(userId: string, bookId: string) {
 // questions of one file and reports what was shown; it never decides.
 export const adsRouter = router({
   questionBreakPolicy: protectedProcedure
-    .input(z.object({ bookId: z.string().uuid() }))
+    .input(
+      z.object({
+        bookId: z.string().uuid(),
+        // ?adPreview=1 on a viewer. Honoured for admins only: shows the
+        // break as a free student would see it, whatever the admin's own
+        // plan — the only way to look at a break from a paid account.
+        preview: z.boolean().optional(),
+      })
+    )
     .query(async ({ ctx, input }) => {
       const config = readAdConfig(process.env);
       if (!config.enabled) return { enabled: false } as const;
+      if (input.preview && ctx.user.role === "admin") {
+        return resolveAdBreakPolicy({
+          plan: { priceMonthlyCents: 0, features: {} },
+          source: "telegram",
+          config,
+        });
+      }
       const [plan, fromTelegram] = await Promise.all([
         getUserPlan(ctx.user.id),
         cameFromTelegram(ctx.user.id, input.bookId),

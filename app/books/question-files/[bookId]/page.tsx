@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { CircleAlert, ClipboardList, Loader2, RotateCcw } from "lucide-react";
 import AdBreak from "@/components/ads/AdBreak";
+import { adPreviewRequested } from "@/components/ads/useAdBreak";
 import QuestionList from "@/components/questions/QuestionList";
 import { trpc } from "@/lib/trpc-client";
 
@@ -46,7 +47,7 @@ export default function QuestionFileDetailPage() {
     { retry: false, refetchOnWindowFocus: false, staleTime: Infinity }
   );
   const adPolicy = trpc.ads.questionBreakPolicy.useQuery(
-    { bookId: params.bookId },
+    { bookId: params.bookId, preview: adPreviewRequested() },
     { retry: false, refetchOnWindowFocus: false, staleTime: Infinity }
   );
   const saveAttempt = trpc.questionFiles.saveAttempt.useMutation();

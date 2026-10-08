@@ -16,13 +16,22 @@ import AdBreak from "./AdBreak";
 // by lib/ads/policy.ts (asked through ads.questionBreakPolicy) — never by
 // the viewer. Without a bookId, on a paid plan, or with ads off, `advance`
 // simply moves on and `node` is always null.
+// "?adPreview=1" in the address: an admin asking to see the break (the
+// server ignores it for anyone else).
+export function adPreviewRequested(): boolean {
+  return (
+    typeof window !== "undefined" &&
+    new URLSearchParams(window.location.search).has("adPreview")
+  );
+}
+
 export function useAdBreak(bookId: string | undefined): {
   // `position` is the 1-based number of the card being left.
   advance: (position: number, total: number, move: () => void) => void;
   node: ReactNode;
 } {
   const policy = trpc.ads.questionBreakPolicy.useQuery(
-    { bookId: bookId ?? "" },
+    { bookId: bookId ?? "", preview: adPreviewRequested() },
     {
       enabled: !!bookId,
       retry: false,
