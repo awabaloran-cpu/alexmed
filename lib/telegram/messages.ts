@@ -165,10 +165,15 @@ export const TEXT = {
     "الأفضل تحويله إلى كتاب: تحصل منه على ملخص وفلاش كارد وأسئلة من محتواه.",
   convertStarted: "جاري تحويله إلى كتاب…",
 
+  // Nothing is generated for a book until the student presses the button
+  // on its page (booksRouter.startChapterAnalysis), so the message names
+  // that step and the button as the page words it. Live, 2026-10-08: 10 of
+  // 12 students who sent a book never pressed it.
   bookReady: (pages: number) =>
-    "📚 تم تجهيز كتابك بنجاح\n\n" +
-    (pages > 0 ? `عدد الصفحات: ${pages}\n` : "") +
-    "تمت إضافة الكتاب إلى كتبك.",
+    "📚 وصل كتابك" +
+    (pages > 0 ? ` (${pages} صفحة)` : "") +
+    "\n\n" +
+    "بقيت خطوة واحدة: افتح الكتاب واضغط «جهّز أدوات الدراسة»، فيُجهَّز لك الملخص والفلاش كارد والأسئلة والخريطة الذهنية.",
 
   stillWorking:
     "⏳ ما زال الملف قيد المعالجة — الملفات الكبيرة أو الممسوحة ضوئيًا تأخذ وقتًا أطول.\n\n" +
@@ -217,6 +222,7 @@ export const TEXT = {
 export const LABELS = {
   startQuestions: "🚀 ابدأ الأسئلة",
   openBook: "📖 افتح الكتاب",
+  openBookToStart: "📖 افتح الكتاب وابدأ",
   openSite: "🌐 فتح NiroLearn",
   uploadFromSite: "🌐 ارفعه من الموقع",
   connectAccount: "🔗 تسجيل الدخول / إنشاء حساب",

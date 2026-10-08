@@ -707,6 +707,8 @@ describe("Watch: reporting the pipeline's status in the chat", () => {
     await test.client.query(`UPDATE books SET status = 'pending', "pageCount" = 120 WHERE id = $1`, [upload.bookId]);
     await runTelegramWatch(upload.id);
     expect(lastSent().text).toBe(TEXT.bookReady(120));
+    // The student is told the step that is still theirs, in the page's words.
+    expect(lastSent().text).toContain("جهّز أدوات الدراسة");
   });
 
   it("with the Mini App switched off: a registered user gets the page itself, never a link that signs them in", async () => {

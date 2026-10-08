@@ -463,7 +463,11 @@ export async function runTelegramWatch(
         context,
         TEXT.bookReady(book.pageCount),
         [
-          ...(await openButton(context, LABELS.openBook, filePath(kind, book.id))),
+          ...(await openButton(
+            context,
+            LABELS.openBookToStart,
+            filePath(kind, book.id)
+          )),
           shareRow(uploadId),
         ]
       );
