@@ -392,27 +392,18 @@ export async function runTelegramWatch(
       await finish(context, TEXT.noQuestions);
       return "done";
     }
-    if (coverage.done || timedOut) {
-      await finish(
-        context,
-        coverage.done
-          ? TEXT.questionsReady(coverage.questionsTotal)
-          : TEXT.questionsReadyPartial(coverage.questionsTotal),
-        await openButton(context, LABELS.startQuestions, filePath(kind, book.id))
-      );
-      return "done";
-    }
-    // Progress in tenths, so the message is edited ten times, not once per
-    // question.
-    const tenth = Math.floor(
-      (coverage.questionsAiComplete / coverage.questionsTotal) * 10
+    // The questions can be studied the moment they are extracted (seconds):
+    // the student is told NOW, not after the per-question explanations —
+    // those take minutes for a long file (measured on the live bot: ~8s a
+    // question) and the question page already fills them in as they arrive.
+    await finish(
+      context,
+      coverage.done
+        ? TEXT.questionsReady(coverage.questionsTotal)
+        : TEXT.questionsReadyPartial(coverage.questionsTotal),
+      await openButton(context, LABELS.startQuestions, filePath(kind, book.id))
     );
-    if (await recordUploadStage(uploadId, `preparing:${tenth}`)) {
-      await progress(
-        context,
-        TEXT.preparing(coverage.questionsAiComplete, coverage.questionsTotal)
-      );
-    }
+    return "done";
   } else if (timedOut) {
     await say(context, TEXT.stillWorking);
     return "done";

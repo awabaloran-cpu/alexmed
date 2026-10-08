@@ -80,10 +80,6 @@ export const TEXT = {
 
   received: "⏳ جاري استلام الملف…",
   reading: "🔍 جاري قراءة الملف…",
-  preparing: (done: number, total: number) =>
-    total > 0
-      ? `🧠 جاري تجهيز المحتوى… (${done} من ${total})`
-      : "🧠 جاري تجهيز المحتوى…",
   finished: "☑ تم الانتهاء!",
 
   askKind:
@@ -94,10 +90,12 @@ export const TEXT = {
     `عدد الأسئلة: ${count}\n` +
     "يمكنك الآن بدء الدراسة من NiroLearn.",
 
+  // Sent as soon as the questions are extracted, while their explanations
+  // are still being written.
   questionsReadyPartial: (count: number) =>
-    "🎉 ملف الأسئلة جاهز\n\n" +
+    "🎉 أسئلتك جاهزة — ابدأ الآن\n\n" +
     `عدد الأسئلة: ${count}\n` +
-    "بعض الشروح ما زالت تُجهَّز وستظهر تباعًا.",
+    "🧠 الشرح والكلمات المفتاحية تُضاف الآن وتظهر تباعًا وأنت تحل.",
 
   noQuestions:
     "⚠️ قرأنا الملف لكن لم نعثر فيه على أسئلة.\n\n" +

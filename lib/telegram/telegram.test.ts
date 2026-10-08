@@ -62,7 +62,7 @@ import {
   runTelegramIntake,
   runTelegramWatch,
 } from "./intake";
-import { BUTTONS, CALLBACK, TEXT } from "./messages";
+import { BUTTONS, CALLBACK, LABELS, TEXT } from "./messages";
 import {
   consumeLinkToken,
   createLinkToken,
@@ -642,6 +642,29 @@ describe("Watch: reporting the pipeline's status in the chat", () => {
     expect(url).toMatch(/^https:\/\/nirolearn\.com\/t\/[A-Za-z0-9_-]{43}$/);
     expect(url).not.toContain(upload.bookId!);
     expect(url).not.toContain("book-pdfs");
+  });
+
+  it("tells the student as soon as the questions are extracted, without waiting for the explanations", async () => {
+    const upload = await uploadAndIntake();
+    await test.client.query(`UPDATE books SET status = 'complete' WHERE id = $1`, [upload.bookId]);
+    await test.client.query(
+      `INSERT INTO question_file_pages ("bookId", "pageNumber", status) VALUES ($1, 1, 'complete')`,
+      [upload.bookId]
+    );
+    // 80 questions extracted, none enriched yet.
+    await test.client.query(
+      `INSERT INTO extracted_questions ("bookId", "orderIndex", "questionText", options, "extractedAnswerIndex", "sourcePage", "aiStatus")
+       SELECT $1, n, 'Q?', '["A","B","C","D"]', 1, 1, 'pending' FROM generate_series(0, 79) AS n`,
+      [upload.bookId]
+    );
+    publishMessage.mockClear();
+
+    expect(await runTelegramWatch(upload.id)).toBe("done");
+    expect((await onlyUpload()).status).toBe("complete");
+    expect(lastSent().text).toBe(TEXT.questionsReadyPartial(80));
+    expect(JSON.stringify(lastSent().markup)).toContain(LABELS.startQuestions);
+    // No more polling for this file.
+    expect(publishMessage).not.toHaveBeenCalled();
   });
 
   it("announces a finished book", async () => {
