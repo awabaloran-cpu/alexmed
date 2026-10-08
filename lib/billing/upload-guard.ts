@@ -19,14 +19,20 @@ import {
 } from "./usage";
 
 export type AdmittedUpload = {
-  receipt: UsageReceipt;
+  // Null when no quota unit was taken (`skipQuota`).
+  receipt: UsageReceipt | null;
   release: () => Promise<void>;
 };
 
 export async function admitUpload(
   userId: string,
   key: string,
-  resource: Extract<Resource, "BOOK_FILE" | "QUESTION_FILE">
+  resource: Extract<Resource, "BOOK_FILE" | "QUESTION_FILE">,
+  // `skipQuota`: the caller already paid for this file another way (a file
+  // earned by inviting a student — lib/telegram/growth.ts). Ownership of
+  // the key and the plan's size limit are still enforced; only the daily /
+  // monthly count is left alone.
+  options: { skipQuota?: boolean } = {}
 ): Promise<AdmittedUpload | NextResponse> {
   if (!isOwnUploadKey(key, userId)) {
     return NextResponse.json({ error: "ارفع ملف PDF أولًا." }, { status: 400 });
@@ -40,6 +46,9 @@ export async function admitUpload(
   }
   try {
     await assertFileSizeAllowed(userId, size);
+    if (options.skipQuota) {
+      return { receipt: null, release: async () => undefined };
+    }
     const receipt = await consumeUsage(userId, resource);
     return {
       receipt,

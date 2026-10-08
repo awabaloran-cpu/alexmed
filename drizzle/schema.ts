@@ -15,6 +15,7 @@ import {
   uniqueIndex,
   uuid,
   varchar,
+  type AnyPgColumn,
 } from "drizzle-orm/pg-core";
 import type { GeneratedCard } from "../lib/pdf-cards";
 import type {
@@ -3004,6 +3005,24 @@ export const telegramAccounts = pgTable(
     // from the bot's buttons; cleared once a file uses it.
     pendingKind: varchar("pendingKind", { length: 16 }),
     blockedAt: timestamp("blockedAt", { withTimezone: true }),
+    // 📈 Growth (lib/telegram/growth.ts). All set once, when the account is
+    // first created by a /start link:
+    //   source        where the student came from — the label of a campaign
+    //                 link (t.me/<bot>?start=src_<label>), or "invite"
+    //   referredById  the account whose invite link brought them
+    // referralCode is this account's own invite code (made on first use).
+    // A successful invite (the invited student's first file reaches
+    // processing) is rewarded once (referralRewardedAt) with one extra file
+    // for the inviter: bonusUploads earned, bonusUsed spent.
+    source: varchar("source", { length: 40 }),
+    referralCode: varchar("referralCode", { length: 16 }),
+    referredById: uuid("referredById").references(
+      (): AnyPgColumn => telegramAccounts.id,
+      { onDelete: "set null" }
+    ),
+    referralRewardedAt: timestamp("referralRewardedAt", { withTimezone: true }),
+    bonusUploads: integer("bonusUploads").default(0).notNull(),
+    bonusUsed: integer("bonusUsed").default(0).notNull(),
     createdAt: timestamp("createdAt", { withTimezone: true })
       .defaultNow()
       .notNull(),
@@ -3016,6 +3035,13 @@ export const telegramAccounts = pgTable(
       table.telegramUserId
     ),
     userUnique: uniqueIndex("telegram_accounts_user_idx").on(table.userId),
+    referralCodeUnique: uniqueIndex("telegram_accounts_referral_code_idx").on(
+      table.referralCode
+    ),
+    sourceIdx: index("telegram_accounts_source_idx").on(table.source),
+    referredByIdx: index("telegram_accounts_referred_by_idx").on(
+      table.referredById
+    ),
   })
 );
 

@@ -103,8 +103,13 @@ export async function findTelegramAccountById(
 // Only private chats reach here (the handler ignores groups), so chatId is
 // the user's own chat. Nothing from the Telegram profile is stored beyond
 // the numeric id and the interface language.
+//
+// `origin` (a campaign label and/or an inviter, from the /start link —
+// lib/telegram/growth.ts) is recorded only when the account is created
+// here, never on an existing one.
 export async function ensureTelegramAccount(
-  identity: TelegramIdentity
+  identity: TelegramIdentity,
+  origin: { source?: string; referredById?: string | null } = {}
 ): Promise<AccountContext> {
   const db = requireDb();
   const existing = await findTelegramAccount(identity.telegramUserId);
@@ -127,6 +132,8 @@ export async function ensureTelegramAccount(
         chatId: identity.chatId,
         userId: user.id,
         languageCode: identity.languageCode?.slice(0, 12) ?? null,
+        source: origin.source?.slice(0, 40) ?? null,
+        referredById: origin.referredById ?? null,
       });
     });
   } catch (error) {

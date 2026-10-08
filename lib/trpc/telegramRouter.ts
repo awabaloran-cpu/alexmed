@@ -6,7 +6,15 @@ import {
 } from "../telegram/accounts";
 import { telegramBotUsername, telegramEnabled } from "../telegram/config";
 import { createLinkToken } from "../telegram/tokens";
-import { protectedProcedure, router } from "./trpc";
+import {
+  inviteLink,
+  inviteStats,
+  shareUrl,
+  sourceLink,
+  sourceReport,
+} from "../telegram/growth";
+import { TEXT } from "../telegram/messages";
+import { adminProcedure, protectedProcedure, router } from "./trpc";
 
 // One-time and short-lived: the code only has to survive the tap that
 // carries it from /account to the bot.
@@ -45,6 +53,32 @@ export const telegramRouter = router({
     });
     return { url: `https://t.me/${bot}?start=link_${token}` } as const;
   }),
+
+  // 🎁 What a "share" button on the site should send: the student's own
+  // invite link when Telegram is connected (so a classmate who joins earns
+  // them a file), otherwise a plain link to the bot labelled as coming
+  // from the site.
+  invite: protectedProcedure.query(async ({ ctx }) => {
+    if (!telegramEnabled() || !telegramBotUsername()) {
+      return { available: false } as const;
+    }
+    const account = await getTelegramLinkForUser(ctx.user.id);
+    const link = account
+      ? await inviteLink(account.id)
+      : sourceLink("web_share");
+    if (!link) return { available: false } as const;
+    return {
+      available: true,
+      link,
+      shareUrl: shareUrl(link, TEXT.inviteShare),
+      text: TEXT.inviteShare,
+      stats: account ? await inviteStats(account.id) : null,
+    } as const;
+  }),
+
+  // 📈 Admin: where Telegram students came from (per campaign label) and
+  // how far they got. Counts only.
+  sources: adminProcedure.query(() => sourceReport()),
 
   unlink: protectedProcedure.mutation(async ({ ctx }) => {
     // A guest's only way in is Telegram; disconnecting would strand the

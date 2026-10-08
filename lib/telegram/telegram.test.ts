@@ -81,6 +81,7 @@ import {
   getPhoneVerificationStatus,
   startTelegramPhoneVerification,
 } from "./phone-verify";
+import { MAX_BONUS_UPLOADS, parseStartOrigin, sourceReport } from "./growth";
 import { validateInitData } from "./webapp";
 import { isSameOriginPost, resolveWebLogin } from "./web-session";
 
@@ -1188,6 +1189,170 @@ describe("Verifying a sign-up phone number through the bot (no code)", () => {
       await checkPhoneVerification({ verificationId, code: "123456", fetchImpl })
     ).toEqual({ ok: false, error: "wrong_code" });
     expect(fetchImpl).not.toHaveBeenCalled();
+  });
+});
+
+describe("Growth: campaign links and invites", () => {
+  const INVITER = 810001;
+  const FRIEND = 810002;
+  const account = async (telegramUserId: number) => {
+    const [row] = await rows<{
+      id: string;
+      source: string | null;
+      referredById: string | null;
+      bonusUploads: number;
+      bonusUsed: number;
+      referralRewardedAt: string | null;
+    }>(
+      `SELECT id, source, "referredById", "bonusUploads", "bonusUsed", "referralRewardedAt"
+       FROM telegram_accounts WHERE "telegramUserId" = $1`,
+      [telegramUserId]
+    );
+    return row;
+  };
+  // The student's invite link, read from the bot's own reply.
+  async function inviteCodeOf(telegramUserId: number) {
+    await handleTelegramUpdate(textUpdate(BUTTONS.invite, telegramUserId));
+    const link = /https:\/\/t\.me\/Nirolearnbot\?start=ref_([A-Z0-9]{8})/.exec(lastSent().text);
+    expect(link).not.toBeNull();
+    return link![1];
+  }
+  async function sendFileAndIntake(telegramUserId: number) {
+    await handleTelegramUpdate(documentUpdate({ from: telegramUserId }));
+    const [upload] = await rows<{ id: string }>(
+      `SELECT u.id FROM telegram_uploads u JOIN telegram_accounts a ON a.id = u."telegramAccountId"
+       WHERE a."telegramUserId" = $1 ORDER BY u."createdAt" DESC LIMIT 1`,
+      [telegramUserId]
+    );
+    await runTelegramIntake(upload.id);
+    return upload.id;
+  }
+
+  beforeEach(() => {
+    process.env.TELEGRAM_BOT_USERNAME = "Nirolearnbot";
+  });
+
+  it("reads a /start payload strictly", () => {
+    expect(parseStartOrigin("src_Batch6")).toEqual({ source: "batch6" });
+    expect(parseStartOrigin("ref_abcd2345")).toEqual({ referralCode: "ABCD2345", source: "invite" });
+    for (const payload of [undefined, "", "src_", "src_has space", "src_<script>", "ref_short", "ref_ABCD234O", "other"]) {
+      expect(parseStartOrigin(payload)).toEqual({});
+    }
+  });
+
+  it("a campaign link labels a NEW student, and an existing one is never relabelled", async () => {
+    await handleTelegramUpdate(textUpdate("/start src_batch6", FRIEND));
+    expect((await account(FRIEND)).source).toBe("batch6");
+    await handleTelegramUpdate(textUpdate("/start src_other_group", FRIEND));
+    expect((await account(FRIEND)).source).toBe("batch6");
+  });
+
+  it("the invite reply carries the student's own link and a share button", async () => {
+    const code = await inviteCodeOf(INVITER);
+    expect(lastSent().text).toContain(TEXT.invite({ joined: 0, available: 0 }));
+    expect(JSON.stringify(lastSent().markup)).toContain("https://t.me/share/url?url=");
+    // The same code every time.
+    expect(await inviteCodeOf(INVITER)).toBe(code);
+  });
+
+  it("an invited classmate's first processed file earns the inviter one file — once", async () => {
+    const code = await inviteCodeOf(INVITER);
+    await handleTelegramUpdate(textUpdate(`/start ref_${code}`, FRIEND));
+    const friend = await account(FRIEND);
+    expect(friend.source).toBe("invite");
+    expect(friend.referredById).toBe((await account(INVITER)).id);
+    // Joining alone earns nothing.
+    expect((await account(INVITER)).bonusUploads).toBe(0);
+
+    tg.sendMessage.mockClear();
+    await sendFileAndIntake(FRIEND);
+    expect((await account(INVITER)).bonusUploads).toBe(1);
+    expect(tg.sendMessage).toHaveBeenCalledWith(INVITER, TEXT.inviteEarned(1));
+    expect((await account(FRIEND)).referralRewardedAt).not.toBeNull();
+
+    // The friend becoming a regular changes nothing more.
+    await test.client.exec(`UPDATE users SET phone = '+962790001111', "passwordHash" = 'x' WHERE id IN (SELECT "userId" FROM telegram_accounts WHERE "telegramUserId" = ${FRIEND})`);
+    await sendFileAndIntake(FRIEND);
+    expect((await account(INVITER)).bonusUploads).toBe(1);
+  });
+
+  it("an unknown invite code and an existing student tapping an invite earn nothing", async () => {
+    await handleTelegramUpdate(textUpdate("/start ref_ZZZZ9999", FRIEND));
+    expect(await account(FRIEND)).toMatchObject({ source: "invite", referredById: null });
+
+    const code = await inviteCodeOf(INVITER);
+    // FRIEND already exists: tapping the link now does not make them invited.
+    await handleTelegramUpdate(textUpdate(`/start ref_${code}`, FRIEND));
+    await sendFileAndIntake(FRIEND);
+    expect((await account(INVITER)).bonusUploads).toBe(0);
+  });
+
+  it("a guest past the free file uploads with an earned file, and is told the two ways when there is none", async () => {
+    await sendFileAndIntake(INVITER); // the guest's free file
+    const inviter = await account(INVITER);
+    await test.client.query(`UPDATE telegram_accounts SET "bonusUploads" = 1 WHERE id = $1`, [inviter.id]);
+
+    await handleTelegramUpdate(documentUpdate({ from: INVITER }));
+    expect(lastSent().text).toContain(TEXT.bonusUsed);
+    expect(await account(INVITER)).toMatchObject({ bonusUploads: 1, bonusUsed: 1 });
+    expect(await rows(`SELECT id FROM telegram_uploads WHERE "telegramAccountId" = $1`, [inviter.id])).toHaveLength(2);
+
+    // Finish that upload so it counts, then try a third.
+    await test.client.exec(`UPDATE telegram_uploads SET status = 'processing'`);
+    await handleTelegramUpdate(documentUpdate({ from: INVITER }));
+    expect(lastSent().text).toBe(TEXT.guestLimit);
+    const markup = JSON.stringify(lastSent().markup);
+    expect(markup).toMatch(/nirolearn\.com\/connect\//);
+    expect(markup).toContain("https://t.me/share/url?url=");
+    expect((await account(INVITER)).bonusUsed).toBe(1);
+  });
+
+  it("a registered student at the plan's limit uploads with an earned file instead", async () => {
+    await handleTelegramUpdate(textUpdate("/start", INVITER));
+    const inviter = await account(INVITER);
+    await test.client.exec(`UPDATE users SET phone = '+962790002222', "passwordHash" = 'x'`);
+    await test.client.query(`UPDATE telegram_accounts SET "bonusUploads" = 1 WHERE id = $1`, [inviter.id]);
+    const limit = () =>
+      NextResponse.json({ error: "وصلت إلى حد ملفاتك اليوم.", code: "PLAN_LIMIT_REACHED" }, { status: 429 });
+    admitUpload
+      .mockResolvedValueOnce(limit())
+      .mockResolvedValueOnce({ receipt: null, release: vi.fn() });
+
+    const uploadId = await sendFileAndIntake(INVITER);
+    const [upload] = await rows<{ status: string }>(`SELECT status FROM telegram_uploads WHERE id = $1`, [uploadId]);
+    expect(upload.status).toBe("processing");
+    expect(admitUpload.mock.calls.at(-1)![3]).toEqual({ skipQuota: true });
+    expect((await account(INVITER)).bonusUsed).toBe(1);
+
+    // No earned file left: the plan's own message is what the student sees.
+    admitUpload.mockResolvedValue(limit());
+    const second = await sendFileAndIntake(INVITER);
+    const [refused] = await rows<{ status: string; error: string }>(`SELECT status, error FROM telegram_uploads WHERE id = $1`, [second]);
+    expect(refused).toEqual({ status: "rejected", error: "وصلت إلى حد ملفاتك اليوم." });
+    expect((await account(INVITER)).bonusUsed).toBe(1);
+  });
+
+  it("earned files are capped", async () => {
+    await handleTelegramUpdate(textUpdate("/start", INVITER));
+    const inviter = await account(INVITER);
+    await test.client.query(`UPDATE telegram_accounts SET "bonusUploads" = $2 WHERE id = $1`, [inviter.id, MAX_BONUS_UPLOADS]);
+    const code = await inviteCodeOf(INVITER);
+    await handleTelegramUpdate(textUpdate(`/start ref_${code}`, FRIEND));
+    await sendFileAndIntake(FRIEND);
+    expect((await account(INVITER)).bonusUploads).toBe(MAX_BONUS_UPLOADS);
+  });
+
+  it("reports, per source, who arrived, who uploaded and who registered — as counts only", async () => {
+    await handleTelegramUpdate(textUpdate("/start src_batch6", 820001));
+    await handleTelegramUpdate(textUpdate("/start src_batch6", 820002));
+    await handleTelegramUpdate(textUpdate("/start", 820003));
+    await sendFileAndIntake(820001);
+    await test.client.exec(`UPDATE users SET phone = '+962790003333', "passwordHash" = 'x' WHERE id IN (SELECT "userId" FROM telegram_accounts WHERE "telegramUserId" = 820002)`);
+
+    expect(await sourceReport()).toEqual([
+      { source: "batch6", arrived: 2, uploaded: 1, registered: 1 },
+      { source: "direct", arrived: 1, uploaded: 0, registered: 0 },
+    ]);
   });
 });
 

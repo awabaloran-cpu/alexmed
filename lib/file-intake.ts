@@ -23,6 +23,8 @@ export type StudentFileInput = {
   fileName: string;
   subjectId: string;
   profile?: Book["profile"];
+  // Passed on to the plan guard (lib/billing/upload-guard.ts).
+  skipQuota?: boolean;
 };
 
 // A NextResponse is the refusal to hand back as-is (its JSON body carries
@@ -37,7 +39,8 @@ export async function admitAndStartStudentFile(
   const admitted = await admitUpload(
     userId,
     input.key,
-    isBook ? "BOOK_FILE" : "QUESTION_FILE"
+    isBook ? "BOOK_FILE" : "QUESTION_FILE",
+    { skipQuota: input.skipQuota }
   );
   if (admitted instanceof NextResponse) return admitted;
 

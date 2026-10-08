@@ -25,6 +25,15 @@ import {
 import { isDocumentKind, type DocumentKind } from "./detect";
 import { retryTelegramUpload } from "./intake";
 import { parsePhone } from "../phone";
+import {
+  findInviterId,
+  inviteLink,
+  inviteStats,
+  parseStartOrigin,
+  refundBonusUpload,
+  shareUrl,
+  spendBonusUpload,
+} from "./growth";
 import { connectLink, openButton } from "./links";
 import {
   claimTelegramPhoneVerification,
@@ -153,17 +162,6 @@ async function handleDocument(
     return;
   }
 
-  if (
-    user.isGuest &&
-    (await countAcceptedUploads(account.id)) >= guestFreeUploads()
-  ) {
-    await sendMessage(
-      chatId,
-      TEXT.guestLimit,
-      urlButton(LABELS.connectAccount, await connectLink(user))
-    );
-    return;
-  }
   if ((await countRecentUploads(account.id)) >= telegramAccountBurstLimit()) {
     await sendMessage(chatId, TEXT.slowDown);
     return;
@@ -171,6 +169,28 @@ async function handleDocument(
   if ((await countUploadsLastDay()) >= telegramDailyUploadCap()) {
     await sendMessage(chatId, TEXT.busy);
     return;
+  }
+  // A guest past their free file: a file earned by inviting pays for this
+  // one; otherwise they are shown the two ways to get more. Checked last,
+  // so an earned file is only spent on an upload that will be recorded.
+  let bonusSpent = false;
+  if (
+    user.isGuest &&
+    (await countAcceptedUploads(account.id)) >= guestFreeUploads()
+  ) {
+    bonusSpent = await spendBonusUpload(account.id);
+    if (!bonusSpent) {
+      const invite = await inviteLink(account.id);
+      await sendMessage(chatId, TEXT.guestLimit, {
+        inline_keyboard: [
+          [{ text: LABELS.connectAccount, url: await connectLink(user) }],
+          ...(invite
+            ? [[{ text: LABELS.inviteFriend, url: shareUrl(invite, TEXT.inviteShare) }]]
+            : []),
+        ],
+      });
+      return;
+    }
   }
 
   const requestedKind = isDocumentKind(account.pendingKind)
@@ -186,10 +206,16 @@ async function handleDocument(
     requestedKind,
   });
   // Telegram delivered this update before: it is already being handled.
-  if (!upload) return;
+  if (!upload) {
+    if (bonusSpent) await refundBonusUpload(account.id);
+    return;
+  }
   if (requestedKind) await setPendingKind(account.id, null);
 
-  const statusMessageId = await sendMessage(chatId, TEXT.received);
+  const statusMessageId = await sendMessage(
+    chatId,
+    bonusSpent ? `${TEXT.bonusUsed}\n\n${TEXT.received}` : TEXT.received
+  );
   await setUploadStatusMessage(upload.id, statusMessageId);
 
   try {
@@ -220,6 +246,22 @@ async function handleFilesList(context: AccountContext, chatId: number) {
     ]);
   }
   await sendMessage(chatId, TEXT.filesHeader, { inline_keyboard: rows });
+}
+
+// "🎁 ادعُ زميلًا": the student's own link, what it earned so far, and a
+// button that opens Telegram's share sheet with the invitation ready.
+async function handleInvite(context: AccountContext, chatId: number) {
+  const link = await inviteLink(context.account.id);
+  if (!link) {
+    await sendMessage(chatId, TEXT.unknownMessage, mainKeyboard());
+    return;
+  }
+  const stats = await inviteStats(context.account.id);
+  await sendMessage(chatId, `${TEXT.invite(stats)}\n\n🔗 ${link}`, {
+    inline_keyboard: [
+      [{ text: LABELS.shareInvite, url: shareUrl(link, TEXT.inviteShare) }],
+    ],
+  });
 }
 
 async function handleLink(
@@ -315,11 +357,18 @@ async function handleMessage(updateId: number, message: TelegramMessage) {
     return;
   }
 
-  const context = await ensureTelegramAccount({
-    telegramUserId: from.id,
-    chatId,
-    languageCode: from.language_code,
-  });
+  // 📈 Where a NEW student came from: a campaign label or a classmate's
+  // invite (lib/telegram/growth.ts). Ignored for an existing account.
+  const origin = parseStartOrigin(start?.[1]);
+  const context = await ensureTelegramAccount(
+    { telegramUserId: from.id, chatId, languageCode: from.language_code },
+    {
+      source: origin.source,
+      referredById: origin.referralCode
+        ? await findInviterId(origin.referralCode)
+        : null,
+    }
+  );
   if (context.user.suspended) {
     await sendMessage(chatId, TEXT.suspended);
     return;
@@ -346,6 +395,8 @@ async function handleMessage(updateId: number, message: TelegramMessage) {
   } else if (text === BUTTONS.uploadBook) {
     await setPendingKind(context.account.id, "book");
     await sendMessage(chatId, TEXT.askForFile("book"));
+  } else if (text === BUTTONS.invite || /^\/invite\b/i.test(text)) {
+    await handleInvite(context, chatId);
   } else if (text === BUTTONS.myFiles || /^\/files\b/i.test(text)) {
     await handleFilesList(context, chatId);
   } else if (text === BUTTONS.howItWorks || /^\/help\b/i.test(text)) {

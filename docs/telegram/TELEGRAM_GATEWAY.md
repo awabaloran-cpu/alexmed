@@ -96,6 +96,32 @@ button to `/tg?to=<path>` (`lib/telegram/links.ts`, `openButton`):
 - **Verified:** the signature check and the session route by tests. **Not
   verified from here:** the real launch on a phone.
 
+## Growth: campaign links, invites, the share card
+
+Added 2026-10-08 (`lib/telegram/growth.ts`, migration `0044_telegram_growth`:
+six columns on `telegram_accounts`).
+
+- **Campaign links** `t.me/<bot>?start=src_<label>`: one label per group /
+  post. The label is stored on the account when it is first created, never
+  changed afterwards. **الأدمن → Telegram** (`/admin/telegram`) makes the
+  links and shows, per label, how many arrived, had a file processed, and
+  registered — counts only.
+- **Invites** `t.me/<bot>?start=ref_<code>`: every student has a code (bot
+  button «🎁 ادعُ زميلًا», `/invite`). When an invited student — a brand-new
+  Telegram account — has their first file reach processing, the inviter
+  earns one extra file, once per invited student, at most
+  `MAX_BONUS_UPLOADS` (30) in total, and is told in the chat.
+- **Spending an earned file**: a guest past the free file uploads with it
+  instead of being stopped; a registered student who hit the plan's daily /
+  monthly count uploads with it too (`admitUpload`'s `skipQuota` — the
+  size limit and key ownership still apply). It costs processing, not money.
+- **Share card** (`components/growth/ShareResultCard.tsx`): under a question
+  file whose every question is answered — the result and a "share on
+  Telegram" button carrying the student's invite link (or a plain
+  `src_web_share` link when Telegram is not connected).
+- Not built: a public leaderboard, rewards other than files, the daily
+  question in a channel (the owner declined it).
+
 ## Links and security
 
 - `/t/<token>`: 32 random bytes, only the SHA-256 is stored, expires

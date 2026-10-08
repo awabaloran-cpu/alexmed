@@ -8,6 +8,7 @@ import {
   Briefcase,
   GraduationCap,
   LayoutDashboard,
+  Send,
   Lock,
   LogOut,
   ShieldCheck,
@@ -33,6 +34,8 @@ const NAV_ITEMS = [
     exact: false,
   },
   { href: "/admin/jobs", label: "الوظائف", icon: Briefcase, exact: false },
+  // 📈 Where the bot's students came from (lib/telegram/growth.ts).
+  { href: "/admin/telegram", label: "Telegram", icon: Send, exact: false },
   // 🔒 Protected Doctor Question Sets (pages show a notice while the
   // feature flag is off).
   {

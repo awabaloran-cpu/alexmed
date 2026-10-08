@@ -117,6 +117,7 @@ export default function QuestionList({
   onAnswered,
   breakEvery,
   renderBreak,
+  renderComplete,
 }: {
   questions: QuestionListItem[];
   watermark?: string;
@@ -126,6 +127,10 @@ export default function QuestionList({
   onAnswered?: (questionId: string, selectedIndex: number) => void;
   breakEvery?: number;
   renderBreak?: (info: DeckBreak) => ReactNode;
+  // Drawn under the deck once every question has an answer (deck only) —
+  // e.g. the result and a way to share it. Like the break, this component
+  // does not know what it contains.
+  renderComplete?: (result: { answered: number; correct: number }) => ReactNode;
 }) {
   const watermarkImage = watermark ? watermarkTile(watermark) : null;
   const [answers, setAnswers] = useState<Record<string, CardAnswer>>(() =>
@@ -164,6 +169,7 @@ export default function QuestionList({
       startIndex={firstUnansweredIndex(questions, initialAnswers)}
       breakEvery={renderBreak ? breakEvery : undefined}
       renderBreak={renderBreak}
+      renderComplete={renderComplete}
     />
   );
 }
@@ -230,6 +236,7 @@ function QuestionDeck({
   startIndex = 0,
   breakEvery,
   renderBreak,
+  renderComplete,
 }: {
   questions: QuestionListItem[];
   answers: Record<string, CardAnswer>;
@@ -237,6 +244,7 @@ function QuestionDeck({
   startIndex?: number;
   breakEvery?: number;
   renderBreak?: (info: DeckBreak) => ReactNode;
+  renderComplete?: (result: { answered: number; correct: number }) => ReactNode;
 }) {
   const [index, setIndex] = useState(startIndex);
   // The question index a pause is holding the student before, and the
@@ -372,6 +380,10 @@ function QuestionDeck({
           التالي <ChevronLeft size={17} aria-hidden="true" />
         </button>
       </nav>
+
+      {renderComplete && answered === total
+        ? renderComplete({ answered, correct })
+        : null}
     </div>
   );
 }

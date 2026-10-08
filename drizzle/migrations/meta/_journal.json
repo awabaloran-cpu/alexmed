@@ -309,6 +309,13 @@
       "when": 1791419085693,
       "tag": "0043_telegram_gateway",
       "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1791441461833,
+      "tag": "0044_telegram_growth",
+      "breakpoints": true
     }
   ]
 }

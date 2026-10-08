@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { CircleAlert, ClipboardList, Loader2, RotateCcw } from "lucide-react";
 import AdBreak from "@/components/ads/AdBreak";
+import ShareResultCard from "@/components/growth/ShareResultCard";
 import { adPreviewRequested } from "@/components/ads/useAdBreak";
 import QuestionList from "@/components/questions/QuestionList";
 import { trpc } from "@/lib/trpc-client";
@@ -139,6 +140,7 @@ export default function QuestionFileDetailPage() {
           onAnswered={(questionId, selectedIndex) =>
             saveAttempt.mutate({ bookId: book.id, questionId, selectedIndex })
           }
+          renderComplete={result => <ShareResultCard {...result} />}
           {...(ads?.enabled
             ? {
                 breakEvery: ads.questionsPerBreak,

@@ -38,6 +38,7 @@ import {
   resolveDocumentKind,
   type DocumentKind,
 } from "./detect";
+import { refundBonusUpload, rewardInviterOf, spendBonusUpload } from "./growth";
 import { openButton as linkButton } from "./links";
 import { CALLBACK, filePath, LABELS, TEXT } from "./messages";
 import { readLeadingPages } from "./pdf-sample";
@@ -188,6 +189,31 @@ async function storeUploadedPdf(
   return key;
 }
 
+// True for the plan guard's "you have used today's / this month's files".
+async function isPlanLimit(response: NextResponse): Promise<boolean> {
+  const body = (await response
+    .clone()
+    .json()
+    .catch(() => null)) as { code?: string } | null;
+  return (
+    body?.code === "PLAN_LIMIT_REACHED" || body?.code === "MONTHLY_LIMIT_REACHED"
+  );
+}
+
+// An invited student's first file just entered processing: their inviter
+// earns a file and is told. Never allowed to fail the upload itself.
+async function thankInviter(accountId: string): Promise<void> {
+  try {
+    const reward = await rewardInviterOf(accountId);
+    if (!reward) return;
+    await sendMessage(reward.chatId, TEXT.inviteEarned(reward.bonusLeft));
+  } catch (error) {
+    if (!isChatGone(error)) {
+      console.error("[Telegram] Could not reward the inviter", error);
+    }
+  }
+}
+
 async function refusalText(response: NextResponse): Promise<string> {
   const body = (await response
     .clone()
@@ -278,12 +304,30 @@ export async function runTelegramIntake(
       throw error;
     }
 
-    const started = await admitAndStartStudentFile(userId, {
+    const file = {
       kind,
       key,
       fileName: upload.fileName,
       subjectId: await ensureTelegramSubject(userId),
-    });
+    };
+    let started = await admitAndStartStudentFile(userId, file);
+    // The plan's daily / monthly count is used up: a file earned by
+    // inviting (lib/telegram/growth.ts) pays for this one instead.
+    if (
+      started instanceof NextResponse &&
+      (await isPlanLimit(started)) &&
+      (await spendBonusUpload(context.accountId))
+    ) {
+      started = await admitAndStartStudentFile(userId, {
+        ...file,
+        skipQuota: true,
+      });
+      if (started instanceof NextResponse) {
+        await refundBonusUpload(context.accountId);
+      } else {
+        await say(context, TEXT.bonusUsed);
+      }
+    }
     if (started instanceof NextResponse) {
       throw new RefusedFile(await refusalText(started));
     }
@@ -297,6 +341,7 @@ export async function runTelegramIntake(
     });
     await recordUploadStage(uploadId, "reading");
     await progress(context, TEXT.reading);
+    await thankInviter(context.accountId);
     await publishMessage({ type: "telegram_watch", uploadId }, { delay: 6 });
     return "done";
   } catch (error) {

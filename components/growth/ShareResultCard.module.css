@@ -1,0 +1,83 @@
+/* The result + share card under a finished question file
+   (components/growth/ShareResultCard.tsx). Same --nl-* tokens as the
+   question card above it. */
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-top: 16px;
+  padding: 20px 18px;
+  border: 1px solid var(--nl-rule);
+  border-radius: var(--nl-r-lg);
+  background: var(--nl-sheet);
+  color: var(--nl-ink);
+}
+.score {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+.score strong {
+  font-size: 34px;
+  font-weight: 700;
+  line-height: 1;
+}
+.score span {
+  color: var(--nl-ink-2);
+  font-size: 14.5px;
+}
+.pitch {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0;
+  padding: 12px;
+  border-radius: var(--nl-r-md);
+  background: var(--nl-marker-soft);
+  font-size: 14.5px;
+  line-height: 1.7;
+}
+.pitch svg {
+  flex: none;
+  margin-top: 4px;
+}
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.share,
+.copy {
+  display: inline-flex;
+  flex: 1 1 160px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 48px;
+  padding: 0 16px;
+  border-radius: var(--nl-r-md);
+  font: inherit;
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+}
+.share {
+  border: 0;
+  background: var(--nl-ink);
+  color: #fff;
+}
+.copy {
+  border: 1px solid var(--nl-rule);
+  background: transparent;
+  color: var(--nl-ink);
+}
+.share:focus-visible,
+.copy:focus-visible {
+  outline: 3px solid var(--nl-niro);
+  outline-offset: 3px;
+}
+.stats {
+  margin: 0;
+  color: var(--nl-ink-2);
+  font-size: 13px;
+}

@@ -10,6 +10,7 @@ export const BUTTONS = {
   myFiles: "📊 ملفاتي",
   howItWorks: "❓ كيف يعمل؟",
   openSite: "🌐 فتح NiroLearn",
+  invite: "🎁 ادعُ زميلًا",
 } as const;
 
 // The keyboard under the message box. The command menu (/start, /files,
@@ -21,8 +22,9 @@ export function mainKeyboard(): ReplyMarkup {
   return {
     keyboard: [
       [{ text: BUTTONS.uploadQuestions }, { text: BUTTONS.uploadBook }],
-      [{ text: BUTTONS.myFiles }, { text: BUTTONS.howItWorks }],
+      [{ text: BUTTONS.myFiles }, { text: BUTTONS.invite }],
       [
+        { text: BUTTONS.howItWorks },
         miniAppEnabled()
           ? {
               text: BUTTONS.openSite,
@@ -77,7 +79,23 @@ export const TEXT = {
 
   guestLimit:
     "🎓 جرّبت NiroLearn بملفك الأول.\n\n" +
-    "لرفع ملفات أخرى سجّل الدخول إلى حسابك أو أنشئ حسابًا مجانيًا — ملفك الحالي وتقدّمك ينتقلان إلى حسابك كما هما.",
+    "لرفع ملف آخر:\n" +
+    "• سجّل الدخول أو أنشئ حسابًا مجانيًا — ملفك وتقدّمك ينتقلان إليه كما هما.\n" +
+    "• أو ادعُ زميلًا: كل زميل يرفع ملفه الأول يمنحك ملفًا إضافيًا 🎁",
+
+  // 🎁 Invites (lib/telegram/growth.ts).
+  invite: (stats: { joined: number; available: number }) =>
+    "🎁 ادعُ زملاءك واربح ملفات إضافية\n\n" +
+    "أرسل رابطك لزميل. عندما يرفع ملفه الأول تحصل أنت على ملف إضافي مجانًا — بلا حد يومي ولا اشتراك.\n\n" +
+    `👥 انضم عبر رابطك: ${stats.joined}\n` +
+    `📄 ملفات إضافية متاحة لك: ${stats.available}`,
+  inviteShare:
+    "📚 جرّب NiroLearn: أرسل ملف الأسئلة PDF للبوت ويحوّله لاختبار تفاعلي مع الشرح بالعربي — مجانًا 👇",
+  inviteEarned: (available: number) =>
+    "🎉 زميلك رفع ملفه الأول عبر رابطك!\n\n" +
+    `ربحت ملفًا إضافيًا — المتاح لك الآن: ${available} 📄\n` +
+    "أرسل ملفك التالي متى شئت.",
+  bonusUsed: "🎁 استخدمنا ملفًا من رصيد دعواتك لهذا الملف.",
 
   guestConnectHint:
     "💡 لديك حساب في NiroLearn أو تريد إنشاء حساب؟ اربطه بهذه المحادثة لتُحفظ ملفاتك وترفع المزيد.",
@@ -175,6 +193,8 @@ export const LABELS = {
   asQuestions: "📄 ملف أسئلة",
   asBook: "📚 كتاب",
   shareContact: "📱 مشاركة رقمي",
+  shareInvite: "📨 أرسل الدعوة لزملائك",
+  inviteFriend: "🎁 ادعُ زميلًا واربح ملفًا",
 } as const;
 
 // callback_data is limited to 64 bytes: a short tag + the upload's uuid.
