@@ -14,8 +14,12 @@ import { resolveWebLogin } from "@/lib/telegram/web-session";
 export const metadata: Metadata = {
   title: "متابعة إلى NiroLearn",
   robots: { index: false, follow: false },
-  // The address holds the link's token: send it to no other site.
-  referrer: "no-referrer",
+  // The address holds the link's token. The site-wide Referrer-Policy
+  // (strict-origin-when-cross-origin, next.config.ts) already keeps the path
+  // from other sites. "no-referrer" must NOT be set here: it makes browsers
+  // send `Origin: null` with the form below, and the session route would
+  // then refuse this page's own button.
+  referrer: "strict-origin-when-cross-origin",
 };
 
 export const dynamic = "force-dynamic";

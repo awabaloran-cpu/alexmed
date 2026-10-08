@@ -32,10 +32,12 @@ async function questionIds() {
   return result.rows.map(row => row.id);
 }
 
+// Booting PGlite and applying every migration can outlast the default
+// hook timeout while the whole suite runs in parallel.
 beforeAll(async () => {
   test = await createTestDb();
   holder.db = test.db;
-});
+}, 60_000);
 
 beforeEach(async () => {
   await test.client.exec(`TRUNCATE users CASCADE; TRUNCATE phone_verifications`);

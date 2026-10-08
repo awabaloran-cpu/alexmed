@@ -51,14 +51,18 @@ export async function resolveWebLogin(
 // True when a POST really came from one of this site's own pages. The
 // exchange sets a session cookie, so a form on another site must not be
 // able to submit it (that would sign a visitor into an account the other
-// site chose). Browsers send Origin on every cross-site POST; Sec-Fetch-Site
-// covers the rest.
+// site chose).
+//
+// Sec-Fetch-Site is set by the browser itself (a page cannot forge it), so
+// when it is present it decides. Browsers too old to send it fall back to
+// Origin, which must then name this site — an absent or opaque ("null")
+// Origin is refused.
 export function isSameOriginPost(request: Request, siteUrl: string): boolean {
   const fetchSite = request.headers.get("sec-fetch-site");
-  if (fetchSite && fetchSite !== "same-origin") return false;
+  if (fetchSite) return fetchSite === "same-origin";
 
   const origin = request.headers.get("origin");
-  if (!origin) return fetchSite === "same-origin";
+  if (!origin) return false;
 
   const allowed = new Set<string>();
   try {

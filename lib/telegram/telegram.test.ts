@@ -171,7 +171,9 @@ beforeAll(async () => {
   process.env.TELEGRAM_WEBHOOK_SECRET = "hook-secret";
   process.env.TELEGRAM_ENABLED = "true";
   process.env.AUTH_SECRET = "test-secret-test-secret-test-secret";
-});
+  // Booting PGlite and applying every migration can outlast the default
+  // hook timeout while the whole suite runs in parallel.
+}, 60_000);
 
 beforeEach(async () => {
   await test.client.exec(`TRUNCATE users CASCADE`);
@@ -661,6 +663,13 @@ describe("Link tokens and the guest web session", () => {
     expect(isSameOriginPost(post({ origin: "https://evil.example", host: "nirolearn.com" }), site)).toBe(false);
     expect(isSameOriginPost(post({ "sec-fetch-site": "cross-site", origin: "https://nirolearn.com" }), site)).toBe(false);
     expect(isSameOriginPost(post({ host: "nirolearn.com" }), site)).toBe(false);
+    // What a real browser sent from /t/<token> when the page asked for no
+    // referrer: the browser vouches for same-origin while Origin is "null".
+    // This must be accepted (it was refused with 403 in production).
+    expect(isSameOriginPost(post({ "sec-fetch-site": "same-origin", origin: "null" }), site)).toBe(true);
+    // An opaque origin with nothing vouching for it stays refused.
+    expect(isSameOriginPost(post({ origin: "null", host: "nirolearn.com" }), site)).toBe(false);
+    expect(isSameOriginPost(post({ "sec-fetch-site": "same-site", origin: "https://nirolearn.com" }), site)).toBe(false);
   });
 
   it("the session route signs the guest in with the ordinary session cookie and sends them to their file", async () => {
