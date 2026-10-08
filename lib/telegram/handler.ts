@@ -24,7 +24,12 @@ import {
 } from "./config";
 import { isDocumentKind, type DocumentKind } from "./detect";
 import { retryTelegramUpload } from "./intake";
+import { parsePhone } from "../phone";
 import { connectLink, openButton } from "./links";
+import {
+  claimTelegramPhoneVerification,
+  completeTelegramPhoneVerification,
+} from "./phone-verify";
 import {
   BUTTONS,
   filePath,
@@ -56,12 +61,14 @@ type TelegramDocument = {
   mime_type?: string;
   file_size?: number;
 };
+type TelegramContact = { phone_number: string; user_id?: number };
 type TelegramMessage = {
   message_id: number;
   from?: TelegramUser;
   chat: TelegramChat;
   text?: string;
   document?: TelegramDocument;
+  contact?: TelegramContact;
 };
 export type TelegramUpdate = {
   update_id: number;
@@ -75,6 +82,7 @@ export type TelegramUpdate = {
 };
 
 const LINK_PREFIX = "link_";
+const VERIFY_PREFIX = "verify_";
 
 async function openSiteButton(
   context: AccountContext,
@@ -239,6 +247,32 @@ async function handleLink(
   );
 }
 
+async function handleContact(
+  chatId: number,
+  from: TelegramUser,
+  contact: TelegramContact
+) {
+  // Telegram fills user_id with the contact's owner: only the sender's own
+  // contact proves anything.
+  if (contact.user_id !== from.id) {
+    await sendMessage(chatId, TEXT.verifyNotOwn);
+    return;
+  }
+  const phone = parsePhone(`+${contact.phone_number.replace(/\D/g, "")}`);
+  const outcome = phone.ok
+    ? await completeTelegramPhoneVerification(from.id, phone.e164)
+    : "mismatch";
+  await sendMessage(
+    chatId,
+    outcome === "verified"
+      ? TEXT.verifyDone
+      : outcome === "mismatch"
+        ? TEXT.verifyMismatch
+        : TEXT.verifyNoRequest,
+    mainKeyboard()
+  );
+}
+
 async function handleMessage(updateId: number, message: TelegramMessage) {
   const from = message.from;
   // Private chats with real people only — the bot does nothing in groups.
@@ -249,6 +283,35 @@ async function handleMessage(updateId: number, message: TelegramMessage) {
   const start = /^\/start(?:@\w+)?(?:\s+(\S+))?$/i.exec(text);
   if (start?.[1]?.startsWith(LINK_PREFIX)) {
     await handleLink(start[1].slice(LINK_PREFIX.length), message, from);
+    return;
+  }
+
+  // 📱 Sign-up phone verification (lib/telegram/phone-verify.ts). Handled
+  // before any account is made for this Telegram user: verifying a number
+  // for the sign-up page neither needs nor creates a Telegram account here,
+  // and does not connect this Telegram user to the account being created —
+  // that stays an explicit step (حسابي → Telegram), so a verification link
+  // sent to someone else can never route their files into another account.
+  if (start?.[1]?.startsWith(VERIFY_PREFIX)) {
+    const claimed = await claimTelegramPhoneVerification(
+      start[1].slice(VERIFY_PREFIX.length),
+      from.id
+    );
+    await sendMessage(
+      chatId,
+      claimed ? TEXT.verifyAsk : TEXT.verifyInvalid,
+      claimed
+        ? {
+            keyboard: [[{ text: LABELS.shareContact, request_contact: true }]],
+            resize_keyboard: true,
+            one_time_keyboard: true,
+          }
+        : mainKeyboard()
+    );
+    return;
+  }
+  if (message.contact) {
+    await handleContact(chatId, from, message.contact);
     return;
   }
 

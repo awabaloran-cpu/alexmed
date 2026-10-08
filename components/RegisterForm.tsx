@@ -12,7 +12,7 @@ import { signIn } from "next-auth/react";
 import { safeCallbackUrl } from "@/lib/safe-redirect";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
-import { MessageSquareText, Pencil } from "lucide-react";
+import { Loader2, MessageSquareText, Pencil, Send } from "lucide-react";
 import NiroAuthScene from "@/components/niro/NiroAuthScene";
 import { GoogleIcon, PasswordInput } from "@/components/AuthFields";
 import { niroLine } from "@/lib/niro";
@@ -45,13 +45,27 @@ async function postJson(url: string, body: unknown) {
   return { ok: response.ok, data };
 }
 
-// Phone sign-up (a number is mandatory and verified by SMS — server side in
-// lib/db-phone.ts): 1) number → 2) 6-digit code → 3) name + password, then
-// the student is signed in. Google sign-up stays available on step 1.
+type CodeChannel = "whatsapp" | "sms";
+const CHANNEL_WORDS: Record<CodeChannel, string> = {
+  whatsapp: "على واتساب",
+  sms: "برسالة SMS",
+};
+const TELEGRAM_POLL_MS = 2500;
+
+// Phone sign-up (a number is mandatory and verified — server side in
+// lib/db-phone.ts): 1) number → 2) proof it is theirs → 3) name + password,
+// then the student is signed in. Step 2 is a 6-digit code sent by WhatsApp
+// or SMS (`codeChannel` is where it goes first), or — with
+// `telegramVerify` — sharing the number with the Telegram bot, which costs
+// nothing (lib/telegram/phone-verify.ts). Google sign-up stays on step 1.
 export default function RegisterForm({
   googleEnabled,
+  codeChannel = "sms",
+  telegramVerify = false,
 }: {
   googleEnabled: boolean;
+  codeChannel?: CodeChannel;
+  telegramVerify?: boolean;
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -61,6 +75,10 @@ export default function RegisterForm({
   const [phoneInput, setPhoneInput] = useState("");
   const [phone, setPhone] = useState(""); // E.164, once the code was sent
   const [verificationId, setVerificationId] = useState("");
+  // Where the code actually went (the server may fall back to SMS).
+  const [sentVia, setSentVia] = useState<CodeChannel>(codeChannel);
+  // Set while step 2 is "share your number with the bot" instead of a code.
+  const [telegramUrl, setTelegramUrl] = useState("");
   const [code, setCode] = useState("");
   const [resendIn, setResendIn] = useState(0);
   const [name, setName] = useState("");
@@ -106,6 +124,8 @@ export default function RegisterForm({
       setPhone(String(data.phone));
       setVerificationId(String(data.verificationId));
       setResendIn(Number(data.resendAfterSeconds) || 60);
+      setSentVia(data.channel === "whatsapp" ? "whatsapp" : "sms");
+      setTelegramUrl("");
       setCode("");
       setStep("code");
     } catch {
@@ -114,6 +134,70 @@ export default function RegisterForm({
       setLoading(false);
     }
   }
+
+  // Step 2 through the Telegram bot: no code is sent; the page waits for
+  // the student to share their number there.
+  async function startTelegram() {
+    setError("");
+    const parsed = parsePhone(phoneInput, country);
+    if (!parsed.ok) {
+      setError(
+        parsed.reason === "empty"
+          ? "اكتب رقم هاتفك."
+          : "رقم الهاتف غير صحيح. تأكد من الرقم ومن الدولة."
+      );
+      return;
+    }
+    setLoading(true);
+    try {
+      const { ok, data } = await postJson("/api/phone-verification/telegram", {
+        phone: phoneInput,
+        country,
+      });
+      if (!ok || typeof data.url !== "string") {
+        setError(String(data.error ?? "تعذّر بدء التحقق عبر Telegram."));
+        return;
+      }
+      setPhone(String(data.phone));
+      setVerificationId(String(data.verificationId));
+      setTelegramUrl(data.url);
+      setCode("");
+      setStep("code");
+    } catch {
+      setError("تعذّر الاتصال. تأكد من الإنترنت وحاول مرة ثانية.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  // While the student is in Telegram: ask the server whether the number
+  // was shared, and move on as soon as it was.
+  useEffect(() => {
+    if (step !== "code" || !telegramUrl || !verificationId) return;
+    let stopped = false;
+    const timer = setInterval(async () => {
+      try {
+        const { data } = await postJson("/api/phone-verification/status", {
+          verificationId,
+        });
+        if (stopped) return;
+        if (data.status === "verified") {
+          setError("");
+          setStep("details");
+        } else if (data.status === "expired") {
+          setError("انتهت مهلة التحقق. ابدأ من جديد.");
+          setTelegramUrl("");
+          setStep("phone");
+        }
+      } catch {
+        // A dropped request: the next tick tries again.
+      }
+    }, TELEGRAM_POLL_MS);
+    return () => {
+      stopped = true;
+      clearInterval(timer);
+    };
+  }, [step, telegramUrl, verificationId]);
 
   async function verifyCode(value: string) {
     if (value.length !== CODE_LENGTH || loading) return;
@@ -195,7 +279,11 @@ export default function RegisterForm({
         error
           ? niroLine("oops")
           : step === "code"
-            ? "بعتلك كود على موبايلك 📩 اكتبه هون"
+            ? telegramUrl
+              ? "شارك رقمك مع البوت وارجع لهون 👌"
+              : sentVia === "whatsapp"
+                ? "بعتلك كود على واتساب 📩 اكتبه هون"
+                : "بعتلك كود على موبايلك 📩 اكتبه هون"
             : step === "details"
               ? "تمام، رقمك مؤكَّد ✅ ضايل اسمك وكلمة السر"
               : niroLine("join")
@@ -251,8 +339,8 @@ export default function RegisterForm({
                 />
               </div>
               <p id="phone-hint" className="text-xs text-muted-foreground">
-                رح نبعتلك كود من {CODE_LENGTH} أرقام برسالة SMS للتأكد إنه رقمك.
-                الرقم إجباري ولن يظهر لأي شخص.
+                رح نبعتلك كود من {CODE_LENGTH} أرقام {CHANNEL_WORDS[codeChannel]}{" "}
+                للتأكد إنه رقمك. الرقم إجباري ولن يظهر لأي شخص.
               </p>
             </div>
             {error && (
@@ -263,15 +351,71 @@ export default function RegisterForm({
             <Button type="submit" className="w-full" disabled={loading}>
               {loading ? "جاري الإرسال..." : "أرسل كود التحقق"}
             </Button>
+            {telegramVerify && (
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full"
+                disabled={loading}
+                onClick={startTelegram}
+              >
+                <Send size={16} aria-hidden="true" /> التحقق عبر Telegram — بدون
+                كود
+              </Button>
+            )}
           </form>
         )}
 
-        {step === "code" && (
+        {step === "code" && telegramUrl && (
+          <div className="space-y-4">
+            <div className="signup-sent">
+              <Send size={18} aria-hidden="true" />
+              <p>
+                تأكيد الرقم{" "}
+                <bdi dir="ltr">{formatPhoneForDisplay(phone)}</bdi> عبر Telegram
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  setTelegramUrl("");
+                  setStep("phone");
+                  setError("");
+                }}
+              >
+                <Pencil size={14} aria-hidden="true" /> تغيير الرقم
+              </button>
+            </div>
+            <ol className="list-decimal space-y-1 pe-5 text-sm text-muted-foreground">
+              <li>افتح بوت NiroLearn من الزر بالأسفل واضغط «ابدأ».</li>
+              <li>اضغط «مشاركة رقمي» داخل المحادثة.</li>
+              <li>ارجع إلى هذه الصفحة — تكمل تلقائيًا.</li>
+            </ol>
+            <Button asChild className="w-full">
+              <a href={telegramUrl} target="_blank" rel="noreferrer">
+                <Send size={16} aria-hidden="true" /> فتح Telegram
+              </a>
+            </Button>
+            <p
+              className="flex items-center justify-center gap-2 text-sm text-muted-foreground"
+              role="status"
+            >
+              <Loader2 size={14} className="animate-spin" aria-hidden="true" />
+              بانتظار مشاركة الرقم…
+            </p>
+            {error && (
+              <p className="text-sm text-destructive text-center" role="alert">
+                {error}
+              </p>
+            )}
+          </div>
+        )}
+
+        {step === "code" && !telegramUrl && (
           <div className="space-y-4">
             <div className="signup-sent">
               <MessageSquareText size={18} aria-hidden="true" />
               <p>
-                أرسلنا كوداً إلى{" "}
+                أرسلنا كوداً {CHANNEL_WORDS[sentVia]} إلى{" "}
                 <bdi dir="ltr">{formatPhoneForDisplay(phone)}</bdi>
               </p>
               <button

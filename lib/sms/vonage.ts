@@ -20,7 +20,13 @@ export class SmsNotConfiguredError extends Error {
 }
 
 export type StartResult =
-  | { ok: true; requestId: string }
+  | {
+      ok: true;
+      requestId: string;
+      // The channel the code goes to first, and how long it can be entered.
+      channel: VerifyChannel;
+      lifetimeSeconds: number;
+    }
   | {
       ok: false;
       reason:
@@ -40,6 +46,48 @@ export type CheckResult =
 export const SMS_CODE_LENGTH = 6;
 // How long the code in the SMS stays valid at Vonage.
 export const SMS_CODE_TTL_SECONDS = 300;
+
+// Where the code is sent, in order (VONAGE_VERIFY_CHANNELS, e.g.
+// "whatsapp,sms"). Vonage tries the first channel and moves to the next one
+// only if the code was not entered within channelTimeoutSeconds() — so with
+// "whatsapp,sms" an SMS is paid for only when WhatsApp did not do the job.
+// Unset = SMS only, exactly as before.
+export type VerifyChannel = "whatsapp" | "sms";
+
+export function verifyChannels(): VerifyChannel[] {
+  const wanted = (process.env.VONAGE_VERIFY_CHANNELS ?? "")
+    .split(",")
+    .map(value => value.trim().toLowerCase())
+    .filter((value): value is VerifyChannel =>
+      value === "whatsapp" || value === "sms"
+    );
+  const unique = [...new Set(wanted)];
+  return unique.length ? unique : ["sms"];
+}
+
+// How long Vonage waits on one channel before trying the next. With a
+// single channel this is simply how long the code stays valid.
+export function channelTimeoutSeconds(): number {
+  if (verifyChannels().length === 1) return SMS_CODE_TTL_SECONDS;
+  const wanted = Number(process.env.VONAGE_CHANNEL_TIMEOUT_SECONDS) || 90;
+  return Math.min(900, Math.max(15, Math.round(wanted)));
+}
+
+// How long the code can still be entered: every channel gets its turn.
+export function codeLifetimeSeconds(): number {
+  return verifyChannels().length * channelTimeoutSeconds();
+}
+
+function workflowFor(channels: VerifyChannel[], to: string) {
+  const whatsappFrom = process.env.VONAGE_WHATSAPP_FROM?.replace(/\D/g, "");
+  return channels.map(channel =>
+    channel === "whatsapp"
+      ? // `from` is the account's own WhatsApp Business number, when it has
+        // one; without it Vonage uses its shared sender.
+        { channel, to, ...(whatsappFrom ? { from: whatsappFrom } : {}) }
+      : { channel, to }
+  );
+}
 
 function config() {
   const key = process.env.VONAGE_API_KEY;
@@ -75,21 +123,54 @@ export async function startVerification(
   fetchImpl: VonageFetch = fetch
 ): Promise<StartResult> {
   const { base, auth, brand, locale } = config();
-  const response = await fetchImpl(`${base}/v2/verify`, {
-    method: "POST",
-    headers: { Authorization: auth, "Content-Type": "application/json" },
-    body: JSON.stringify({
-      brand,
-      locale,
-      code_length: SMS_CODE_LENGTH,
-      channel_timeout: SMS_CODE_TTL_SECONDS,
-      workflow: [{ channel: "sms", to: e164.replace(/^\+/, "") }],
-    }),
-  });
+  const to = e164.replace(/^\+/, "");
+  const channels = verifyChannels();
+  const send = (use: VerifyChannel[], timeout: number) =>
+    fetchImpl(`${base}/v2/verify`, {
+      method: "POST",
+      headers: { Authorization: auth, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        brand,
+        locale,
+        code_length: SMS_CODE_LENGTH,
+        channel_timeout: timeout,
+        workflow: workflowFor(use, to),
+      }),
+    });
+
+  let used = channels;
+  let lifetimeSeconds = codeLifetimeSeconds();
+  let response = await send(channels, channelTimeoutSeconds());
+  // WhatsApp refused outright (not enabled on the account, a sender that is
+  // not set up): sign-up must not stop working because of it — send the
+  // code by SMS alone, and say so in the logs.
+  if (
+    !response.ok &&
+    channels.includes("whatsapp") &&
+    channels.includes("sms") &&
+    response.status !== 409 &&
+    response.status !== 429 &&
+    response.status !== 401 &&
+    response.status !== 403
+  ) {
+    console.error(
+      "[SMS] Vonage refused the WhatsApp workflow, falling back to SMS only",
+      response.status,
+      await errorType(response.clone())
+    );
+    used = ["sms"];
+    lifetimeSeconds = SMS_CODE_TTL_SECONDS;
+    response = await send(used, SMS_CODE_TTL_SECONDS);
+  }
   if (response.ok) {
     const body = (await response.json()) as { request_id?: string };
     return body.request_id
-      ? { ok: true, requestId: body.request_id }
+      ? {
+          ok: true,
+          requestId: body.request_id,
+          channel: used[0],
+          lifetimeSeconds,
+        }
       : { ok: false, reason: "provider_error" };
   }
   const type = await errorType(response);

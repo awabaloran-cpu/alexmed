@@ -144,6 +144,21 @@ export const TEXT = {
   linked:
     "✅ تم ربط Telegram بحسابك في NiroLearn.\n\n" +
     "ملفاتك المرفوعة من هنا صارت في حسابك، وكل ملف ترسله بعد الآن يُضاف إليه.",
+  // Phone verification for sign-up (lib/telegram/phone-verify.ts).
+  verifyAsk:
+    "📱 طلب تحقق لإنشاء حساب في NiroLearn.\n\n" +
+    "اضغط الزر بالأسفل لمشاركة رقمك، وسنتأكد أنه نفس الرقم الذي كتبته في صفحة التسجيل.\n\n" +
+    "⚠️ إن لم تكن أنت من بدأ التسجيل الآن، لا تشارك رقمك.",
+  verifyDone:
+    "✅ تم التحقق من رقمك.\n\nارجع إلى صفحة التسجيل في المتصفح لإكمال حسابك.",
+  verifyMismatch:
+    "⚠️ الرقم الذي شاركته لا يطابق الرقم المكتوب في صفحة التسجيل.\n\nصحّح الرقم هناك وحاول مرة ثانية.",
+  verifyNotOwn: "⚠️ شارك رقمك أنت من الزر، لا جهة اتصال أخرى.",
+  verifyNoRequest:
+    "لا يوجد طلب تحقق مفتوح الآن. ابدأ من صفحة إنشاء الحساب في NiroLearn.",
+  verifyInvalid:
+    "⚠️ رابط التحقق غير صالح أو انتهت صلاحيته. ابدأ من جديد من صفحة إنشاء الحساب.",
+
   linkInvalid:
     "⚠️ رمز الربط غير صالح أو انتهت صلاحيته. أنشئ رمزًا جديدًا من صفحة حسابك في NiroLearn.",
   linkElsewhere: "⚠️ حساب Telegram هذا مربوط بحساب NiroLearn آخر.",
@@ -159,6 +174,7 @@ export const LABELS = {
   retry: "🔄 إعادة المحاولة",
   asQuestions: "📄 ملف أسئلة",
   asBook: "📚 كتاب",
+  shareContact: "📱 مشاركة رقمي",
 } as const;
 
 // callback_data is limited to 64 bytes: a short tag + the upload's uuid.

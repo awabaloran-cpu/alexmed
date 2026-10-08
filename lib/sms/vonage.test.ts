@@ -7,6 +7,7 @@ import {
   isSmsConfigured,
   SmsNotConfiguredError,
   startVerification,
+  verifyChannels,
 } from "./vonage";
 
 function reply(status: number, body: unknown) {
@@ -35,7 +36,12 @@ describe("startVerification", () => {
   it("sends an SMS workflow with basic auth, brand and a 6-digit code", async () => {
     const fetchImpl = vi.fn(async () => reply(202, { request_id: "req-1" }));
     const result = await startVerification("+962791234567", fetchImpl);
-    expect(result).toEqual({ ok: true, requestId: "req-1" });
+    expect(result).toEqual({
+      ok: true,
+      requestId: "req-1",
+      channel: "sms",
+      lifetimeSeconds: 300,
+    });
     const [url, init] = fetchImpl.mock.calls[0] as unknown as [
       string,
       RequestInit,
@@ -49,6 +55,94 @@ describe("startVerification", () => {
       code_length: 6,
       workflow: [{ channel: "sms", to: "962791234567" }],
     });
+  });
+
+  describe("with WhatsApp first (VONAGE_VERIFY_CHANNELS=whatsapp,sms)", () => {
+    const bodyOf = (call: unknown) =>
+      JSON.parse(String((call as [string, RequestInit])[1].body));
+    const restore = { ...process.env };
+    beforeEach(() => {
+      process.env.VONAGE_VERIFY_CHANNELS = "whatsapp, sms";
+    });
+    afterEach(() => {
+      for (const key of [
+        "VONAGE_VERIFY_CHANNELS",
+        "VONAGE_WHATSAPP_FROM",
+        "VONAGE_CHANNEL_TIMEOUT_SECONDS",
+      ]) {
+        if (restore[key] === undefined) delete process.env[key];
+        else process.env[key] = restore[key];
+      }
+    });
+
+    it("asks Vonage to try WhatsApp, then SMS after the channel timeout", async () => {
+      const fetchImpl = vi.fn(async () => reply(202, { request_id: "req-2" }));
+      const result = await startVerification("+962791234567", fetchImpl);
+      expect(result).toEqual({
+        ok: true,
+        requestId: "req-2",
+        channel: "whatsapp",
+        // Two channels, 90 seconds each.
+        lifetimeSeconds: 180,
+      });
+      expect(bodyOf(fetchImpl.mock.calls[0])).toMatchObject({
+        channel_timeout: 90,
+        workflow: [
+          { channel: "whatsapp", to: "962791234567" },
+          { channel: "sms", to: "962791234567" },
+        ],
+      });
+      expect(bodyOf(fetchImpl.mock.calls[0]).workflow[0]).not.toHaveProperty("from");
+    });
+
+    it("sends from the account's own WhatsApp number when one is configured", async () => {
+      process.env.VONAGE_WHATSAPP_FROM = "+962 7 9000 0000";
+      const fetchImpl = vi.fn(async () => reply(202, { request_id: "req-3" }));
+      await startVerification("+962791234567", fetchImpl);
+      expect(bodyOf(fetchImpl.mock.calls[0]).workflow[0]).toEqual({
+        channel: "whatsapp",
+        to: "962791234567",
+        from: "962790000000",
+      });
+    });
+
+    it("if Vonage refuses the WhatsApp workflow, sign-up still works: SMS alone", async () => {
+      const fetchImpl = vi
+        .fn()
+        .mockResolvedValueOnce(reply(422, { title: "Invalid params" }))
+        .mockResolvedValueOnce(reply(202, { request_id: "req-4" }));
+      const result = await startVerification("+962791234567", fetchImpl);
+      expect(result).toEqual({
+        ok: true,
+        requestId: "req-4",
+        channel: "sms",
+        lifetimeSeconds: 300,
+      });
+      expect(bodyOf(fetchImpl.mock.calls[1]).workflow).toEqual([
+        { channel: "sms", to: "962791234567" },
+      ]);
+    });
+
+    it("does not retry when the refusal is not about the channel", async () => {
+      for (const status of [409, 429, 401]) {
+        const fetchImpl = vi.fn(async () => reply(status, {}));
+        await startVerification("+962791234567", fetchImpl);
+        expect(fetchImpl).toHaveBeenCalledTimes(1);
+      }
+    });
+  });
+
+  it("ignores unknown channels and falls back to SMS only", () => {
+    const before = process.env.VONAGE_VERIFY_CHANNELS;
+    try {
+      process.env.VONAGE_VERIFY_CHANNELS = "carrier-pigeon";
+      expect(verifyChannels()).toEqual(["sms"]);
+      process.env.VONAGE_VERIFY_CHANNELS = "WhatsApp";
+      expect(verifyChannels()).toEqual(["whatsapp"]);
+    } finally {
+      if (before === undefined) delete process.env.VONAGE_VERIFY_CHANNELS;
+      else process.env.VONAGE_VERIFY_CHANNELS = before;
+    }
   });
 
   it("maps provider errors", async () => {

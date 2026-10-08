@@ -25,9 +25,15 @@ export type ReplyMarkup =
   | {
       // A plain button sends its text as a message; a web_app button opens
       // the page inside Telegram instead.
-      keyboard: { text: string; web_app?: { url: string } }[][];
+      keyboard: {
+        text: string;
+        web_app?: { url: string };
+        // Sends the user's own phone number to the bot when pressed.
+        request_contact?: boolean;
+      }[][];
       resize_keyboard?: boolean;
       is_persistent?: boolean;
+      one_time_keyboard?: boolean;
     };
 
 const REQUEST_TIMEOUT_MS = 15_000;

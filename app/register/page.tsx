@@ -3,6 +3,8 @@ import type { Metadata } from "next";
 import { Suspense } from "react";
 import RegisterForm from "@/components/RegisterForm";
 import { googleEnabled } from "@/lib/auth";
+import { verifyChannels } from "@/lib/sms/vonage";
+import { telegramPhoneVerifyAvailable } from "@/lib/telegram/phone-verify";
 import { BASE_OPEN_GRAPH } from "@/lib/site";
 
 export const metadata: Metadata = {
@@ -22,7 +24,11 @@ export const metadata: Metadata = {
 export default function RegisterPage() {
   return (
     <Suspense>
-      <RegisterForm googleEnabled={googleEnabled} />
+      <RegisterForm
+        googleEnabled={googleEnabled}
+        codeChannel={verifyChannels()[0]}
+        telegramVerify={telegramPhoneVerifyAvailable()}
+      />
     </Suspense>
   );
 }

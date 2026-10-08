@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { startPhoneVerification } from "@/lib/db-phone";
 import { parsePhone } from "@/lib/phone";
 import { phoneSignupError, requestIp } from "@/lib/phone-signup-http";
-import { isSmsConfigured } from "@/lib/sms/vonage";
+import { startTelegramPhoneVerification } from "@/lib/telegram/phone-verify";
 
-// Step 1 of phone sign-up: validate the number and send the SMS code.
+// Step 1 of phone sign-up, the Telegram way (lib/telegram/phone-verify.ts):
+// instead of sending a code, answers with a one-time link to the bot, where
+// the student shares their own number. Free — no SMS, no WhatsApp message.
 const schema = z.object({
   phone: z.string().min(1).max(32),
   country: z.string().length(2).optional(),
@@ -16,22 +17,15 @@ export async function POST(request: Request) {
   if (!parsed.success) return phoneSignupError("bad_request");
   const phone = parsePhone(parsed.data.phone, parsed.data.country);
   if (!phone.ok) return phoneSignupError("invalid_phone");
-  if (!isSmsConfigured()) return phoneSignupError("sms_not_configured");
 
-  const result = await startPhoneVerification({
+  const result = await startTelegramPhoneVerification({
     phone: phone.e164,
     ip: requestIp(request),
   });
-  if (!result.ok) {
-    return phoneSignupError(result.error, {
-      retryAfterSeconds: result.retryAfterSeconds,
-    });
-  }
+  if (!result.ok) return phoneSignupError(result.error);
   return NextResponse.json({
     verificationId: result.verificationId,
     phone: phone.e164,
-    resendAfterSeconds: result.resendAfterSeconds,
-    // "whatsapp" | "sms" — where to tell the student to look.
-    channel: result.channel,
+    url: result.url,
   });
 }

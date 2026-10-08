@@ -72,6 +72,15 @@ import {
   revokeLinkTokens,
   safeInternalPath,
 } from "./tokens";
+import {
+  checkPhoneVerification,
+  createAccountWithVerifiedPhone,
+} from "../db-phone";
+import {
+  claimTelegramPhoneVerification,
+  getPhoneVerificationStatus,
+  startTelegramPhoneVerification,
+} from "./phone-verify";
 import { validateInitData } from "./webapp";
 import { isSameOriginPost, resolveWebLogin } from "./web-session";
 
@@ -178,7 +187,7 @@ beforeAll(async () => {
 }, 60_000);
 
 beforeEach(async () => {
-  await test.client.exec(`TRUNCATE users CASCADE`);
+  await test.client.exec(`TRUNCATE users CASCADE; TRUNCATE phone_verifications`);
   vi.clearAllMocks();
   delete process.env.TELEGRAM_API_BASE;
   delete process.env.TELEGRAM_MAX_FILE_MB;
@@ -1075,6 +1084,110 @@ describe("Mini App sign-in (Telegram's signed launch data)", () => {
     const suspended = await post({ initData: launch(), to: "/" });
     expect(suspended.status).toBe(403);
     expect(suspended.headers.get("set-cookie")).toBeNull();
+  });
+});
+
+describe("Verifying a sign-up phone number through the bot (no code)", () => {
+  const PHONE = "+962791234567";
+  const contactUpdate = (from: number, phone: string, owner: number = from): TelegramUpdate => ({
+    update_id: nextUpdateId++,
+    message: {
+      message_id: 1,
+      from: { id: from },
+      chat: { id: from, type: "private" },
+      contact: { phone_number: phone, user_id: owner },
+    },
+  });
+  async function begin(phone = PHONE) {
+    process.env.TELEGRAM_BOT_USERNAME = "Nirolearnbot";
+    const started = await startTelegramPhoneVerification({ phone, ip: "1.2.3.4" });
+    if (!started.ok) throw new Error(started.error);
+    return { ...started, token: started.url.split("start=verify_")[1] };
+  }
+
+  it("the student opens the bot, shares their own number, and the sign-up page is told", async () => {
+    const { verificationId, url, token } = await begin();
+    expect(url).toMatch(/^https:\/\/t\.me\/Nirolearnbot\?start=verify_[A-Za-z0-9_-]{43}$/);
+    // Only the token's hash is stored.
+    const [row] = await rows<{ providerRequestId: string }>(`SELECT "providerRequestId" FROM phone_verifications`);
+    expect(row.providerRequestId).not.toContain(token);
+    expect(await getPhoneVerificationStatus(verificationId)).toBe("pending");
+
+    await handleTelegramUpdate(textUpdate(`/start verify_${token}`));
+    expect(lastSent().text).toBe(TEXT.verifyAsk);
+    expect(JSON.stringify(lastSent().markup)).toContain('"request_contact":true');
+
+    // Telegram sends the number without "+".
+    await handleTelegramUpdate(contactUpdate(TG_USER, "962791234567"));
+    expect(lastSent().text).toBe(TEXT.verifyDone);
+    expect(await getPhoneVerificationStatus(verificationId)).toBe("verified");
+    // Verifying a number creates no Telegram account and links nothing.
+    expect(await rows(`SELECT id FROM telegram_accounts`)).toHaveLength(0);
+    expect(await rows(`SELECT id FROM users`)).toHaveLength(0);
+  });
+
+  it("a different number than the one typed on the page is refused", async () => {
+    const { verificationId, token } = await begin();
+    await handleTelegramUpdate(textUpdate(`/start verify_${token}`));
+    await handleTelegramUpdate(contactUpdate(TG_USER, "+962790000099"));
+    expect(lastSent().text).toBe(TEXT.verifyMismatch);
+    expect(await getPhoneVerificationStatus(verificationId)).toBe("pending");
+  });
+
+  it("someone else's contact card proves nothing", async () => {
+    const { verificationId, token } = await begin();
+    await handleTelegramUpdate(textUpdate(`/start verify_${token}`));
+    await handleTelegramUpdate(contactUpdate(TG_USER, PHONE, 999));
+    expect(lastSent().text).toBe(TEXT.verifyNotOwn);
+    expect(await getPhoneVerificationStatus(verificationId)).toBe("pending");
+  });
+
+  it("only the Telegram user who opened the link can complete it", async () => {
+    const { verificationId, token } = await begin();
+    expect(await claimTelegramPhoneVerification(token, TG_USER)).toBe(true);
+    expect(await claimTelegramPhoneVerification(token, 31337)).toBe(false);
+    // The intruder sharing the right number changes nothing.
+    await handleTelegramUpdate(contactUpdate(31337, PHONE));
+    expect(lastSent().text).toBe(TEXT.verifyNoRequest);
+    expect(await getPhoneVerificationStatus(verificationId)).toBe("pending");
+    // The same user tapping the link twice is fine.
+    expect(await claimTelegramPhoneVerification(token, TG_USER)).toBe(true);
+  });
+
+  it("refuses an unknown or expired link, and a number that already has an account", async () => {
+    await handleTelegramUpdate(textUpdate(`/start verify_${"x".repeat(43)}`));
+    expect(lastSent().text).toBe(TEXT.verifyInvalid);
+
+    const { verificationId, token } = await begin();
+    await test.client.exec(`UPDATE phone_verifications SET "expiresAt" = now() - interval '1 minute'`);
+    expect(await claimTelegramPhoneVerification(token, TG_USER)).toBe(false);
+    expect(await getPhoneVerificationStatus(verificationId)).toBe("expired");
+
+    await insertUser(test.client, { id: REGISTERED });
+    await test.client.exec(`UPDATE users SET phone = '+962795550000'`);
+    expect(
+      await startTelegramPhoneVerification({ phone: "+962795550000", ip: "5.6.7.8" })
+    ).toEqual({ ok: false, error: "phone_taken" });
+  });
+
+  it("a number verified this way creates the account like a verified code does, exactly once", async () => {
+    const { verificationId, token } = await begin();
+    await handleTelegramUpdate(textUpdate(`/start verify_${token}`));
+    await handleTelegramUpdate(contactUpdate(TG_USER, PHONE));
+
+    const created = await createAccountWithVerifiedPhone({ verificationId, name: "Sara", password: "a-strong-password" });
+    expect(created).toMatchObject({ ok: true, phone: PHONE });
+    const again = await createAccountWithVerifiedPhone({ verificationId, name: "Sara", password: "a-strong-password" });
+    expect(again).toEqual({ ok: false, error: "not_verified" });
+  });
+
+  it("a code typed against a Telegram verification never reaches the SMS provider", async () => {
+    const { verificationId } = await begin();
+    const fetchImpl = vi.fn();
+    expect(
+      await checkPhoneVerification({ verificationId, code: "123456", fetchImpl })
+    ).toEqual({ ok: false, error: "wrong_code" });
+    expect(fetchImpl).not.toHaveBeenCalled();
   });
 });
 

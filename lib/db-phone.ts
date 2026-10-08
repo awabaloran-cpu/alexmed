@@ -17,8 +17,8 @@ import { isUniqueViolation } from "./db-errors";
 import {
   cancelVerification,
   checkCode,
-  SMS_CODE_TTL_SECONDS,
   startVerification,
+  type VerifyChannel,
   type VonageFetch,
 } from "./sms/vonage";
 
@@ -39,6 +39,13 @@ const MAX_CHECKS_PER_CODE = 5;
 // name + password step.
 const VERIFIED_WINDOW_MINUTES = 30;
 
+// phone_verifications.providerRequestId of a verification done through the
+// Telegram bot instead of a code: "tg:<token hash>[:<telegram user id>]".
+export const TELEGRAM_VERIFICATION_PREFIX = "tg:";
+export function isTelegramVerification(providerRequestId: string): boolean {
+  return providerRequestId.startsWith(TELEGRAM_VERIFICATION_PREFIX);
+}
+
 export function hashIp(ip: string | null | undefined): string | null {
   if (!ip) return null;
   return createHash("sha256")
@@ -47,7 +54,13 @@ export function hashIp(ip: string | null | undefined): string | null {
 }
 
 export type StartOutcome =
-  | { ok: true; verificationId: string; resendAfterSeconds: number }
+  | {
+      ok: true;
+      verificationId: string;
+      resendAfterSeconds: number;
+      // Where the code was sent first, for the form's wording.
+      channel: VerifyChannel;
+    }
   | {
       ok: false;
       error:
@@ -149,8 +162,12 @@ export async function startPhoneVerification(input: {
   }
 
   // A resend: free the number at Vonage (one active request per number).
+  // A Telegram verification (lib/telegram/phone-verify.ts) has nothing at
+  // Vonage to cancel.
   if (last?.status === "pending" && last.providerRequestId) {
-    await cancelVerification(last.providerRequestId, input.fetchImpl);
+    if (!isTelegramVerification(last.providerRequestId)) {
+      await cancelVerification(last.providerRequestId, input.fetchImpl);
+    }
     await db
       .update(phoneVerifications)
       .set({ status: "failed" })
@@ -174,13 +191,14 @@ export async function startPhoneVerification(input: {
       phone: input.phone,
       providerRequestId: started.requestId,
       ipHash,
-      expiresAt: new Date(Date.now() + SMS_CODE_TTL_SECONDS * 1000),
+      expiresAt: new Date(Date.now() + started.lifetimeSeconds * 1000),
     })
     .returning({ id: phoneVerifications.id });
   return {
     ok: true,
     verificationId: row.id,
     resendAfterSeconds: RESEND_COOLDOWN_SECONDS,
+    channel: started.channel,
   };
 }
 
@@ -210,6 +228,10 @@ export async function checkPhoneVerification(input: {
       providerRequestId: phoneVerifications.providerRequestId,
     });
   if (!row?.providerRequestId) return { ok: false, error: "expired" };
+  // Verified by sharing the number with the Telegram bot: there is no code.
+  if (isTelegramVerification(row.providerRequestId)) {
+    return { ok: false, error: "wrong_code" };
+  }
   if (row.attempts > MAX_CHECKS_PER_CODE) {
     await db
       .update(phoneVerifications)
