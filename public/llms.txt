@@ -13,6 +13,7 @@ The interface is in Arabic. Students can upload material in Arabic or English (f
 - Mind map (خريطة ذهنية) for each part of the file.
 - Niro, a study assistant that answers questions using the file's own pages.
 - PDF reader with highlights and notes; past-exam question files turned into review cards; study packs shared with classmates.
+- A Telegram bot (@Nirolearnbot): a student sends a PDF in Telegram and opens the result — interactive questions with an Arabic explanation per answer, or the book in their library — inside Telegram or the browser.
 
 ## Who it is for
 
@@ -28,6 +29,7 @@ Free plan with all study tools at lower usage limits (no payment card needed). P
 - AI PDF summaries for studying: https://nirolearn.com/pdf-summary
 - AI flashcards with spaced repetition: https://nirolearn.com/flashcards
 - AI mind maps from PDF: https://nirolearn.com/mind-map
+- Telegram bot (send a PDF, get interactive questions with Arabic explanations, or a book added to your library): https://nirolearn.com/telegram-bot
 - Study guide (how to study a big file before an exam): https://nirolearn.com/how-to-study
 - Pricing: https://nirolearn.com/pricing
 - Sign up (free): https://nirolearn.com/register

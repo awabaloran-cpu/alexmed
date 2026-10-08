@@ -1,0 +1,128 @@
+/* The Telegram bot's public page (app/telegram-bot/page.tsx): the chat
+   illustration in the hero and the numbered steps. Built on the base
+   tokens (app/base.css), like the rest of the marketing pages. */
+.chat {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0;
+  padding: 18px;
+  border: 1px solid var(--nl-rule);
+  border-radius: var(--nl-r-lg);
+  background: var(--nl-paper);
+}
+.chat figcaption {
+  color: var(--nl-ink-2);
+  font-size: 12.5px;
+  text-align: center;
+}
+.bubble {
+  align-self: flex-start;
+  max-width: 85%;
+  padding: 10px 14px;
+  border: 1px solid var(--nl-rule);
+  border-radius: 16px;
+  border-start-start-radius: 4px;
+  background: var(--nl-sheet);
+  color: var(--nl-ink);
+  font-size: 14.5px;
+  line-height: 1.7;
+}
+.out {
+  align-self: flex-end;
+  border-start-start-radius: 16px;
+  border-start-end-radius: 4px;
+  background: var(--nl-marker-soft);
+}
+.file {
+  direction: ltr;
+  unicode-bidi: isolate;
+  font-weight: 600;
+}
+.button {
+  display: block;
+  margin-top: 8px;
+  padding: 8px 12px;
+  border-radius: var(--nl-r-md);
+  background: var(--nl-ink);
+  color: #fff;
+  font-weight: 600;
+  text-align: center;
+}
+.card {
+  padding: 14px;
+  border: 1px solid var(--nl-rule);
+  border-radius: var(--nl-r-md);
+  background: var(--nl-sheet);
+  direction: ltr;
+  text-align: left;
+}
+.cardStem {
+  margin: 0 0 8px;
+  font-size: 14.5px;
+  font-weight: 600;
+  line-height: 1.6;
+}
+.card ul {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.card li {
+  padding: 7px 10px;
+  border: 1px solid var(--nl-rule);
+  border-radius: var(--nl-r-md);
+  font-size: 14px;
+}
+.card .right {
+  border-color: var(--nl-correct);
+  font-weight: 600;
+}
+.hook {
+  margin: 10px 0 0;
+  padding: 8px 10px;
+  border-radius: var(--nl-r-md);
+  background: var(--nl-marker-soft);
+  font-size: 13.5px;
+  text-align: right;
+}
+.steps {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 14px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: step;
+}
+.steps li {
+  padding: 18px;
+  border: 1px solid var(--nl-rule);
+  border-radius: var(--nl-r-lg);
+  background: var(--nl-sheet);
+  counter-increment: step;
+}
+.steps li::before {
+  content: counter(step);
+  display: inline-grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  margin-bottom: 10px;
+  border-radius: 50%;
+  background: var(--nl-ink);
+  color: #fff;
+  font-weight: 700;
+}
+.steps strong {
+  display: block;
+  font-size: 17px;
+}
+.steps p {
+  margin: 6px 0 0;
+  color: var(--nl-ink-2);
+  font-size: 15px;
+  line-height: 1.8;
+}

@@ -1,6 +1,11 @@
 import type { MetadataRoute } from "next";
 import { INDEXABLE_LEARN_ARTICLES, learnPath } from "@/content/learn/articles";
-import { PUBLIC_BASE_PATHS, SITE_URL, TOOL_PAGES } from "@/lib/site";
+import {
+  BOT_PAGE_PATH,
+  PUBLIC_BASE_PATHS,
+  SITE_URL,
+  TOOL_PAGES,
+} from "@/lib/site";
 
 // Only the public, indexable pages — never app pages behind sign-in.
 export default function sitemap(): MetadataRoute.Sitemap {
@@ -23,7 +28,8 @@ export default function sitemap(): MetadataRoute.Sitemap {
             ? 0.75
             : path === "/pricing" || path === "/register"
               ? 0.8
-              : TOOL_PAGES.some(page => page.href === path)
+              : TOOL_PAGES.some(page => page.href === path) ||
+                  path === BOT_PAGE_PATH
                 ? 0.9
                 : 0.5,
   }));

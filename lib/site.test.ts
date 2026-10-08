@@ -38,6 +38,7 @@ describe("site constants", () => {
       "/flashcards",
       "/mind-map",
       "/how-to-study",
+      "/telegram-bot",
       "/pricing",
       "/register",
       "/contact",

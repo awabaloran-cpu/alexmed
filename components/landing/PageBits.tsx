@@ -5,6 +5,7 @@ import Link from "next/link";
 import NiroCharacter from "@/components/niro/NiroCharacter";
 import { LEGAL_CONTACT_EMAIL } from "@/components/legal/LegalPage";
 import {
+  BOT_PAGE_PATH,
   SITE_ENTITY_DESCRIPTION_AR,
   SITE_ENTITY_IDS,
   SITE_NAME,
@@ -111,7 +112,8 @@ const RELATED_BLURB: Record<ToolPath, string> = {
   "/how-to-study": "طريقة مذاكرة عملية لملف كبير قبل الامتحان.",
 };
 
-export function RelatedPages({ current }: { current: ToolPath }) {
+// `current` is left out by a page that is not itself one of the tools.
+export function RelatedPages({ current }: { current?: ToolPath }) {
   return (
     <Section id="related" title="أدوات أخرى من الملف نفسه">
       <ul className={s.related}>
@@ -136,7 +138,7 @@ export function PageJsonLd({
   faq,
   article,
 }: {
-  path: ToolPath;
+  path: ToolPath | typeof BOT_PAGE_PATH;
   name: string;
   description: string;
   faq: readonly FaqItem[];

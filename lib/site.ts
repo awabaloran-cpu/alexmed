@@ -30,12 +30,17 @@ export const SITE_DESCRIPTION =
 
 // Public pages worth indexing, in priority order (app pages sit behind
 // sign-in and are kept out of the sitemap; /login is noindex).
+// The Telegram bot's public page (app/telegram-bot). A public, indexable
+// page like the tool pages, but not one of the header's tools.
+export const BOT_PAGE_PATH = "/telegram-bot";
+
 export const PUBLIC_BASE_PATHS = [
   "/",
   "/pdf-summary",
   "/flashcards",
   "/mind-map",
   "/how-to-study",
+  BOT_PAGE_PATH,
   "/pricing",
   "/register",
   "/contact",

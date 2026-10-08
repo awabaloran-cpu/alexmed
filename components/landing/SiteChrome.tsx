@@ -4,7 +4,12 @@
 // internal-link structure for crawlers.
 import Link from "next/link";
 import NiroSpark from "@/components/niro/NiroSpark";
-import { SITE_NAME, TOOL_PAGES, type ToolPath } from "@/lib/site";
+import {
+  BOT_PAGE_PATH,
+  SITE_NAME,
+  TOOL_PAGES,
+  type ToolPath,
+} from "@/lib/site";
 import type { LearnCategory } from "@/content/learn/articles";
 import s from "./landing.module.css";
 
@@ -93,6 +98,7 @@ function SiteFooter() {
             <h2 className={s.footerHeading}>NiroLearn</h2>
             <Link href="/">الرئيسية</Link>
             <Link href="/learn">Learn</Link>
+            <Link href={BOT_PAGE_PATH}>بوت Telegram</Link>
             <Link href="/pricing">الأسعار</Link>
             <Link href="/register">إنشاء حساب</Link>
             <Link href="/login">تسجيل الدخول</Link>
