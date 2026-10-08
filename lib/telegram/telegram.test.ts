@@ -42,6 +42,7 @@ vi.mock("@/lib/queue/client", () => ({ publishMessage }));
 const storage = vi.hoisted(() => ({
   storageGetUploadUrl: vi.fn(),
   deleteObject: vi.fn(),
+  deleteObjects: vi.fn(),
 }));
 vi.mock("@/lib/storage", () => storage);
 
@@ -82,6 +83,7 @@ import {
   startTelegramPhoneVerification,
 } from "./phone-verify";
 import { MAX_BONUS_UPLOADS, parseStartOrigin, sourceReport } from "./growth";
+import { looksLikeNotes } from "../question-file-quality";
 import { validateInitData } from "./webapp";
 import { isSameOriginPost, resolveWebLogin } from "./web-session";
 
@@ -1512,5 +1514,141 @@ describe("Sharing a file by link through the bot", () => {
     await shareTap(upload.id, OWNER_TG);
     expect(tg.sendMessage).not.toHaveBeenCalled();
     expect(tg.answerCallback).toHaveBeenLastCalledWith("cb-share", TEXT.shareUnavailable);
+  });
+});
+
+describe("A file sent as questions that is really notes", () => {
+  // The reader's output for notes: mostly lines without options.
+  async function finishAsNotes(bookId: string, withOptions: number, without: number, pages: number) {
+    await test.client.query(`UPDATE books SET status = 'complete', "pageCount" = $2 WHERE id = $1`, [bookId, pages]);
+    await test.client.query(
+      `INSERT INTO question_file_pages ("bookId", "pageNumber", status) VALUES ($1, 1, 'complete')`,
+      [bookId]
+    );
+    await test.client.query(
+      `INSERT INTO extracted_questions ("bookId", "orderIndex", "questionText", options, "sourcePage", "aiStatus")
+       SELECT $1, n, 'Mention the diagnosis', CASE WHEN n < $2 THEN '["A","B","C"]'::jsonb END, 1, 'pending'
+       FROM generate_series(0, $3) AS n`,
+      [bookId, withOptions, withOptions + without - 1]
+    );
+  }
+  const tapConvert = (uploadId: string, from = TG_USER) =>
+    handleTelegramUpdate({
+      update_id: nextUpdateId++,
+      callback_query: {
+        id: "cb-convert",
+        from: { id: from },
+        data: CALLBACK.convert(uploadId),
+        message: { message_id: 1, chat: { id: from, type: "private" } },
+      },
+    });
+
+  it("tells notes from a question file by what a student could answer", () => {
+    // The live case: a 162-page OSCE file, 44 items, 12 with options.
+    expect(looksLikeNotes({ total: 44, answerable: 12, pageCount: 162 })).toBe(true);
+    expect(looksLikeNotes({ total: 6, answerable: 1, pageCount: 4 })).toBe(true);
+    // Real question files: full, short, and one with a few stray items.
+    expect(looksLikeNotes({ total: 80, answerable: 80, pageCount: 20 })).toBe(false);
+    expect(looksLikeNotes({ total: 5, answerable: 5, pageCount: 60 })).toBe(false);
+    expect(looksLikeNotes({ total: 30, answerable: 22, pageCount: 200 })).toBe(false);
+    // Long explanations between questions, but the questions are questions.
+    expect(looksLikeNotes({ total: 40, answerable: 15, pageCount: 40 })).toBe(false);
+    expect(looksLikeNotes({ total: 0, answerable: 0, pageCount: 10 })).toBe(false);
+  });
+
+  it("does not announce questions: it says what the file looks like and offers the book pipeline", async () => {
+    const upload = await uploadAndIntake();
+    await finishAsNotes(upload.bookId!, 12, 32, 162);
+
+    expect(await runTelegramWatch(upload.id)).toBe("done");
+    expect(lastSent().text).toBe(TEXT.looksLikeNotes(12, 162));
+    const markup = JSON.stringify(lastSent().markup);
+    expect(markup).toContain(CALLBACK.convert(upload.id));
+    // The questions that were found stay reachable; sharing is not offered.
+    expect(markup).toContain(LABELS.openAnyway);
+    expect(markup).not.toContain(LABELS.shareFile);
+  });
+
+  it("the button starts the SAME stored file as a book, once, without a second quota unit, and removes the question file", async () => {
+    const upload = await uploadAndIntake();
+    const questionBook = upload.bookId!;
+    await finishAsNotes(questionBook, 12, 32, 162);
+    await runTelegramWatch(upload.id);
+    const [{ fileKey }] = await rows<{ fileKey: string }>(`SELECT "fileKey" FROM telegram_uploads`);
+    vi.clearAllMocks();
+    tg.sendMessage.mockImplementation(async () => 500);
+
+    await tapConvert(upload.id);
+    await tapConvert(upload.id); // a second press finds nothing to do
+    expect(publishMessage).toHaveBeenCalledTimes(1);
+    expect(publishMessage).toHaveBeenCalledWith({ type: "telegram_intake", uploadId: upload.id });
+
+    await runTelegramIntake(upload.id);
+    const after = await onlyUpload();
+    expect(after).toMatchObject({ status: "processing", kind: "book" });
+    expect(after.bookId).not.toBe(questionBook);
+    const books = await rows<{ id: string; sourceType: string; fileKey: string }>(
+      `SELECT id, "sourceType", "fileKey" FROM books`
+    );
+    expect(books).toEqual([{ id: after.bookId, sourceType: "study_book", fileKey }]);
+    // Nothing was downloaded again, the stored PDF was not deleted, and the
+    // plan was not charged a second file.
+    expect(tg.getFileDownloadUrl).not.toHaveBeenCalled();
+    expect(storage.deleteObject).not.toHaveBeenCalled();
+    expect(storage.deleteObjects.mock.calls.flat(2)).not.toContain(fileKey);
+    expect(admitUpload).toHaveBeenCalledWith(expect.any(String), fileKey, "BOOK_FILE", { skipQuota: true });
+    expect(await rows(`SELECT id FROM telegram_uploads`)).toHaveLength(1);
+  });
+
+  it("a refused conversion leaves the question file and its PDF untouched", async () => {
+    const upload = await uploadAndIntake();
+    await finishAsNotes(upload.bookId!, 1, 10, 30);
+    await runTelegramWatch(upload.id);
+    await tapConvert(upload.id);
+    admitUpload.mockResolvedValue(
+      NextResponse.json({ error: "الملف أكبر من حد باقتك." }, { status: 413 })
+    );
+    storage.deleteObject.mockClear();
+
+    await runTelegramIntake(upload.id);
+    expect(storage.deleteObject).not.toHaveBeenCalled();
+    expect(await rows(`SELECT id FROM books WHERE id = $1`, [upload.bookId])).toHaveLength(1);
+  });
+
+  it("another Telegram user cannot convert someone else's file, and a real question file cannot be converted by a stale button", async () => {
+    const upload = await uploadAndIntake();
+    await finishAsNotes(upload.bookId!, 12, 32, 162);
+    await runTelegramWatch(upload.id);
+    publishMessage.mockClear();
+    await tapConvert(upload.id, 31337);
+    expect(publishMessage).not.toHaveBeenCalled();
+    expect((await onlyUpload()).kind).toBe("question_file");
+
+    // Already a book: nothing to convert.
+    await test.client.exec(`UPDATE telegram_uploads SET kind = 'book'`);
+    await tapConvert(upload.id);
+    expect(publishMessage).not.toHaveBeenCalled();
+  });
+
+  it("a file with no questions at all, and a failed extraction, both offer the conversion", async () => {
+    const upload = await uploadAndIntake();
+    await test.client.query(`UPDATE books SET status = 'complete' WHERE id = $1`, [upload.bookId]);
+    await runTelegramWatch(upload.id);
+    expect(lastSent().text).toBe(TEXT.noQuestions);
+    expect(JSON.stringify(lastSent().markup)).toContain(CALLBACK.convert(upload.id));
+
+    await test.client.exec(`TRUNCATE users CASCADE`);
+    const failed = await uploadAndIntake();
+    await test.client.query(
+      `UPDATE books SET status = 'failed', "extractionError" = 'no questions' WHERE id = $1`,
+      [failed.bookId]
+    );
+    await runTelegramWatch(failed.id);
+    const markup = JSON.stringify(tg.editMessage.mock.calls.at(-1));
+    expect(markup).toContain(CALLBACK.convert(failed.id));
+    // A failed upload converts too.
+    publishMessage.mockClear();
+    await tapConvert(failed.id);
+    expect(publishMessage).toHaveBeenCalledWith({ type: "telegram_intake", uploadId: failed.id });
   });
 });

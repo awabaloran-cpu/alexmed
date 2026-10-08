@@ -148,8 +148,16 @@ export const TEXT = {
     "🧠 الشرح والكلمات المفتاحية تُضاف الآن وتظهر تباعًا وأنت تحل.",
 
   noQuestions:
-    "⚠️ قرأنا الملف لكن لم نعثر فيه على أسئلة.\n\n" +
-    "إن كان كتابًا أو ملخصًا، أرسله مرة ثانية بعد اختيار «رفع كتاب».",
+    "⚠️ قرأنا الملف لكن لم نعثر فيه على أسئلة اختيار من متعدد.\n\n" +
+    "إن كان كتابًا أو ملخصًا أو ملاحظات، حوّله إلى كتاب بضغطة: تحصل منه على ملخص وفلاش كارد وأسئلة.",
+
+  // The reader found mostly lines without options: notes, a summary, an
+  // OSCE file (lib/question-file-quality.ts).
+  looksLikeNotes: (answerable: number, pages: number) =>
+    "🤔 هذا الملف يبدو شرحًا أو ملاحظات، وليس ملف أسئلة اختيار من متعدد.\n\n" +
+    `وجدنا ${answerable} سؤالًا بخيارات فقط${pages > 0 ? ` في ${pages} صفحة` : ""}.\n\n` +
+    "الأفضل تحويله إلى كتاب: تحصل منه على ملخص وفلاش كارد وأسئلة من محتواه.",
+  convertStarted: "جاري تحويله إلى كتاب…",
 
   bookReady: (pages: number) =>
     "📚 تم تجهيز كتابك بنجاح\n\n" +
@@ -209,6 +217,8 @@ export const LABELS = {
   retry: "🔄 إعادة المحاولة",
   asQuestions: "📄 ملف أسئلة",
   asBook: "📚 كتاب",
+  convertToBook: "📚 حوّله إلى كتاب",
+  openAnyway: "📄 افتح الأسئلة كما هي",
   shareContact: "📱 مشاركة رقمي",
   shareInvite: "📨 أرسل الدعوة لزملائك",
   inviteFriend: "🎁 ادعُ زميلًا واربح ملفًا",
@@ -222,6 +232,7 @@ export const CALLBACK = {
     `k:${kind === "question_file" ? "q" : "b"}:${uploadId}`,
   retry: (uploadId: string) => `r:${uploadId}`,
   share: (uploadId: string) => `s:${uploadId}`,
+  convert: (uploadId: string) => `c:${uploadId}`,
 };
 
 const UUID =
@@ -233,6 +244,7 @@ export function parseCallback(
   | { action: "kind"; uploadId: string; kind: DocumentKind }
   | { action: "retry"; uploadId: string }
   | { action: "share"; uploadId: string }
+  | { action: "convert"; uploadId: string }
   | null {
   const kind = new RegExp(`^k:([qb]):(${UUID})$`, "i").exec(data);
   if (kind) {
@@ -246,6 +258,8 @@ export function parseCallback(
   if (retry) return { action: "retry", uploadId: retry[1] };
   const share = new RegExp(`^s:(${UUID})$`, "i").exec(data);
   if (share) return { action: "share", uploadId: share[1] };
+  const convert = new RegExp(`^c:(${UUID})$`, "i").exec(data);
+  if (convert) return { action: "convert", uploadId: convert[1] };
   return null;
 }
 

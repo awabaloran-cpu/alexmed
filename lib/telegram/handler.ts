@@ -67,6 +67,7 @@ import {
   getUploadForAccount,
   listRecentFiles,
   markUploadFailed,
+  reopenUploadAsBook,
   resolveUploadKind,
   setUploadStatusMessage,
 } from "./uploads";
@@ -534,6 +535,19 @@ async function handleCallback(
       await publishMessage({ type: "telegram_intake", uploadId: upload.id });
     }
     await answerCallback(query.id);
+    return;
+  }
+
+  if (parsed.action === "convert") {
+    // Only the first press moves the upload on; a second finds nothing.
+    const reopened = await reopenUploadAsBook(upload.id);
+    if (reopened) {
+      await publishMessage({ type: "telegram_intake", uploadId: upload.id });
+    }
+    await answerCallback(
+      query.id,
+      reopened ? TEXT.convertStarted : TEXT.retryUnavailable
+    );
     return;
   }
 

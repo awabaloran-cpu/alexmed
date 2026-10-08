@@ -329,3 +329,20 @@ export async function getQuestionFileCoverage(
       questionsAiComplete === questionsTotal,
   };
 }
+
+// How many of a file's extracted items a student can actually answer (two
+// options or more) — for lib/question-file-quality.ts.
+export async function countAnswerableQuestions(bookId: string): Promise<number> {
+  const db = getDb();
+  if (!db) return 0;
+  const [row] = await db
+    .select({
+      answerable: count(
+        sql`case when jsonb_typeof(${extractedQuestions.options}) = 'array'
+          and jsonb_array_length(${extractedQuestions.options}) >= 2 then 1 end`
+      ),
+    })
+    .from(extractedQuestions)
+    .where(eq(extractedQuestions.bookId, bookId));
+  return Number(row?.answerable ?? 0);
+}

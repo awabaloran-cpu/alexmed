@@ -10,8 +10,16 @@
 //
 // Neither touches the pipelines: no extraction, OCR or AI happens here.
 import { NextResponse } from "next/server";
-import { getBookById, resetBookExtractionForRetry } from "../db-books";
-import { getQuestionFileCoverage } from "../db-question-file-images";
+import {
+  deleteBook,
+  getBookById,
+  resetBookExtractionForRetry,
+} from "../db-books";
+import {
+  countAnswerableQuestions,
+  getQuestionFileCoverage,
+} from "../db-question-file-images";
+import { looksLikeNotes } from "../question-file-quality";
 import { retryQuestionFileExtraction } from "../db-question-files";
 import { admitAndStartStudentFile } from "../file-intake";
 import { publishMessage } from "../queue/client";
@@ -123,6 +131,11 @@ async function openButton(
 // "📤 شارك الملف مع زملائك" under a ready file (handled in handler.ts).
 const shareRow = (uploadId: string): InlineButton[] => [
   { text: LABELS.shareFile, callback_data: CALLBACK.share(uploadId) },
+];
+
+// "📚 حوّله إلى كتاب" under a question file that is not one (handler.ts).
+const convertRow = (uploadId: string): InlineButton[] => [
+  { text: LABELS.convertToBook, callback_data: CALLBACK.convert(uploadId) },
 ];
 
 // ── Intake ──────────────────────────────────────────────────────────────
@@ -268,6 +281,11 @@ export async function runTelegramIntake(
   const { upload, userId } = context;
 
   let key = upload.fileKey;
+  // "حوّله إلى كتاب" (reopenUploadAsBook): the stored file of a question
+  // file is being started again as a book. That question file still uses
+  // the stored PDF, so nothing here may delete it.
+  const convertingFrom =
+    key && upload.kind === "book" && upload.bookId ? upload.bookId : null;
   try {
     let kind: DocumentKind | "ask";
     if (key && isDocumentKind(upload.kind)) {
@@ -315,7 +333,11 @@ export async function runTelegramIntake(
       fileName: upload.fileName,
       subjectId: await ensureTelegramSubject(userId),
     };
-    let started = await admitAndStartStudentFile(userId, file);
+    // A conversion is the same file the student already paid for.
+    let started = await admitAndStartStudentFile(userId, {
+      ...file,
+      skipQuota: Boolean(convertingFrom),
+    });
     // The plan's daily / monthly count is used up: a file earned by
     // inviting (lib/telegram/growth.ts) pays for this one instead.
     if (
@@ -344,6 +366,13 @@ export async function runTelegramIntake(
       kind,
       fileKey: key,
     });
+    if (convertingFrom) {
+      // The question file it replaces goes; the PDF stays, the new book
+      // references it (deleteBook keeps keys still in use).
+      await deleteBook(userId, convertingFrom).catch(error =>
+        console.error("[Telegram] Could not remove the converted file", error)
+      );
+    }
     await recordUploadStage(uploadId, "reading");
     await progress(context, TEXT.reading);
     await thankInviter(context.accountId);
@@ -351,7 +380,7 @@ export async function runTelegramIntake(
     return "done";
   } catch (error) {
     if (error instanceof RefusedFile) {
-      await discard(key);
+      if (!convertingFrom) await discard(key);
       await markUploadRejected(uploadId, error.message);
       await progress(
         context,
@@ -362,7 +391,7 @@ export async function runTelegramIntake(
     }
     console.error("[Telegram] Intake failed", { uploadId, error });
     if (options.finalAttempt) {
-      await discard(key);
+      if (!convertingFrom) await discard(key);
       await markUploadFailed(uploadId, "download_failed");
       await progress(context, TEXT.downloadFailed);
       return "done";
@@ -419,6 +448,7 @@ export async function runTelegramWatch(
     await markUploadFailed(uploadId, reason);
     await progress(context, TEXT.failed(reason), [
       [{ text: LABELS.retry, callback_data: CALLBACK.retry(uploadId) }],
+      ...(kind === "question_file" ? [convertRow(uploadId)] : []),
       ...(await openButton(context, LABELS.openSite, filePath(kind, book.id))),
     ]);
     return "done";
@@ -442,7 +472,27 @@ export async function runTelegramWatch(
 
     const coverage = await getQuestionFileCoverage(book.id);
     if (coverage.questionsTotal === 0) {
-      await finish(context, TEXT.noQuestions);
+      await finish(context, TEXT.noQuestions, [convertRow(uploadId)]);
+      return "done";
+    }
+    // Notes, a summary or an OSCE file read as "questions": say so and
+    // offer the book pipeline instead of announcing questions that are not.
+    const answerable = await countAnswerableQuestions(book.id);
+    if (
+      looksLikeNotes({
+        total: coverage.questionsTotal,
+        answerable,
+        pageCount: book.pageCount,
+      })
+    ) {
+      await finish(context, TEXT.looksLikeNotes(answerable, book.pageCount), [
+        convertRow(uploadId),
+        ...(await openButton(
+          context,
+          LABELS.openAnyway,
+          filePath(kind, book.id)
+        )),
+      ]);
       return "done";
     }
     // The questions can be studied the moment they are extracted (seconds):

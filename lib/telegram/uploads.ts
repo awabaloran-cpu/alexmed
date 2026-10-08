@@ -301,6 +301,39 @@ export function reopenUploadForRetry(id: string) {
   });
 }
 
+// "This is not a question file — make it a book": a finished or failed
+// QUESTION-FILE upload goes back to `received` as a book, for the intake
+// worker to start the book pipeline on the file already stored. The old
+// bookId stays on the row until the new book exists (the worker reads it to
+// know this is a conversion, then removes that question file). Only the
+// first press moves it.
+export async function reopenUploadAsBook(
+  id: string
+): Promise<TelegramUpload | null> {
+  const [row] = await requireDb()
+    .update(telegramUploads)
+    .set({
+      status: "received",
+      kind: "book",
+      requestedKind: "book",
+      error: null,
+      watchCount: 0,
+      lastStage: null,
+      updatedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(telegramUploads.id, id),
+        inArray(telegramUploads.status, ["complete", "failed"]),
+        eq(telegramUploads.kind, "question_file"),
+        isNotNull(telegramUploads.fileKey),
+        isNotNull(telegramUploads.bookId)
+      )
+    )
+    .returning();
+  return row ?? null;
+}
+
 export async function setUploadStatusMessage(
   id: string,
   statusMessageId: number
