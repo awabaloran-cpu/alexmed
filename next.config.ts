@@ -7,7 +7,13 @@ const nextConfig: NextConfig = {
   // see the "pdf-parse/worker" import in app/api/books/extract/route.ts)
   // must also be external, or Vercel's serverless bundling can fail to carry
   // its native binary along, per pdf-parse's own Vercel troubleshooting docs.
-  serverExternalPackages: ["pdf-parse", "@napi-rs/canvas"],
+  serverExternalPackages: [
+    "pdf-parse",
+    "@napi-rs/canvas",
+    // The summary PDF printer (lib/summary/pdf.ts): a real browser binary.
+    "puppeteer-core",
+    "@sparticuz/chromium",
+  ],
   // Mirrors server-only UPLOAD_MAX_MB into a client-readable var, so the
   // upload panel's copy/validation stays in sync with the real configured
   // limit instead of a hardcoded duplicate number.

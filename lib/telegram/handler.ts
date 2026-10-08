@@ -27,6 +27,7 @@ import {
   telegramAccountBurstLimit,
   telegramDailyUploadCap,
   telegramMaxFileBytes,
+  webUrl,
 } from "./config";
 import { isDocumentKind, type DocumentKind } from "./detect";
 import { retryTelegramUpload } from "./intake";
@@ -63,7 +64,15 @@ import {
   parseCallback,
   TEXT,
   urlButton,
+  CALLBACK,
+  SUMMARY_THEME_LABELS,
 } from "./messages";
+import { requestSummary, setSummaryStatusMessage } from "../summary/jobs";
+import {
+  SUMMARY_THEMES,
+  type SummaryStyle,
+  type SummaryTheme,
+} from "../summary/types";
 import {
   countAcceptedUploads,
   countRecentUploads,
@@ -546,6 +555,68 @@ async function handleMessage(updateId: number, message: TelegramMessage) {
   }
 }
 
+// The last press of "📝 اعمل ملخّص PDF": the job is created (or refused,
+// with the reason) and its first run queued.
+async function startSummary(
+  context: AccountContext,
+  chatId: number,
+  bookId: string,
+  style: SummaryStyle,
+  theme: SummaryTheme
+) {
+  const asked = await requestSummary({
+    userId: context.user.id,
+    bookId,
+    telegramAccountId: context.account.id,
+    style,
+    theme,
+  });
+  if (!asked.ok) {
+    const upgrade = { inline_keyboard: [[{ text: LABELS.upgrade, url: webUrl("/pricing") }]] };
+    switch (asked.reason) {
+      case "guest":
+        await sendMessage(
+          chatId,
+          TEXT.summaryNeedsAccount,
+          urlButton(LABELS.connectAccount, await connectLink(context.user))
+        );
+        return;
+      case "too_long":
+        await sendMessage(
+          chatId,
+          TEXT.summaryTooLong(asked.pages, asked.limit, asked.paid),
+          asked.paid ? undefined : upgrade
+        );
+        return;
+      case "daily_limit":
+        await sendMessage(
+          chatId,
+          TEXT.summaryDailyLimit(asked.limit, asked.paid),
+          asked.paid ? undefined : upgrade
+        );
+        return;
+      case "in_progress":
+        await sendMessage(chatId, TEXT.summaryInProgress);
+        return;
+      case "empty":
+        await sendMessage(chatId, TEXT.summaryEmpty);
+        return;
+      default:
+        await sendMessage(chatId, TEXT.summaryNotReady);
+        return;
+    }
+  }
+  const messageId = await sendMessage(
+    chatId,
+    TEXT.summaryStarted(asked.summary.sourcePages)
+  );
+  await setSummaryStatusMessage(asked.summary.id, messageId);
+  await publishMessage({
+    type: "generate_file_summary",
+    summaryId: asked.summary.id,
+  });
+}
+
 async function handleCallback(
   query: NonNullable<TelegramUpdate["callback_query"]>
 ) {
@@ -586,6 +657,61 @@ async function handleCallback(
       query.id,
       reopened ? TEXT.convertStarted : TEXT.retryUnavailable
     );
+    return;
+  }
+
+  // 📝 A summary of this file, in three presses (lib/summary).
+  if (
+    parsed.action === "summary" ||
+    parsed.action === "summaryStyle" ||
+    parsed.action === "summaryGo"
+  ) {
+    await answerCallback(query.id);
+    if (!upload.bookId) {
+      await sendMessage(chat.id, TEXT.summaryNotReady);
+      return;
+    }
+    // Asked before the questions, so a guest is not walked through two
+    // choices only to be told to register.
+    if (context.user.isGuest) {
+      await sendMessage(
+        chat.id,
+        TEXT.summaryNeedsAccount,
+        urlButton(LABELS.connectAccount, await connectLink(context.user))
+      );
+      return;
+    }
+    if (parsed.action === "summary") {
+      await sendMessage(chat.id, TEXT.summaryAskStyle, {
+        inline_keyboard: [
+          [
+            {
+              text: LABELS.summaryFull,
+              callback_data: CALLBACK.summaryStyle(upload.id, "full"),
+            },
+          ],
+          [
+            {
+              text: LABELS.summaryExam,
+              callback_data: CALLBACK.summaryStyle(upload.id, "exam"),
+            },
+          ],
+        ],
+      });
+      return;
+    }
+    if (parsed.action === "summaryStyle") {
+      await sendMessage(chat.id, TEXT.summaryAskTheme, {
+        inline_keyboard: SUMMARY_THEMES.map(theme => [
+          {
+            text: SUMMARY_THEME_LABELS[theme],
+            callback_data: CALLBACK.summaryGo(upload.id, parsed.style, theme),
+          },
+        ]),
+      });
+      return;
+    }
+    await startSummary(context, chat.id, upload.bookId, parsed.style, parsed.theme);
     return;
   }
 

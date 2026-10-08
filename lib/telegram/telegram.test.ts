@@ -49,6 +49,13 @@ vi.mock("@/lib/storage", () => storage);
 const admitUpload = vi.hoisted(() => vi.fn());
 vi.mock("@/lib/billing/upload-guard", () => ({ admitUpload }));
 
+// 📝 The summary job itself is tested in lib/summary/run.test.ts.
+const summaries = vi.hoisted(() => ({
+  requestSummary: vi.fn(),
+  setSummaryStatusMessage: vi.fn(),
+}));
+vi.mock("@/lib/summary/jobs", () => summaries);
+
 const readLeadingPages = vi.hoisted(() => vi.fn());
 vi.mock("@/lib/telegram/pdf-sample", () => ({ readLeadingPages }));
 
@@ -1742,5 +1749,127 @@ describe("A file sent as questions that is really notes", () => {
     publishMessage.mockClear();
     await tapConvert(failed.id);
     expect(publishMessage).toHaveBeenCalledWith({ type: "telegram_intake", uploadId: failed.id });
+  });
+});
+
+describe("Asking the bot for a PDF summary", () => {
+  const STUDENT_TG = 830001;
+  const press = (data: string, from = STUDENT_TG) =>
+    handleTelegramUpdate({
+      update_id: nextUpdateId++,
+      callback_query: {
+        id: "cb-summary",
+        from: { id: from },
+        data,
+        message: { message_id: 1, chat: { id: from, type: "private" } },
+      },
+    });
+  const buttonsOf = () =>
+    (
+      (lastSent().markup as { inline_keyboard: { text: string; callback_data?: string }[][] })
+        ?.inline_keyboard ?? []
+    ).flat();
+  // A file the student sent has finished reading.
+  async function readyFile() {
+    await handleTelegramUpdate(documentUpdate({ from: STUDENT_TG }));
+    const upload = await onlyUpload();
+    await runTelegramIntake(upload.id);
+    await test.client.exec(`UPDATE books SET status = 'complete'`);
+    return (await onlyUpload())!;
+  }
+
+  beforeEach(() => {
+    summaries.requestSummary.mockReset();
+    summaries.setSummaryStatusMessage.mockReset();
+  });
+
+  it("a guest is asked to create an account, before any question", async () => {
+    const upload = await readyFile();
+    tg.sendMessage.mockClear();
+    await press(CALLBACK.summary(upload.id));
+
+    expect(lastSent().text).toBe(TEXT.summaryNeedsAccount);
+    expect(buttonsOf()[0].text).toBe(LABELS.connectAccount);
+    expect(summaries.requestSummary).not.toHaveBeenCalled();
+  });
+
+  it("a registered student picks the kind, then the look, and the job is queued", async () => {
+    const upload = await readyFile();
+    await test.client.exec(`UPDATE users SET phone = '+962790000009', "passwordHash" = 'x'`);
+
+    await press(CALLBACK.summary(upload.id));
+    expect(lastSent().text).toBe(TEXT.summaryAskStyle);
+    expect(buttonsOf().map(b => b.callback_data)).toEqual([
+      CALLBACK.summaryStyle(upload.id, "full"),
+      CALLBACK.summaryStyle(upload.id, "exam"),
+    ]);
+
+    await press(CALLBACK.summaryStyle(upload.id, "exam"));
+    expect(lastSent().text).toBe(TEXT.summaryAskTheme);
+    expect(buttonsOf().map(b => b.callback_data)).toEqual(
+      (["niro", "mint", "violet", "classic"] as const).map(theme =>
+        CALLBACK.summaryGo(upload.id, "exam", theme)
+      )
+    );
+    // Telegram refuses callback data over 64 bytes.
+    for (const button of buttonsOf()) {
+      expect(Buffer.byteLength(button.callback_data!)).toBeLessThanOrEqual(64);
+    }
+
+    summaries.requestSummary.mockResolvedValue({
+      ok: true,
+      summary: { id: "99999999-9999-4999-8999-999999999999", sourcePages: 18 },
+    });
+    publishMessage.mockClear();
+    await press(CALLBACK.summaryGo(upload.id, "exam", "violet"));
+
+    expect(summaries.requestSummary).toHaveBeenCalledWith(
+      expect.objectContaining({ bookId: upload.bookId, style: "exam", theme: "violet" })
+    );
+    expect(lastSent().text).toBe(TEXT.summaryStarted(18));
+    expect(summaries.setSummaryStatusMessage).toHaveBeenCalledWith(
+      "99999999-9999-4999-8999-999999999999",
+      expect.any(Number)
+    );
+    expect(publishMessage).toHaveBeenCalledWith({
+      type: "generate_file_summary",
+      summaryId: "99999999-9999-4999-8999-999999999999",
+    });
+  });
+
+  it("tells the student the limit that stopped them, with the way to more", async () => {
+    const upload = await readyFile();
+    await test.client.exec(`UPDATE users SET phone = '+962790000009', "passwordHash" = 'x'`);
+
+    summaries.requestSummary.mockResolvedValue({
+      ok: false,
+      reason: "too_long",
+      pages: 75,
+      limit: 40,
+      paid: false,
+    });
+    publishMessage.mockClear();
+    await press(CALLBACK.summaryGo(upload.id, "full", "niro"));
+    expect(lastSent().text).toBe(TEXT.summaryTooLong(75, 40, false));
+    expect(buttonsOf()[0].text).toBe(LABELS.upgrade);
+    expect(publishMessage).not.toHaveBeenCalled();
+
+    summaries.requestSummary.mockResolvedValue({
+      ok: false,
+      reason: "daily_limit",
+      limit: 1,
+      paid: false,
+    });
+    await press(CALLBACK.summaryGo(upload.id, "full", "niro"));
+    expect(lastSent().text).toBe(TEXT.summaryDailyLimit(1, false));
+  });
+
+  it("only the file's own student can ask, and a made-up button does nothing", async () => {
+    const upload = await readyFile();
+    tg.sendMessage.mockClear();
+    await press(CALLBACK.summary(upload.id), 830099);
+    await press(`g:fx:${upload.id}`);
+    expect(tg.sendMessage).not.toHaveBeenCalled();
+    expect(summaries.requestSummary).not.toHaveBeenCalled();
   });
 });

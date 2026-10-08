@@ -133,6 +133,11 @@ const shareRow = (uploadId: string): InlineButton[] => [
   { text: LABELS.shareFile, callback_data: CALLBACK.share(uploadId) },
 ];
 
+// "📝 اعمل ملخّص PDF" under a ready file (handled in handler.ts).
+const summaryRow = (uploadId: string): InlineButton[] => [
+  { text: LABELS.makeSummary, callback_data: CALLBACK.summary(uploadId) },
+];
+
 // "📚 حوّله إلى كتاب" under a question file that is not one (handler.ts).
 const convertRow = (uploadId: string): InlineButton[] => [
   { text: LABELS.convertToBook, callback_data: CALLBACK.convert(uploadId) },
@@ -477,6 +482,7 @@ export async function runTelegramWatch(
             LABELS.openBookToStart,
             filePath(kind, book.id)
           )),
+          summaryRow(uploadId),
           shareRow(uploadId),
         ]
       );
@@ -523,6 +529,7 @@ export async function runTelegramWatch(
           LABELS.startQuestions,
           filePath(kind, book.id)
         )),
+        summaryRow(uploadId),
         shareRow(uploadId),
       ]
     );

@@ -3,6 +3,7 @@
 import type { InlineButton, ReplyMarkup } from "./api";
 import { miniAppEnabled, webUrl } from "./config";
 import type { DocumentKind } from "./detect";
+import type { SummaryStyle, SummaryTheme } from "../summary/types";
 
 export const BUTTONS = {
   uploadQuestions: "📄 رفع أسئلة",
@@ -80,6 +81,35 @@ export const TEXT = {
   tooManyPages: (pages: number, limit: number) =>
     `⚠️ هذا الملف ${pages} صفحة، والحد هنا ${limit} صفحة للملف الواحد.\n\n` +
     "قسّمه إلى أجزاء أصغر وأرسل كل جزء وحده.",
+
+  // 📝 Summaries (lib/summary).
+  summaryNeedsAccount:
+    "📝 الملخّصات للحسابات المسجّلة.\n\n" +
+    "أنشئ حسابك المجاني أو سجّل الدخول، وملفاتك هنا تنتقل إليه كما هي.",
+  summaryAskStyle: "📝 أي ملخّص تريد؟",
+  summaryAskTheme: "🎨 اختر شكل الملخّص:",
+  summaryStarted: (pages: number) =>
+    `✍️ بدأنا كتابة ملخّصك (${pages} صفحة). يصلك ملف PDF هنا عند الانتهاء.`,
+  summaryProgress: (done: number, total: number) =>
+    `✍️ جاري كتابة الملخّص… ${done} من ${total} صفحة`,
+  summaryReady: (title: string) =>
+    `📝 ملخّصك جاهز\n\n«${title}»\n\nراجِعه مع مصدرك، وأرسله لزملائك 👇`,
+  summaryShare:
+    "📝 اعمل ملخّص PDF مرتّب من أي ملف أسئلة أو محاضرة — جرّب بوت NiroLearn 👇",
+  summaryFailed:
+    "⚠️ تعذّر تجهيز الملخّص هذه المرة، ولم يُحسب من رصيدك اليومي. جرّب بعد قليل.",
+  summaryNotReady: "⏳ انتظر حتى تنتهي قراءة الملف ثم اطلب الملخّص.",
+  summaryEmpty: "⚠️ لم نجد في هذا الملف نصًا نلخّصه.",
+  summaryInProgress: "✍️ ملخّص هذا الملف قيد الكتابة — يصلك هنا عند الانتهاء.",
+  summaryTooLong: (pages: number, limit: number, paid: boolean) =>
+    `⚠️ هذا الملف ${pages} صفحة، والحد للملخّص ${limit} صفحة` +
+    (paid ? "." : " في الباقة المجانية.\n\nللملفات الأطول رقِّ باقتك إلى Pro."),
+  summaryDailyLimit: (limit: number, paid: boolean) =>
+    (limit === 1
+      ? "⚠️ استخدمت ملخّص اليوم."
+      : `⚠️ وصلت لحد الملخّصات اليومي (${limit}).`) +
+    " يتجدد غدًا." +
+    (paid ? "" : "\n\nلأكثر من ملخّص في اليوم رقِّ باقتك إلى Pro."),
 
   guestLimit:
     "🎓 جرّبت NiroLearn بملفك الأول.\n\n" +
@@ -239,6 +269,10 @@ export const LABELS = {
   shareInvite: "📨 أرسل الدعوة لزملائك",
   inviteFriend: "🎁 ادعُ زميلًا واربح ملفًا",
   shareFile: "📤 شارك الملف مع زملائك",
+  makeSummary: "📝 اعمل ملخّص PDF",
+  summaryFull: "📚 ملخّص شامل",
+  summaryExam: "⚡ مراجعة ليلة الامتحان",
+  upgrade: "⭐ باقات NiroLearn",
   sendToFriends: "📨 أرسله لزملائك",
 } as const;
 
@@ -249,6 +283,25 @@ export const CALLBACK = {
   retry: (uploadId: string) => `r:${uploadId}`,
   share: (uploadId: string) => `s:${uploadId}`,
   convert: (uploadId: string) => `c:${uploadId}`,
+  // 📝 A summary, in three presses: ask → the kind → the look.
+  summary: (uploadId: string) => `m:${uploadId}`,
+  summaryStyle: (uploadId: string, style: SummaryStyle) =>
+    `y:${style === "exam" ? "e" : "f"}:${uploadId}`,
+  summaryGo: (uploadId: string, style: SummaryStyle, theme: SummaryTheme) =>
+    `g:${style === "exam" ? "e" : "f"}${theme[0]}:${uploadId}`,
+};
+
+export const SUMMARY_THEME_LABELS: Record<SummaryTheme, string> = {
+  niro: "🔵 أزرق NiroLearn",
+  mint: "🟢 أخضر هادئ",
+  violet: "🟣 بنفسجي",
+  classic: "📜 كلاسيكي",
+};
+const THEME_BY_LETTER: Record<string, SummaryTheme> = {
+  n: "niro",
+  m: "mint",
+  v: "violet",
+  c: "classic",
 };
 
 const UUID =
@@ -261,6 +314,14 @@ export function parseCallback(
   | { action: "retry"; uploadId: string }
   | { action: "share"; uploadId: string }
   | { action: "convert"; uploadId: string }
+  | { action: "summary"; uploadId: string }
+  | { action: "summaryStyle"; uploadId: string; style: SummaryStyle }
+  | {
+      action: "summaryGo";
+      uploadId: string;
+      style: SummaryStyle;
+      theme: SummaryTheme;
+    }
   | null {
   const kind = new RegExp(`^k:([qb]):(${UUID})$`, "i").exec(data);
   if (kind) {
@@ -276,6 +337,25 @@ export function parseCallback(
   if (share) return { action: "share", uploadId: share[1] };
   const convert = new RegExp(`^c:(${UUID})$`, "i").exec(data);
   if (convert) return { action: "convert", uploadId: convert[1] };
+  const summary = new RegExp(`^m:(${UUID})$`, "i").exec(data);
+  if (summary) return { action: "summary", uploadId: summary[1] };
+  const style = new RegExp(`^y:([ef]):(${UUID})$`, "i").exec(data);
+  if (style) {
+    return {
+      action: "summaryStyle",
+      uploadId: style[2],
+      style: style[1].toLowerCase() === "e" ? "exam" : "full",
+    };
+  }
+  const go = new RegExp(`^g:([ef])([nmvc]):(${UUID})$`, "i").exec(data);
+  if (go) {
+    return {
+      action: "summaryGo",
+      uploadId: go[3],
+      style: go[1].toLowerCase() === "e" ? "exam" : "full",
+      theme: THEME_BY_LETTER[go[2].toLowerCase()],
+    };
+  }
   return null;
 }
 

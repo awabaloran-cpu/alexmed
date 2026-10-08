@@ -83,6 +83,8 @@ function resolveDestination(message: QueueMessage): string {
       return `${base}/api/telegram/intake`;
     case "telegram_watch":
       return `${base}/api/telegram/watch`;
+    case "generate_file_summary":
+      return `${base}/api/books/generate-summary`;
   }
 }
 
@@ -185,6 +187,10 @@ function defaultFlowControl(message: QueueMessage): FlowControl {
       };
     case "telegram_watch":
       return { key: `telegram-watch-${message.uploadId}`, parallelism: 1 };
+    // One run of a summary at a time; its last run prints a PDF in a
+    // headless browser, which is the memory this key keeps in check.
+    case "generate_file_summary":
+      return { key: `file-summary-${message.summaryId}`, parallelism: 1 };
   }
 }
 

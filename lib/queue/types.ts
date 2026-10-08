@@ -48,7 +48,10 @@ export type QueueMessage =
   // sent and hand it to the existing pipelines, then follow that file's
   // status and report it back in the chat. Neither does any AI work.
   | { type: "telegram_intake"; uploadId: string }
-  | { type: "telegram_watch"; uploadId: string };
+  | { type: "telegram_watch"; uploadId: string }
+  // 📝 One run of a summary job (lib/summary/run.ts): the next pages, or
+  // the finished PDF.
+  | { type: "generate_file_summary"; summaryId: string };
 
 function readIntEnv(name: string, fallback: number): number {
   const raw = process.env[name];

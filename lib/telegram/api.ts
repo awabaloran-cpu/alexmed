@@ -111,6 +111,43 @@ export async function editMessage(
   }
 }
 
+// Sends a file made here (a summary PDF) as a document. Multipart, unlike
+// every other call, so it does not go through call().
+export async function sendDocument(
+  chatId: number,
+  data: Uint8Array,
+  fileName: string,
+  caption?: string,
+  replyMarkup?: { inline_keyboard: InlineButton[][] }
+): Promise<number> {
+  const form = new FormData();
+  form.set("chat_id", String(chatId));
+  form.set(
+    "document",
+    new Blob([data as BlobPart], { type: "application/pdf" }),
+    fileName
+  );
+  if (caption) form.set("caption", caption);
+  if (replyMarkup) form.set("reply_markup", JSON.stringify(replyMarkup));
+  const response = await fetch(
+    `${telegramApiBase()}/bot${telegramBotToken()}/sendDocument`,
+    { method: "POST", body: form, signal: AbortSignal.timeout(60_000) }
+  );
+  const payload = (await response.json().catch(() => null)) as {
+    ok?: boolean;
+    result?: { message_id: number };
+    description?: string;
+  } | null;
+  if (!response.ok || !payload?.ok || !payload.result) {
+    throw new TelegramApiError(
+      "sendDocument",
+      response.status,
+      payload?.description ?? "no description"
+    );
+  }
+  return payload.result.message_id;
+}
+
 export async function answerCallback(
   callbackQueryId: string,
   text?: string

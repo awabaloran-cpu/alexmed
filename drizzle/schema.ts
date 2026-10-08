@@ -3142,6 +3142,57 @@ export const telegramUploads = pgTable(
   })
 );
 
+// 📝 A PDF summary a student asked the bot to make from one of their files
+// (lib/summary). The row is the job and its result:
+//   queued → processing → complete | failed
+// `parts` holds the sections written so far (one group of pages per worker
+// run), so a long file is never one long request and a retried run resumes.
+// A row that is not `failed` counts against the student's daily summaries.
+export const fileSummaries = pgTable(
+  "file_summaries",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: uuid("userId")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    bookId: uuid("bookId")
+      .notNull()
+      .references(() => books.id, { onDelete: "cascade" }),
+    // Where the finished file is sent; null for a summary not asked in chat.
+    telegramAccountId: uuid("telegramAccountId").references(
+      () => telegramAccounts.id,
+      { onDelete: "set null" }
+    ),
+    style: varchar("style", { length: 16 }).notNull(), // full | exam
+    theme: varchar("theme", { length: 16 }).notNull(), // niro | mint | violet | classic
+    status: varchar("status", { length: 16 }).default("queued").notNull(),
+    sourcePages: integer("sourcePages").default(0).notNull(),
+    // Source pages already summarised (the next run starts after this one).
+    donePages: integer("donePages").default(0).notNull(),
+    parts: jsonb("parts").$type<unknown[]>().default([]).notNull(),
+    title: text("title"),
+    // Storage key of the finished PDF.
+    fileKey: text("fileKey"),
+    error: text("error"),
+    attemptCount: integer("attemptCount").default(0).notNull(),
+    // The bot's progress message, edited in place.
+    statusMessageId: integer("statusMessageId"),
+    createdAt: timestamp("createdAt", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updatedAt", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  table => ({
+    userCreatedIdx: index("file_summaries_user_created_idx").on(
+      table.userId,
+      table.createdAt
+    ),
+    bookIdx: index("file_summaries_book_idx").on(table.bookId),
+  })
+);
+
 // Single-purpose links. Only the SHA-256 of the token is stored.
 //   web_login      a guest's "open NiroLearn" link (/t/<token>) — signs the
 //                  guest account in and lands on `path`.

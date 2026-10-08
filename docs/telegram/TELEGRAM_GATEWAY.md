@@ -203,6 +203,41 @@ A test bot must point at a **staging** deployment with its own database,
 bucket and QStash (docs/mobile/ENVIRONMENTS.md §4–5). Pointing it at a local
 machine with the current `.env` would write to production.
 
+## PDF summaries
+
+Under a ready file the bot offers "📝 اعمل ملخّص PDF" (`lib/summary`,
+migration `0046_bot_summaries`). Three presses — ask, the kind (full /
+last-night revision), the look (four themes) — create a row in
+`file_summaries` and queue `generate_file_summary`.
+
+- **Who:** a registered account only (a guest gets the connect link). The
+  free plan: one summary a day, from a file of at most 40 pages. A paid
+  plan: 10 a day, 150 pages. A failed summary does not count.
+  (`lib/summary/jobs.ts`, `SUMMARY_*` variables.)
+- **How:** each worker run (`app/api/books/generate-summary`) summarises
+  the next 10 pages in two AI calls and queues the next run; the last run
+  groups repeated topics into chapters, writes the cover and checklist,
+  prints the PDF and sends it as a document. The AI writes a line-based
+  markup (`lib/summary/markup.ts`), not JSON — nested JSON kept coming back
+  broken. Source text: a book's `book_pages`, a question file's extracted
+  questions with their answers.
+- **The file:** `lib/summary/render.ts` (HTML, KaTeX for maths, four themes)
+  printed by a headless Chromium (`lib/summary/pdf.ts`,
+  `@sparticuz/chromium`). Every page carries the NiroLearn signature with
+  the student's own invite link, clickable in the PDF. Stored at
+  `summaries/<userId>/<summaryId>.pdf`.
+- **Failures:** a run that fails is queued again with a pause; after four
+  in a row without progress the job is failed and the student told.
+
+Checked: unit and PGlite tests; a live print of all four themes with an
+installed Chrome (`lib/summary/pdf.live.test.ts`, 2 links on every page);
+a real 18-page question file through the same prompts (every page covered,
+14-page result, ~1.5 min).
+
+**[!] Not verified:** the bundled Chromium on Railway (memory, missing
+system libraries, fonts fetched from Google at print time), and the whole
+flow on the live bot.
+
 ## Page limit
 
 The bot refuses a PDF longer than `TELEGRAM_MAX_PAGES` (default 100) before it
