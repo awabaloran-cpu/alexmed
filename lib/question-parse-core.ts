@@ -225,6 +225,31 @@ type Draft = {
 
 type Mode = "stem" | "options" | "explanation" | "notes";
 
+const comparable = (text: string) =>
+  text
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .replace(/[\s.]+$/, "")
+    .trim();
+
+// An "Answer: C. <the option's text>" line long enough to wrap leaves its
+// last words on the next line ("…reflux should be" / "considered"). Those
+// words are the end of the answer, not an explanation: when everything
+// after the answer is just the tail of the chosen option's own text, there
+// is no explanation.
+function explanationWithoutAnswerWrap(
+  explanation: string,
+  answerIndex: number | null,
+  options: string[] | null
+): string | null {
+  if (!explanation) return null;
+  const option = answerIndex === null ? null : options?.[answerIndex];
+  if (option && comparable(option).endsWith(comparable(explanation))) {
+    return null;
+  }
+  return explanation;
+}
+
 export function parseQuestionStream(
   lines: StreamLine[],
   hooks: { onKeyEntry?: (entry: AnswerKeyEntry, index: number) => void } = {}
@@ -256,9 +281,11 @@ export function parseQuestionStream(
         options,
         extractedAnswerIndex: answer?.index ?? null,
         extractedAnswerText: answer ? answer.text : null,
-        explanationText: draft.explanationLines.length
-          ? draft.explanationLines.join(" ").trim()
-          : null,
+        explanationText: explanationWithoutAnswerWrap(
+          draft.explanationLines.join(" ").trim(),
+          answer?.index ?? null,
+          options
+        ),
         notes: draft.notes,
         sourcePage: draft.sourcePage,
         endPage: draft.endPage,

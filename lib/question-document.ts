@@ -307,6 +307,82 @@ function isTitleLine(text: string): boolean {
   );
 }
 
+// "Answer: B" / "الإجابة: ب" — the answer label itself (not an explanation,
+// whose text runs on for several lines).
+const ANSWER_LABEL =
+  /^\s*(?:the\s+)?(?:correct answer|right answer|answer|ans|key|الإجابة الصحيحة|الإجابة|الجواب)(?:\b|\s*[:\-.])/i;
+
+// ── 2a. Numbers written without punctuation ─────────────────────────────
+
+// "07 A 6-year-old boy presents with…" — the question's number, a space and
+// the stem, with no "." or ")" after the number. Nothing else in the
+// pipeline reads that as a question start, so the document looked
+// unnumbered and its multi-line stems were cut apart.
+// Also "2-Dissociative anaesthesia is…": a hyphen glued to a capitalised
+// (or Arabic) stem. A lowercase word after the hyphen is ordinary text
+// ("5-second capillary refill", "2-year-old boy") and never matches.
+const BARE_NUMBER_START =
+  /^\s*(\d{1,3})(?:\s+(?=["“«(\[]?[A-Za-z؀-ۿ])|\s*[-–]\s*(?=["“«(\[]?[A-Z؀-ۿ]))/;
+
+// Gives such numbers their full stop ("7. A 6-year-old…") when the document
+// really numbers its questions this way. A line counts only if ALL hold:
+//   - the previous question is over: its options have been seen since its
+//     own start. So a number inside a stem ("…was given" / "5 mg twice
+//     daily…") is never a new question, while a question that follows a
+//     wrapped answer or option line still is;
+//   - its number continues the sequence (the next one, allowing a small
+//     gap), so stray numbers are not picked up;
+//   - an A option follows before anything else that is not plain text.
+// And the document as a whole must be numbered this way: at least three
+// such lines, covering at least half of its option runs. Documents that
+// punctuate their numbers, or have none, pass through untouched.
+export function punctuateBareNumbers(stream: StreamLine[]): StreamLine[] {
+  const kinds = stream.map(line => lineKind(line.text));
+  const runs = kinds.filter(
+    (kind, i) => kind === "option" && optionLetter(stream[i].text) === "a"
+  ).length;
+  const punctuated = kinds.filter(kind => kind === "question").length;
+  if (!runs || punctuated >= runs * 0.5) return stream;
+
+  const optionsFollow = (i: number) => {
+    for (let j = i + 1; j < Math.min(stream.length, i + 16); j++) {
+      if (kinds[j] === "plain") continue;
+      return kinds[j] === "option" && optionLetter(stream[j].text) === "a";
+    }
+    return false;
+  };
+
+  const accepted = new Map<number, number>(); // line index → number
+  let last: number | null = null;
+  let optionsSeen = false; // since the last accepted question start
+  stream.forEach((line, i) => {
+    if (kinds[i] === "option") optionsSeen = true;
+    if (kinds[i] !== "plain") return;
+    const match = toAsciiDigits(line.text).match(BARE_NUMBER_START);
+    if (!match) return;
+    const number = Number(match[1]);
+    const previousOver = last === null || optionsSeen;
+    // The next number (a small gap allowed) — or 1 again: banks made of
+    // several exams / sections restart their numbering.
+    const inSequence =
+      last === null || number === 1 || (number > last && number <= last + 3);
+    if (!previousOver || !inSequence || !optionsFollow(i)) return;
+    accepted.set(i, number);
+    last = number;
+    optionsSeen = false;
+  });
+  if (accepted.size < 3 || accepted.size < runs * 0.5) return stream;
+
+  return stream.map((line, i) => {
+    const number = accepted.get(i);
+    if (number === undefined) return line;
+    const rest = toAsciiDigits(line.text).replace(BARE_NUMBER_START, "");
+    // Keep the original characters of the stem (only the digits were
+    // normalised to find the number).
+    return { ...line, text: `${number}. ${line.text.slice(-rest.length)}` };
+  });
+}
+
 export function numberUnnumberedQuestions(stream: StreamLine[]): StreamLine[] {
   const kinds = stream.map(line => lineKind(line.text));
 
@@ -365,10 +441,14 @@ export function numberUnnumberedQuestions(stream: StreamLine[]): StreamLine[] {
         const text = stream[s].text;
         const prev = stream[s - 1].text;
         const lowercase = /^[a-z(,;]/.test(text);
-        const continues =
-          kinds[p] === "option"
-            ? lowercase || /[,\-–]\s*$/.test(prev)
-            : lowercase || !SENTENCE_END.test(prev);
+        // After an option — or an "Answer: B. …" line, which is one short
+        // line with no full stop — only an obviously wrapped line continues
+        // the previous block. Without this the opening lines of the next
+        // multi-line stem were swallowed as the previous answer's text.
+        const tight = kinds[p] === "option" || ANSWER_LABEL.test(stream[p].text);
+        const continues = tight
+          ? lowercase || /[,\-–]\s*$/.test(prev)
+          : lowercase || !SENTENCE_END.test(prev);
         if (!continues) break;
         s++;
       }
@@ -695,7 +775,9 @@ export function analyzeQuestionDocument(
 ): QuestionDocumentAnalysis {
   const pages = [...rawPages].sort((a, b) => a.page - b.page);
   const cleaned = cleanPages(pages);
-  const fullStream = numberUnnumberedQuestions(relinePages(cleaned));
+  const fullStream = numberUnnumberedQuestions(
+    punctuateBareNumbers(relinePages(cleaned))
+  );
   const classes = classifyPages(
     fullStream,
     pages.map(p => p.page)
