@@ -72,6 +72,8 @@ export const telegramRouter = router({
       link,
       shareUrl: shareUrl(link, TEXT.inviteShare),
       text: TEXT.inviteShare,
+      // Where a student who finished a classmate's file brings their own.
+      uploadLink: sourceLink("shared_done"),
       stats: account ? await inviteStats(account.id) : null,
     } as const;
   }),

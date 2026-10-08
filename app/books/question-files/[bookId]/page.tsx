@@ -172,7 +172,9 @@ export default function QuestionFileDetailPage() {
           onAnswered={(questionId, selectedIndex) =>
             saveAttempt.mutate({ bookId: book.id, questionId, selectedIndex })
           }
-          renderComplete={result => <ShareResultCard {...result} />}
+          renderComplete={result => (
+            <ShareResultCard {...result} bookId={book.id} shared={shared} />
+          )}
           {...(ads?.enabled
             ? {
                 breakEvery: ads.questionsPerBreak,

@@ -37,6 +37,16 @@
   font-size: 14.5px;
   line-height: 1.7;
 }
+.note {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0;
+  color: var(--nl-ink-2);
+  font-size: 14px;
+  line-height: 1.7;
+}
+.note svg,
 .pitch svg {
   flex: none;
   margin-top: 4px;
@@ -60,6 +70,10 @@
   font-weight: 600;
   text-decoration: none;
   cursor: pointer;
+}
+.share:disabled {
+  opacity: 0.6;
+  cursor: default;
 }
 .share {
   border: 0;
