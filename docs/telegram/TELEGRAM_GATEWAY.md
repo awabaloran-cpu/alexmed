@@ -210,6 +210,14 @@ migration `0046_bot_summaries`). Three presses — ask, the kind (full /
 last-night revision), the look (four themes) — create a row in
 `file_summaries` and queue `generate_file_summary`.
 
+- **Summary only:** the keyboard's "📝 ملخّص PDF" (or `/summary`) takes a
+  PDF that is summarised and nothing else: it is stored, the student is
+  asked the same two questions, and the job reads the PDF's own text layer
+  (`readPdfSource`). No book or question pipeline starts, no plan upload
+  quota is used and no AI runs until the student chooses. A scanned file
+  (no text layer) is refused with a pointer to "رفع كتاب"; a file over the
+  plan's summary pages is refused before the questions. Such an upload has
+  `kind = "summary"` and no `bookId`; its summary row has `sourceKey`.
 - **Who:** a registered account only (a guest gets the connect link). The
   free plan: one summary a day, from a file of at most 40 pages. A paid
   plan: 10 a day, 150 pages. A failed summary does not count.

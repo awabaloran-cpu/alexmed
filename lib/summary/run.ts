@@ -46,7 +46,7 @@ import {
 } from "./jobs";
 import { htmlToPdf } from "./pdf";
 import { renderSummary } from "./render";
-import { readSummarySource } from "./source";
+import { readPdfSource, readSummarySource } from "./source";
 import { isSummaryStyle, isSummaryTheme, type SummarySection } from "./types";
 
 const MAX_ATTEMPTS = 4;
@@ -108,15 +108,17 @@ export async function runSummary(
   const chat = await chatOf(summary);
 
   try {
-    const book = await getBookById(summary.bookId);
-    if (
-      !book ||
-      !isSummaryStyle(summary.style) ||
-      !isSummaryTheme(summary.theme)
-    ) {
+    if (!isSummaryStyle(summary.style) || !isSummaryTheme(summary.theme)) {
+      throw new Unrecoverable("The summary's choices are not valid");
+    }
+    const book = summary.bookId ? await getBookById(summary.bookId) : null;
+    if (!book && !summary.sourceKey) {
       throw new Unrecoverable("The summary's file is gone");
     }
-    const pages = await readSummarySource(book);
+    const fileName = book?.fileName ?? summary.sourceName ?? "file.pdf";
+    const pages = book
+      ? await readSummarySource(book)
+      : await readPdfSource(summary.sourceKey!);
     if (!pages.length) throw new Unrecoverable("The file has no text");
     const parts = (summary.parts ?? []) as SummarySection[];
 
@@ -159,7 +161,7 @@ export async function runSummary(
         : parts;
     const head = parseHead(
       await ask(HEAD_SYSTEM_PROMPT, headUserPrompt(sections, pages[0]), 1500),
-      book.fileName.replace(/\.pdf$/i, "")
+      fileName.replace(/\.pdf$/i, "")
     );
     const link =
       (chat ? await inviteLink(chat.accountId) : null) ??
@@ -171,7 +173,7 @@ export async function runSummary(
         sections,
         style: summary.style,
         sourcePages: pages.length,
-        fileName: book.fileName,
+        fileName,
         date: new Date().toLocaleDateString("ar-EG", {
           day: "numeric",
           month: "long",

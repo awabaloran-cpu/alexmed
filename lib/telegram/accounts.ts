@@ -148,7 +148,7 @@ export async function ensureTelegramAccount(
 
 export async function setPendingKind(
   accountId: string,
-  kind: "question_file" | "book" | null
+  kind: "question_file" | "book" | "summary" | null
 ): Promise<void> {
   await requireDb()
     .update(telegramAccounts)

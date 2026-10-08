@@ -54,7 +54,14 @@ const summaries = vi.hoisted(() => ({
   requestSummary: vi.fn(),
   setSummaryStatusMessage: vi.fn(),
 }));
-vi.mock("@/lib/summary/jobs", () => summaries);
+vi.mock("@/lib/summary/jobs", async importOriginal => ({
+  ...(await importOriginal<typeof import("../summary/jobs")>()),
+  ...summaries,
+}));
+const userPlan = vi.hoisted(() => ({ id: "free" }));
+vi.mock("@/lib/billing/entitlement", () => ({
+  getUserPlan: async () => userPlan,
+}));
 
 const readLeadingPages = vi.hoisted(() => vi.fn());
 vi.mock("@/lib/telegram/pdf-sample", () => ({ readLeadingPages }));
@@ -1862,6 +1869,94 @@ describe("Asking the bot for a PDF summary", () => {
     });
     await press(CALLBACK.summaryGo(upload.id, "full", "niro"));
     expect(lastSent().text).toBe(TEXT.summaryDailyLimit(1, false));
+  });
+
+  describe("a file sent for a summary only", () => {
+    const register = () =>
+      test.client.exec(`UPDATE users SET phone = '+962790000009', "passwordHash" = 'x'`);
+    // The student opens the bot, registers, presses "📝 ملخّص PDF" and sends a file.
+    async function sendForSummary(total = 12) {
+      await handleTelegramUpdate(textUpdate("/start", STUDENT_TG));
+      await register();
+      await handleTelegramUpdate(textUpdate(BUTTONS.summaryOnly, STUDENT_TG));
+      expect(lastSent().text).toBe(TEXT.summaryAskFile);
+      readLeadingPages.mockResolvedValue(
+        sample([{ page: 1, text: PROSE_PAGE }], total)
+      );
+      await handleTelegramUpdate(documentUpdate({ from: STUDENT_TG }));
+      const upload = await onlyUpload();
+      await runTelegramIntake(upload.id);
+      return (await onlyUpload())!;
+    }
+    const lastEdit = () => tg.editMessage.mock.calls.at(-1)!;
+
+    it("is stored and asked about, and starts nothing else", async () => {
+      const upload = await sendForSummary();
+
+      expect(upload).toMatchObject({ status: "complete", kind: "summary", bookId: null });
+      // No plan quota, no book, no question pipeline.
+      expect(admitUpload).not.toHaveBeenCalled();
+      expect(await rows(`SELECT id FROM books`)).toHaveLength(0);
+      expect(publishMessage).not.toHaveBeenCalledWith(
+        expect.objectContaining({ type: "telegram_watch" }),
+        expect.anything()
+      );
+      expect(lastEdit()[2]).toBe(TEXT.summaryAskStyle);
+      expect(JSON.stringify(lastEdit()[3])).toContain(
+        CALLBACK.summaryStyle(upload.id, "full")
+      );
+    });
+
+    it("becomes a summary job made straight from the stored PDF", async () => {
+      const upload = await sendForSummary();
+      const [{ fileKey }] = await rows<{ fileKey: string }>(
+        `SELECT "fileKey" FROM telegram_uploads`
+      );
+      summaries.requestSummary.mockResolvedValue({
+        ok: true,
+        summary: { id: "99999999-9999-4999-8999-999999999999", sourcePages: 12 },
+      });
+      await press(CALLBACK.summaryGo(upload.id, "full", "classic"));
+
+      expect(summaries.requestSummary).toHaveBeenCalledWith(
+        expect.objectContaining({
+          file: { key: fileKey, name: "Pediatrics_MCQs.pdf" },
+          style: "full",
+          theme: "classic",
+        })
+      );
+      expect(summaries.requestSummary.mock.calls[0][0].bookId).toBeUndefined();
+    });
+
+    it("a guest is told to create an account before sending anything", async () => {
+      await handleTelegramUpdate(textUpdate(BUTTONS.summaryOnly, STUDENT_TG));
+      expect(lastSent().text).toBe(TEXT.summaryNeedsAccount);
+      expect(
+        (await rows<{ pendingKind: string | null }>(`SELECT "pendingKind" FROM telegram_accounts`))[0]
+          .pendingKind
+      ).toBeNull();
+    });
+
+    it("refuses a scanned file, and one over the plan's pages, before any question", async () => {
+      await handleTelegramUpdate(textUpdate("/start", STUDENT_TG));
+      await register();
+      await handleTelegramUpdate(textUpdate(BUTTONS.summaryOnly, STUDENT_TG));
+      readLeadingPages.mockResolvedValue(sample([{ page: 1, text: "" }], 5));
+      await handleTelegramUpdate(documentUpdate({ from: STUDENT_TG }));
+      await runTelegramIntake((await onlyUpload()).id);
+      expect((await onlyUpload())).toMatchObject({
+        status: "rejected",
+        error: TEXT.summaryNoText,
+      });
+      expect(storage.storageGetUploadUrl).not.toHaveBeenCalled();
+
+      await test.client.exec(`DELETE FROM telegram_uploads`);
+      const long = await sendForSummary(41);
+      expect(long).toMatchObject({
+        status: "rejected",
+        error: TEXT.summaryTooLong(41, 40, false),
+      });
+    });
   });
 
   it("only the file's own student can ask, and a made-up button does nothing", async () => {

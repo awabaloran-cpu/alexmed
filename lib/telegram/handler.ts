@@ -30,7 +30,7 @@ import {
   webUrl,
 } from "./config";
 import { isDocumentKind, type DocumentKind } from "./detect";
-import { retryTelegramUpload } from "./intake";
+import { retryTelegramUpload, summaryStyleRows } from "./intake";
 import { parsePhone } from "../phone";
 import {
   getOrCreateShareLink,
@@ -162,10 +162,22 @@ async function handleDocument(
   }
 
   const { account, user } = context;
+  // 📝 Sent after "ملخّص PDF": summarised only. It is not one of the
+  // student's study files, so the duplicate answer and the guest's free
+  // file do not apply — and a guest is told now, not after the upload.
+  const forSummary = account.pendingKind === "summary";
+  if (forSummary && user.isGuest) {
+    await sendMessage(
+      chatId,
+      TEXT.summaryNeedsAccount,
+      urlButton(LABELS.connectAccount, await connectLink(user))
+    );
+    return;
+  }
 
   // A file they already sent is answered with that file, whatever limits
   // would apply to a new one.
-  const duplicate = await findDuplicateUpload(
+  const duplicate = forSummary ? null : await findDuplicateUpload(
     account.id,
     document.file_unique_id
   );
@@ -201,6 +213,7 @@ async function handleDocument(
   // so an earned file is only spent on an upload that will be recorded.
   let bonusSpent = false;
   if (
+    !forSummary &&
     user.isGuest &&
     (await countAcceptedUploads(account.id)) >= guestFreeUploads()
   ) {
@@ -219,9 +232,11 @@ async function handleDocument(
     }
   }
 
-  const requestedKind = isDocumentKind(account.pendingKind)
-    ? account.pendingKind
-    : null;
+  const requestedKind = forSummary
+    ? ("summary" as const)
+    : isDocumentKind(account.pendingKind)
+      ? account.pendingKind
+      : null;
   const upload = await createUpload({
     telegramAccountId: account.id,
     updateId,
@@ -538,6 +553,17 @@ async function handleMessage(updateId: number, message: TelegramMessage) {
   } else if (text === BUTTONS.uploadBook) {
     await setPendingKind(context.account.id, "book");
     await sendMessage(chatId, TEXT.askForFile("book"));
+  } else if (text === BUTTONS.summaryOnly || /^\/summary\b/i.test(text)) {
+    if (context.user.isGuest) {
+      await sendMessage(
+        chatId,
+        TEXT.summaryNeedsAccount,
+        urlButton(LABELS.connectAccount, await connectLink(context.user))
+      );
+    } else {
+      await setPendingKind(context.account.id, "summary");
+      await sendMessage(chatId, TEXT.summaryAskFile);
+    }
   } else if (text === BUTTONS.invite || /^\/invite\b/i.test(text)) {
     await handleInvite(context, chatId);
   } else if (text === BUTTONS.myFiles || /^\/files\b/i.test(text)) {
@@ -560,13 +586,13 @@ async function handleMessage(updateId: number, message: TelegramMessage) {
 async function startSummary(
   context: AccountContext,
   chatId: number,
-  bookId: string,
+  source: { bookId: string } | { file: { key: string; name: string } },
   style: SummaryStyle,
   theme: SummaryTheme
 ) {
   const asked = await requestSummary({
     userId: context.user.id,
-    bookId,
+    ...source,
     telegramAccountId: context.account.id,
     style,
     theme,
@@ -667,7 +693,12 @@ async function handleCallback(
     parsed.action === "summaryGo"
   ) {
     await answerCallback(query.id);
-    if (!upload.bookId) {
+    const source = upload.bookId
+      ? { bookId: upload.bookId }
+      : upload.kind === "summary" && upload.fileKey
+        ? { file: { key: upload.fileKey, name: upload.fileName } }
+        : null;
+    if (!source) {
       await sendMessage(chat.id, TEXT.summaryNotReady);
       return;
     }
@@ -683,20 +714,7 @@ async function handleCallback(
     }
     if (parsed.action === "summary") {
       await sendMessage(chat.id, TEXT.summaryAskStyle, {
-        inline_keyboard: [
-          [
-            {
-              text: LABELS.summaryFull,
-              callback_data: CALLBACK.summaryStyle(upload.id, "full"),
-            },
-          ],
-          [
-            {
-              text: LABELS.summaryExam,
-              callback_data: CALLBACK.summaryStyle(upload.id, "exam"),
-            },
-          ],
-        ],
+        inline_keyboard: summaryStyleRows(upload.id),
       });
       return;
     }
@@ -711,7 +729,7 @@ async function handleCallback(
       });
       return;
     }
-    await startSummary(context, chat.id, upload.bookId, parsed.style, parsed.theme);
+    await startSummary(context, chat.id, source, parsed.style, parsed.theme);
     return;
   }
 

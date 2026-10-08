@@ -23,6 +23,8 @@ import { looksLikeNotes } from "../question-file-quality";
 import { retryQuestionFileExtraction } from "../db-question-files";
 import { admitAndStartStudentFile } from "../file-intake";
 import { publishMessage } from "../queue/client";
+import { getUserPlan } from "../billing/entitlement";
+import { summaryLimits } from "../summary/jobs";
 import { assertJobCreationAllowed, RateLimitedError } from "../queue/rateLimit";
 import { deleteObject, storageGetUploadUrl } from "../storage";
 import { newUploadKey } from "../upload-keys";
@@ -58,6 +60,7 @@ import {
   markUploadComplete,
   markUploadFailed,
   markUploadProcessing,
+  markUploadSummaryReady,
   markUploadRejected,
   recordUploadStage,
   releaseUploadClaim,
@@ -131,6 +134,23 @@ async function openButton(
 // "📤 شارك الملف مع زملائك" under a ready file (handled in handler.ts).
 const shareRow = (uploadId: string): InlineButton[] => [
   { text: LABELS.shareFile, callback_data: CALLBACK.share(uploadId) },
+];
+
+// "Which summary?" — the first of the two questions (handler.ts asks the
+// second and starts the job).
+export const summaryStyleRows = (uploadId: string): InlineButton[][] => [
+  [
+    {
+      text: LABELS.summaryFull,
+      callback_data: CALLBACK.summaryStyle(uploadId, "full"),
+    },
+  ],
+  [
+    {
+      text: LABELS.summaryExam,
+      callback_data: CALLBACK.summaryStyle(uploadId, "exam"),
+    },
+  ],
 ];
 
 // "📝 اعمل ملخّص PDF" under a ready file (handled in handler.ts).
@@ -310,6 +330,27 @@ export async function runTelegramIntake(
       const maxPages = telegramMaxPages();
       if (sample.total > maxPages) {
         throw new TooLong(TEXT.tooManyPages(sample.total, maxPages));
+      }
+      // 📝 Sent for a summary only: the file is stored and the student is
+      // asked which summary — no plan quota, no book or question pipeline,
+      // no AI until they choose. A file with no text layer is refused here.
+      if (upload.requestedKind === "summary") {
+        if (!sample.pages.some(page => page.text.trim().length > 40)) {
+          throw new TooLong(TEXT.summaryNoText);
+        }
+        // Told now, not after two questions: the plan's page limit for a
+        // summary (lib/summary/jobs.ts checks it again on the text pages).
+        const planId = (await getUserPlan(userId)).id;
+        const limit = summaryLimits(planId).maxPages;
+        if (sample.total > limit) {
+          throw new TooLong(
+            TEXT.summaryTooLong(sample.total, limit, planId !== "free")
+          );
+        }
+        key = await storeUploadedPdf(userId, upload.fileName, data);
+        await markUploadSummaryReady(uploadId, key);
+        await progress(context, TEXT.summaryAskStyle, summaryStyleRows(uploadId));
+        return "done";
       }
       key = await storeUploadedPdf(userId, upload.fileName, data);
       const requested = isDocumentKind(upload.requestedKind)

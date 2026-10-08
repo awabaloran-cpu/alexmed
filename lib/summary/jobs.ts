@@ -9,7 +9,7 @@ import { getUserPlan } from "../billing/entitlement";
 import { billingTimeZone, periodKeys } from "../billing/periods";
 import { requireDb } from "../db";
 import { isTelegramGuest } from "../telegram/accounts";
-import { readSummarySource } from "./source";
+import { readPdfSource, readSummarySource } from "./source";
 import type { SummarySection, SummaryStyle, SummaryTheme } from "./types";
 
 function readInt(name: string, fallback: number): number {
@@ -69,11 +69,13 @@ export function decideSummary(facts: {
 
 export type SummaryRow = typeof fileSummaries.$inferSelect;
 
-// Creates the job, or says why not. The file must be the student's own and
-// finished reading. Two presses of the button make one summary.
+// Creates the job, or says why not. The source is one of the student's own
+// finished files (bookId), or a PDF they sent only to be summarised (file —
+// the caller has checked it is theirs). Two presses make one summary.
 export async function requestSummary(input: {
   userId: string;
-  bookId: string;
+  bookId?: string;
+  file?: { key: string; name: string };
   telegramAccountId: string | null;
   style: SummaryStyle;
   theme: SummaryTheme;
@@ -82,25 +84,35 @@ export async function requestSummary(input: {
   { ok: true; summary: SummaryRow } | ({ ok: false } & SummaryRefusal)
 > {
   const db = requireDb();
-  const [book] = await db
-    .select({
-      id: books.id,
-      status: books.status,
-      sourceType: books.sourceType,
-    })
-    .from(books)
-    .where(and(eq(books.id, input.bookId), eq(books.userId, input.userId)))
-    .limit(1);
-  if (!book) return { ok: false, reason: "not_found" };
-  if (book.status === "extracting" || book.status === "failed") {
-    return { ok: false, reason: "not_ready" };
+  let pages;
+  if (input.bookId) {
+    const [book] = await db
+      .select({
+        id: books.id,
+        status: books.status,
+        sourceType: books.sourceType,
+      })
+      .from(books)
+      .where(and(eq(books.id, input.bookId), eq(books.userId, input.userId)))
+      .limit(1);
+    if (!book) return { ok: false, reason: "not_found" };
+    if (book.status === "extracting" || book.status === "failed") {
+      return { ok: false, reason: "not_ready" };
+    }
+    pages = await readSummarySource(book);
+  } else if (input.file) {
+    pages = await readPdfSource(input.file.key);
+  } else {
+    return { ok: false, reason: "not_found" };
   }
-
-  const pages = await readSummarySource(book);
   const day = periodKeys(input.now).day;
   const zone = billingTimeZone();
   const mine = await db
-    .select({ status: fileSummaries.status, bookId: fileSummaries.bookId })
+    .select({
+      status: fileSummaries.status,
+      bookId: fileSummaries.bookId,
+      sourceKey: fileSummaries.sourceKey,
+    })
     .from(fileSummaries)
     .where(
       and(
@@ -116,7 +128,9 @@ export async function requestSummary(input: {
     madeToday: mine.length,
     inProgress: mine.some(
       row =>
-        row.bookId === input.bookId &&
+        (input.bookId
+          ? row.bookId === input.bookId
+          : row.sourceKey === input.file?.key) &&
         (row.status === "queued" || row.status === "processing")
     ),
   });
@@ -126,7 +140,9 @@ export async function requestSummary(input: {
     .insert(fileSummaries)
     .values({
       userId: input.userId,
-      bookId: input.bookId,
+      bookId: input.bookId ?? null,
+      sourceKey: input.bookId ? null : (input.file?.key ?? null),
+      sourceName: input.bookId ? null : (input.file?.name ?? null),
       telegramAccountId: input.telegramAccountId,
       style: input.style,
       theme: input.theme,

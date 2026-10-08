@@ -8,6 +8,7 @@ import type { SummaryStyle, SummaryTheme } from "../summary/types";
 export const BUTTONS = {
   uploadQuestions: "📄 رفع أسئلة",
   uploadBook: "📚 رفع كتاب",
+  summaryOnly: "📝 ملخّص PDF",
   myFiles: "📊 ملفاتي",
   howItWorks: "❓ كيف يعمل؟",
   openSite: "🌐 فتح NiroLearn",
@@ -23,6 +24,7 @@ export function mainKeyboard(): ReplyMarkup {
   return {
     keyboard: [
       [{ text: BUTTONS.uploadQuestions }, { text: BUTTONS.uploadBook }],
+      [{ text: BUTTONS.summaryOnly }],
       [{ text: BUTTONS.myFiles }, { text: BUTTONS.invite }],
       [
         { text: BUTTONS.howItWorks },
@@ -86,6 +88,13 @@ export const TEXT = {
   summaryNeedsAccount:
     "📝 الملخّصات للحسابات المسجّلة.\n\n" +
     "أنشئ حسابك المجاني أو سجّل الدخول، وملفاتك هنا تنتقل إليه كما هي.",
+  summaryAskFile:
+    "📝 أرسل الآن الملف بصيغة PDF.\n\n" +
+    "نكتب له ملخّصًا فقط ونرسله لك ملف PDF — بدون تجهيز أسئلة أو أدوات أخرى.",
+  // A scanned file has no text to summarise without the book reader's OCR.
+  summaryNoText:
+    "⚠️ هذا الملف مصوَّر ولا نص فيه يمكن تلخيصه مباشرة.\n\n" +
+    "أرسله بعد اختيار «رفع كتاب» ليُقرأ أولًا، ثم اطلب الملخّص من تحته.",
   summaryAskStyle: "📝 أي ملخّص تريد؟",
   summaryAskTheme: "🎨 اختر شكل الملخّص:",
   summaryStarted: (pages: number) =>

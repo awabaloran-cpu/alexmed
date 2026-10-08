@@ -44,7 +44,7 @@ export async function createUpload(input: {
   fileUniqueId: string;
   fileName: string;
   fileSize: number;
-  requestedKind: DocumentKind | null;
+  requestedKind: DocumentKind | "summary" | null;
 }): Promise<TelegramUpload | null> {
   const [row] = await requireDb()
     .insert(telegramUploads)
@@ -261,6 +261,18 @@ export function resolveUploadKind(id: string, kind: DocumentKind) {
     status: "received",
     kind,
     requestedKind: kind,
+  });
+}
+
+// A PDF sent only to be summarised: stored, and nothing else is started
+// for it (lib/summary). `kind` "summary" keeps every book / question-file
+// path away from the row.
+export function markUploadSummaryReady(id: string, fileKey: string) {
+  return transition(id, ["downloading"], {
+    status: "complete",
+    kind: "summary",
+    fileKey,
+    error: null,
   });
 }
 

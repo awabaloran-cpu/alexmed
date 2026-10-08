@@ -27,7 +27,17 @@ const htmlToPdf = vi.hoisted(() => vi.fn());
 vi.mock("@/lib/summary/pdf", () => ({ htmlToPdf }));
 
 const storagePut = vi.hoisted(() => vi.fn());
-vi.mock("@/lib/storage", () => ({ storagePut }));
+vi.mock("@/lib/storage", () => ({
+  storagePut,
+  storageGetSignedUrl: vi.fn(),
+}));
+
+// The text layer of a PDF sent only to be summarised.
+const readPdfSource = vi.hoisted(() => vi.fn());
+vi.mock("@/lib/summary/source", async importOriginal => ({
+  ...(await importOriginal<typeof import("./source")>()),
+  readPdfSource,
+}));
 
 const publishMessage = vi.hoisted(() => vi.fn());
 vi.mock("@/lib/queue/client", () => ({ publishMessage }));
@@ -310,6 +320,44 @@ describe("runSummary", () => {
     expect(await runSummary(id)).toBe("skipped");
     aiAnswers();
     expect((await ask()).ok).toBe(true);
+  });
+
+  it("summarises a PDF sent for a summary only, with no book behind it", async () => {
+    readPdfSource.mockResolvedValue(
+      [1, 2, 3].map(n => ({ n, text: `Lecture page ${n} text.` }))
+    );
+    const asked = await requestSummary({
+      userId: STUDENT,
+      file: { key: "uploads/u/lecture.pdf", name: "lecture.pdf" },
+      telegramAccountId: ACCOUNT,
+      style: "exam",
+      theme: "classic",
+    });
+    if (!asked.ok) throw new Error("expected a job");
+    expect(asked.summary).toMatchObject({
+      bookId: null,
+      sourceKey: "uploads/u/lecture.pdf",
+      sourcePages: 3,
+    });
+    // The same file is not started twice.
+    expect(
+      await requestSummary({
+        userId: STUDENT,
+        file: { key: "uploads/u/lecture.pdf", name: "lecture.pdf" },
+        telegramAccountId: ACCOUNT,
+        style: "exam",
+        theme: "classic",
+      })
+    ).toEqual({ ok: false, reason: "in_progress" });
+
+    expect(await runSummary(asked.summary.id)).toBe("requeued");
+    expect(await runSummary(asked.summary.id)).toBe("done");
+    expect(readPdfSource).toHaveBeenCalledWith("uploads/u/lecture.pdf");
+    const html = htmlToPdf.mock.calls[0][0] as string;
+    expect(html).toContain("Fact 3 explained.");
+    expect(html).toContain("lecture.pdf");
+    expect(html).toContain("مراجعة ليلة الامتحان");
+    expect(tg.sendDocument).toHaveBeenCalledTimes(1);
   });
 
   it("fails the job when the PDF cannot be printed, without losing the day", async () => {

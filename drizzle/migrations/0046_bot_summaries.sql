@@ -1,7 +1,9 @@
 CREATE TABLE "file_summaries" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"userId" uuid NOT NULL,
-	"bookId" uuid NOT NULL,
+	"bookId" uuid,
+	"sourceKey" text,
+	"sourceName" text,
 	"telegramAccountId" uuid,
 	"style" varchar(16) NOT NULL,
 	"theme" varchar(16) NOT NULL,

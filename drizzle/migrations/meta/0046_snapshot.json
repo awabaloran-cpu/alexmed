@@ -1,5 +1,5 @@
 {
-  "id": "eda05540-6f12-4c35-a049-f3a7b63f6a23",
+  "id": "5b849842-19ca-417a-a018-6adc53a4b471",
   "prevId": "9d4e9efc-fd75-4135-8b5a-d13b381f0551",
   "version": "7",
   "dialect": "postgresql",
@@ -6028,7 +6028,19 @@
           "name": "bookId",
           "type": "uuid",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
+        },
+        "sourceKey": {
+          "name": "sourceKey",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "sourceName": {
+          "name": "sourceName",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
         },
         "telegramAccountId": {
           "name": "telegramAccountId",

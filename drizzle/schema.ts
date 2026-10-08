@@ -3145,6 +3145,8 @@ export const telegramUploads = pgTable(
 // 📝 A PDF summary a student asked the bot to make from one of their files
 // (lib/summary). The row is the job and its result:
 //   queued → processing → complete | failed
+// The source is either one of the student's files (bookId) or a PDF sent
+// only to be summarised (sourceKey): that one starts no other pipeline.
 // `parts` holds the sections written so far (one group of pages per worker
 // run), so a long file is never one long request and a retried run resumes.
 // A row that is not `failed` counts against the student's daily summaries.
@@ -3155,9 +3157,12 @@ export const fileSummaries = pgTable(
     userId: uuid("userId")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
-    bookId: uuid("bookId")
-      .notNull()
-      .references(() => books.id, { onDelete: "cascade" }),
+    bookId: uuid("bookId").references(() => books.id, {
+      onDelete: "cascade",
+    }),
+    // A PDF sent for a summary only: its storage key and its file name.
+    sourceKey: text("sourceKey"),
+    sourceName: text("sourceName"),
     // Where the finished file is sent; null for a summary not asked in chat.
     telegramAccountId: uuid("telegramAccountId").references(
       () => telegramAccounts.id,
