@@ -36,8 +36,11 @@ Code, OpenCode, Aider…). The owner writes in Arabic; answer in Arabic.
 | `mobile/` | Flutter app (Riverpod 3, go_router, dio). Features in `mobile/lib/features/<name>/{data,domain,presentation}` |
 | `app/`, `lib/`, `components/`, `drizzle/` | Next.js 15 web app + tRPC backend (Drizzle / Postgres) |
 | `mobile/tool/export_*_fixtures.ts` | Run web code to produce fixtures for the Dart parity tests |
+| `docs/telegram/TELEGRAM_GATEWAY.md` | Telegram bot gateway + ad breaks (`lib/telegram`, `lib/ads`): flow, security model, how to switch on, what is not verified / not built |
 
-Current branch for mobile work: `feat/mobile-foundation`.
+Current branch for mobile work: `feat/mobile-foundation`. Telegram gateway:
+`feat/telegram-gateway` (migration `0043_telegram_gateway` not applied anywhere;
+off by default behind `TELEGRAM_ENABLED` / `ADS_ENABLED`).
 
 ## Checks before every commit
 

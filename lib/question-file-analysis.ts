@@ -305,6 +305,9 @@ export type ExtractedQuestionEnrichment = {
   keywords: string[];
   explanationAr: string;
   inferredAnswerIndex: number | null;
+  // «اربطها» — optional when reading: answers stored before the field
+  // existed, or a model that left it out, simply have none.
+  mnemonicAr?: string;
 };
 
 export const extractedQuestionEnrichmentResponseSchema = {
@@ -326,13 +329,23 @@ export const extractedQuestionEnrichmentResponseSchema = {
           description:
             "An Arabic explanation of the correct answer, keeping English medical/technical terms visible inline rather than translating them.",
         },
+        mnemonicAr: {
+          type: "string",
+          description:
+            "One short Arabic memory hook (max ~12 words) linking the question's key clue to the correct answer, e.g. 'Barking cough → Croup 🐕'. Keep the English terms in English. Empty string if no honest hook exists.",
+        },
         inferredAnswerIndex: {
           type: ["integer", "null"],
           description:
             "0-based index into the question's own options for your best-supported answer, ONLY if the caller tells you no answer was stated in the source — otherwise null.",
         },
       },
-      required: ["keywords", "explanationAr", "inferredAnswerIndex"],
+      required: [
+        "keywords",
+        "explanationAr",
+        "inferredAnswerIndex",
+        "mnemonicAr",
+      ],
     },
   },
 };
@@ -364,6 +377,7 @@ export function buildExtractedQuestionEnrichmentMessages(
   const systemLines = [
     "You are a study assistant producing exam-prep metadata for one extracted question from a real past-exam PDF.",
     "Produce 3-6 short English keywords for this question, and an Arabic explanation of the correct answer that keeps English medical/technical terminology visible inline (do not translate the terms themselves).",
+    "Also give mnemonicAr: one short memory hook that ties the stem's deciding clue to the correct answer (clue → answer, English terms kept in English, at most one emoji). It must follow from the same facts as the explanation; return an empty string rather than a forced or misleading one.",
     "Do not invent facts beyond what the question, its options, and (if given) the image actually support.",
     "Return JSON only, matching the given schema exactly.",
   ];

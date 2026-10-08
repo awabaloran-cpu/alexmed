@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
+  bigint,
   boolean,
   check,
   index,
@@ -1323,6 +1324,10 @@ export const extractedQuestions = pgTable(
     // students, flagged to the doctor. reviewReason lists the reasons.
     reviewStatus: varchar("reviewStatus", { length: 16 }),
     reviewReason: text("reviewReason"),
+    // «اربطها»: one short Arabic memory hook tying the stem's clue to the
+    // answer, written by the same enrichment call as aiExplanationAr. Null
+    // for questions enriched before the field existed.
+    mnemonicAr: text("mnemonicAr"),
     createdAt: timestamp("createdAt", { withTimezone: true })
       .defaultNow()
       .notNull(),
@@ -2973,3 +2978,191 @@ export type QuestionSet = typeof questionSets.$inferSelect;
 export type QuestionSetAccessCode = typeof questionSetAccessCodes.$inferSelect;
 export type QuestionSetEntitlement =
   typeof questionSetEntitlements.$inferSelect;
+
+// ── ✈️ Telegram gateway ──────────────────────────────────────────────────
+// Telegram is an input channel only: a file sent to the bot becomes an
+// ordinary books row owned by an ordinary users row and runs through the
+// existing pipelines. These tables hold what is specific to the channel —
+// who the Telegram user is here, what they sent, and the links that let
+// them into the web app. No question / book content lives in them.
+
+// One Telegram user ↔ one NiroLearn account. A first-time Telegram user gets
+// a GUEST account (a users row with no phone, email or password); it becomes
+// a full account in place when they register. The Telegram id is never used
+// as a users.id.
+export const telegramAccounts = pgTable(
+  "telegram_accounts",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    telegramUserId: bigint("telegramUserId", { mode: "number" }).notNull(),
+    chatId: bigint("chatId", { mode: "number" }).notNull(),
+    userId: uuid("userId")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    languageCode: varchar("languageCode", { length: 12 }),
+    // What the student said the next file is ("question_file" | "book"),
+    // from the bot's buttons; cleared once a file uses it.
+    pendingKind: varchar("pendingKind", { length: 16 }),
+    blockedAt: timestamp("blockedAt", { withTimezone: true }),
+    createdAt: timestamp("createdAt", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    lastSeenAt: timestamp("lastSeenAt", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  table => ({
+    telegramUserUnique: uniqueIndex("telegram_accounts_telegram_user_idx").on(
+      table.telegramUserId
+    ),
+    userUnique: uniqueIndex("telegram_accounts_user_idx").on(table.userId),
+  })
+);
+
+// One row per PDF a Telegram user sent. status:
+//   received → downloading → (awaiting_kind) → processing → complete | failed
+//   rejected: never processed (too large, not a PDF, over a limit).
+export const telegramUploads = pgTable(
+  "telegram_uploads",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    telegramAccountId: uuid("telegramAccountId")
+      .notNull()
+      .references(() => telegramAccounts.id, { onDelete: "cascade" }),
+    // Telegram's update id — unique, so a webhook delivered twice creates
+    // one upload.
+    updateId: bigint("updateId", { mode: "number" }).notNull(),
+    fileId: text("fileId").notNull(),
+    // Stable across re-sends of the same file: duplicate detection.
+    fileUniqueId: varchar("fileUniqueId", { length: 128 }).notNull(),
+    fileName: text("fileName").notNull(),
+    fileSize: integer("fileSize").notNull(),
+    requestedKind: varchar("requestedKind", { length: 16 }),
+    kind: varchar("kind", { length: 16 }),
+    // The storage key while the file waits for the student to pick a kind.
+    fileKey: text("fileKey"),
+    bookId: uuid("bookId").references(() => books.id, {
+      onDelete: "set null",
+    }),
+    status: varchar("status", { length: 16 }).default("received").notNull(),
+    error: text("error"),
+    // The bot's progress message (edited in place) and the last stage
+    // written to it, so an unchanged stage is never re-sent.
+    statusMessageId: integer("statusMessageId"),
+    lastStage: varchar("lastStage", { length: 64 }),
+    watchCount: integer("watchCount").default(0).notNull(),
+    createdAt: timestamp("createdAt", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updatedAt", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  table => ({
+    updateUnique: uniqueIndex("telegram_uploads_update_idx").on(table.updateId),
+    accountCreatedIdx: index("telegram_uploads_account_created_idx").on(
+      table.telegramAccountId,
+      table.createdAt
+    ),
+    accountFileIdx: index("telegram_uploads_account_file_idx").on(
+      table.telegramAccountId,
+      table.fileUniqueId
+    ),
+    bookIdx: index("telegram_uploads_book_idx").on(table.bookId),
+    createdIdx: index("telegram_uploads_created_idx").on(table.createdAt),
+  })
+);
+
+// Single-purpose links. Only the SHA-256 of the token is stored.
+//   web_login      a guest's "open NiroLearn" link (/t/<token>) — signs the
+//                  guest account in and lands on `path`.
+//   telegram_link  the code a signed-in student carries to the bot
+//                  (t.me/<bot>?start=link_<token>) to attach Telegram.
+export const accessLinkTokens = pgTable(
+  "access_link_tokens",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    tokenHash: varchar("tokenHash", { length: 64 }).notNull(),
+    purpose: varchar("purpose", { length: 16 }).notNull(),
+    userId: uuid("userId")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    path: text("path"),
+    expiresAt: timestamp("expiresAt", { withTimezone: true }).notNull(),
+    usedAt: timestamp("usedAt", { withTimezone: true }),
+    revokedAt: timestamp("revokedAt", { withTimezone: true }),
+    createdAt: timestamp("createdAt", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  table => ({
+    tokenUnique: uniqueIndex("access_link_tokens_token_hash_idx").on(
+      table.tokenHash
+    ),
+    userIdx: index("access_link_tokens_user_idx").on(table.userId),
+    expiresIdx: index("access_link_tokens_expires_idx").on(table.expiresAt),
+  })
+);
+
+// A student's latest answer to a question-file question (their own file).
+// Server-checked; one row per (student, question).
+export const questionAttempts = pgTable(
+  "question_attempts",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: uuid("userId")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    bookId: uuid("bookId")
+      .notNull()
+      .references(() => books.id, { onDelete: "cascade" }),
+    questionId: uuid("questionId")
+      .notNull()
+      .references(() => extractedQuestions.id, { onDelete: "cascade" }),
+    selectedIndex: integer("selectedIndex").notNull(),
+    // Null when the question has no known answer to check against.
+    isCorrect: boolean("isCorrect"),
+    answeredAt: timestamp("answeredAt", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  table => ({
+    userQuestionUnique: uniqueIndex("question_attempts_user_question_idx").on(
+      table.userId,
+      table.questionId
+    ),
+    userBookIdx: index("question_attempts_user_book_idx").on(
+      table.userId,
+      table.bookId
+    ),
+  })
+);
+
+// Ad breaks shown / clicked (lib/ads). Counts only: no IP, no user agent.
+export const adEvents = pgTable(
+  "ad_events",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: uuid("userId").references(() => users.id, { onDelete: "set null" }),
+    bookId: uuid("bookId").references(() => books.id, { onDelete: "set null" }),
+    provider: varchar("provider", { length: 24 }).notNull(),
+    slot: varchar("slot", { length: 32 }).notNull(),
+    event: varchar("event", { length: 16 }).notNull(),
+    createdAt: timestamp("createdAt", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  table => ({
+    createdIdx: index("ad_events_created_idx").on(table.createdAt),
+    providerEventIdx: index("ad_events_provider_event_idx").on(
+      table.provider,
+      table.event,
+      table.createdAt
+    ),
+  })
+);
+
+export type TelegramAccount = typeof telegramAccounts.$inferSelect;
+export type TelegramUpload = typeof telegramUploads.$inferSelect;
+export type AccessLinkToken = typeof accessLinkTokens.$inferSelect;
+export type QuestionAttempt = typeof questionAttempts.$inferSelect;

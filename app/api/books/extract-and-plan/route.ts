@@ -1,8 +1,7 @@
 import { auth } from "@/lib/auth";
-import { admitUpload } from "@/lib/billing/upload-guard";
-import { createBookShell } from "@/lib/db-books";
+import type { Book } from "@/drizzle/schema";
 import { getSubjectForUser } from "@/lib/db-subjects";
-import { publishMessage } from "@/lib/queue/client";
+import { admitAndStartStudentFile } from "@/lib/file-intake";
 import {
   assertJobCreationAllowed,
   RateLimitedError,
@@ -67,7 +66,7 @@ export async function POST(request: Request) {
 
   const profile =
     typeof body.profile === "string" && VALID_PROFILES.has(body.profile)
-      ? (body.profile as Parameters<typeof createBookShell>[1]["profile"])
+      ? (body.profile as Book["profile"])
       : undefined;
 
   // Mandatory-folder-on-upload — every new book must be filed under a
@@ -84,38 +83,15 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "المادة غير موجودة." }, { status: 400 });
   }
 
-  // 💳 Plan: the stored file's real size + one file from today's quota.
-  const admitted = await admitUpload(session.user.id, key, "BOOK_FILE");
-  if (admitted instanceof NextResponse) return admitted;
+  // 💳 Plan checks, the book row and the extraction job (lib/file-intake.ts).
+  const started = await admitAndStartStudentFile(session.user.id, {
+    kind: "book",
+    key,
+    fileName,
+    profile,
+    subjectId,
+  });
+  if (started instanceof NextResponse) return started;
 
-  let book;
-  try {
-    book = await createBookShell(session.user.id, {
-      fileName,
-      fileKey: key,
-      profile,
-      subjectId,
-    });
-  } catch (error) {
-    await admitted.release();
-    throw error;
-  }
-
-  try {
-    await publishMessage(
-      { type: "extract_book_job", bookId: book.id },
-      { flowControl: { key: `books-extract-${book.id}`, parallelism: 1 } }
-    );
-  } catch (publishError) {
-    console.error("[Books] Failed to enqueue extraction", publishError);
-    await admitted.release();
-    return NextResponse.json(
-      {
-        error: "تم إنشاء الكتاب لكن تعذر بدء المعالجة. حاول إعادة رفع الملف.",
-      },
-      { status: 502 }
-    );
-  }
-
-  return NextResponse.json({ bookId: book.id });
+  return NextResponse.json({ bookId: started.bookId });
 }

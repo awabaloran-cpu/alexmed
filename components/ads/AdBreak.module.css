@@ -1,0 +1,79 @@
+/* 📣 The pause between question groups (components/ads/AdBreak.tsx).
+   Built on the same --nl-* tokens as the question card it stands in for. */
+.break {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding: 22px 18px;
+  border: 1px solid var(--nl-rule);
+  border-radius: var(--nl-r-lg);
+  background: var(--nl-sheet);
+  color: var(--nl-ink);
+}
+.recap {
+  text-align: center;
+}
+.recap h2 {
+  margin: 0;
+  font-size: 19px;
+  font-weight: 700;
+}
+.recap p {
+  margin: 6px 0 0;
+  color: var(--nl-ink-2);
+  font-size: 14.5px;
+}
+.adBox {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 120px;
+  padding: 12px;
+  border: 1px dashed var(--nl-rule);
+  border-radius: var(--nl-r-md);
+}
+.adLabel {
+  align-self: flex-start;
+  color: var(--nl-ink-2);
+  font-size: 12px;
+}
+.unit {
+  display: block;
+  width: 100%;
+  min-height: 100px;
+}
+.house {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 14px;
+  border-radius: var(--nl-r-md);
+  background: var(--nl-marker-soft);
+  color: var(--nl-ink);
+  text-decoration: none;
+}
+.house span {
+  color: var(--nl-ink-2);
+  font-size: 14.5px;
+}
+/* Kept clear of the ad: its own row, full width, extra space above. */
+.continue {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  min-height: 48px;
+  margin-top: 12px;
+  border: 0;
+  border-radius: var(--nl-r-md);
+  background: var(--nl-ink);
+  color: #fff;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.continue:focus-visible {
+  outline: 3px solid var(--nl-niro);
+  outline-offset: 3px;
+}

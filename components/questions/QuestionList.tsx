@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
   CheckCircle2,
   ChevronLeft,
@@ -22,6 +22,8 @@ export type QuestionListItem = {
   sourcePage: number;
   keywords: string[] | null;
   aiExplanationAr: string | null;
+  // «اربطها» — a one-line memory hook (newer files only).
+  mnemonicAr?: string | null;
   imageUrl: string | null;
   // The Arabic version (from the file itself, or machine-translated once
   // in the pipeline — translationSource says which).
@@ -88,23 +90,55 @@ function arabicNumber(n: number): string {
 // next, a question picker, and ← → keys; each question keeps its answer
 // while the student moves around. layout "list": every card, stacked (the
 // doctor's all-answers review).
+//
+// Optional, and all off by default (a doctor's set uses none of them):
+//  - `initialAnswers` (questionId → chosen option) restores saved answers,
+//    and the deck opens on the first question not answered yet;
+//  - `onAnswered` is told each choice, for the caller to save;
+//  - `breakEvery` + `renderBreak` put a pause the caller draws after every
+//    N-th question when the student moves on (deck only). This component
+//    knows nothing about what the pause contains.
+export type DeckBreak = {
+  // How many questions are behind the student at this pause.
+  afterPosition: number;
+  total: number;
+  // The tally over the questions since the previous pause.
+  answered: number;
+  correct: number;
+  onContinue: () => void;
+};
+
 export default function QuestionList({
   questions,
   watermark,
   revealAll = false,
   layout = "deck",
+  initialAnswers,
+  onAnswered,
+  breakEvery,
+  renderBreak,
 }: {
   questions: QuestionListItem[];
   watermark?: string;
   revealAll?: boolean;
   layout?: "deck" | "list";
+  initialAnswers?: Record<string, number>;
+  onAnswered?: (questionId: string, selectedIndex: number) => void;
+  breakEvery?: number;
+  renderBreak?: (info: DeckBreak) => ReactNode;
 }) {
   const watermarkImage = watermark ? watermarkTile(watermark) : null;
-  const [answers, setAnswers] = useState<Record<string, CardAnswer>>({});
+  const [answers, setAnswers] = useState<Record<string, CardAnswer>>(() =>
+    restoredAnswers(initialAnswers)
+  );
   const answerFor = (id: string) =>
     answers[id] ?? { selected: null, revealed: false };
-  const setAnswer = (id: string) => (next: CardAnswer) =>
+  const setAnswer = (id: string) => (next: CardAnswer) => {
     setAnswers(current => ({ ...current, [id]: next }));
+    if (next.revealed && next.selected !== null) {
+      onAnswered?.(id, next.selected);
+    }
+  };
 
   const card = (question: QuestionListItem, i: number) => (
     <QuestionCard
@@ -123,11 +157,55 @@ export default function QuestionList({
     return <div className={s.list}>{questions.map(card)}</div>;
   }
   return (
-    <QuestionDeck questions={questions} answers={answers} renderCard={card} />
+    <QuestionDeck
+      questions={questions}
+      answers={answers}
+      renderCard={card}
+      startIndex={firstUnansweredIndex(questions, initialAnswers)}
+      breakEvery={renderBreak ? breakEvery : undefined}
+      renderBreak={renderBreak}
+    />
   );
 }
 
 type CardAnswer = { selected: number | null; revealed: boolean };
+
+// Pure (unit-tested): saved choices as the cards' own state — answered and
+// revealed, exactly as the student left them.
+export function restoredAnswers(
+  saved: Record<string, number> | undefined
+): Record<string, CardAnswer> {
+  const answers: Record<string, CardAnswer> = {};
+  for (const [id, selected] of Object.entries(saved ?? {})) {
+    answers[id] = { selected, revealed: true };
+  }
+  return answers;
+}
+
+// Pure (unit-tested): where a returning student resumes — the first
+// question without a saved answer (the first one when nothing is saved or
+// everything is answered).
+export function firstUnansweredIndex(
+  questions: QuestionListItem[],
+  saved: Record<string, number> | undefined
+): number {
+  if (!saved || !Object.keys(saved).length) return 0;
+  const index = questions.findIndex(question => !(question.id in saved));
+  return index === -1 ? 0 : index;
+}
+
+// Pure (unit-tested): moving forward from question `fromIndex` (0-based)
+// crosses a pause when that question closes a group of `every` — except
+// after the last question, where there is nothing to continue to.
+export function breakAfterIndex(
+  fromIndex: number,
+  total: number,
+  every: number | undefined
+): boolean {
+  if (!every || every < 1) return false;
+  const position = fromIndex + 1;
+  return position < total && position % every === 0;
+}
 
 // Pure (unit-tested): the student's running tally for the progress line.
 export function deckProgress(
@@ -149,16 +227,45 @@ function QuestionDeck({
   questions,
   answers,
   renderCard,
+  startIndex = 0,
+  breakEvery,
+  renderBreak,
 }: {
   questions: QuestionListItem[];
   answers: Record<string, CardAnswer>;
   renderCard: (question: QuestionListItem, i: number) => ReactNode;
+  startIndex?: number;
+  breakEvery?: number;
+  renderBreak?: (info: DeckBreak) => ReactNode;
 }) {
-  const [index, setIndex] = useState(0);
+  const [index, setIndex] = useState(startIndex);
+  // The question index a pause is holding the student before, and the
+  // pauses already shown (each appears once per visit, however the student
+  // moves around afterwards).
+  const [pausedBefore, setPausedBefore] = useState<number | null>(null);
+  const shownBreaks = useRef(new Set<number>());
   const total = questions.length;
   const safeIndex = Math.min(index, Math.max(0, total - 1));
   const go = (next: number) => setIndex(Math.max(0, Math.min(total - 1, next)));
   const { answered, correct } = deckProgress(questions, answers);
+
+  // One step forward — the only move that can meet a pause.
+  const goNext = () => {
+    if (safeIndex >= total - 1) return;
+    if (
+      renderBreak &&
+      breakAfterIndex(safeIndex, total, breakEvery) &&
+      !shownBreaks.current.has(safeIndex)
+    ) {
+      shownBreaks.current.add(safeIndex);
+      setPausedBefore(safeIndex + 1);
+      return;
+    }
+    go(safeIndex + 1);
+  };
+  const goNextRef = useRef(goNext);
+  goNextRef.current = goNext;
+  const paused = pausedBefore !== null;
 
   // ← / → between questions (RTL: ← is "next"), unless typing somewhere.
   useEffect(() => {
@@ -167,14 +274,36 @@ function QuestionDeck({
       if (target?.closest("input, textarea, select, [contenteditable]")) {
         return;
       }
-      if (event.key === "ArrowLeft") setIndex(i => Math.min(total - 1, i + 1));
+      if (paused) return;
+      if (event.key === "ArrowLeft") goNextRef.current();
       if (event.key === "ArrowRight") setIndex(i => Math.max(0, i - 1));
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [total]);
+  }, [total, paused]);
 
   if (!total) return null;
+  if (pausedBefore !== null && renderBreak) {
+    const group = questions.slice(
+      Math.max(0, pausedBefore - (breakEvery ?? pausedBefore)),
+      pausedBefore
+    );
+    const tally = deckProgress(group, answers);
+    return (
+      <div className={s.deck}>
+        {renderBreak({
+          afterPosition: pausedBefore,
+          total,
+          answered: tally.answered,
+          correct: tally.correct,
+          onContinue: () => {
+            setPausedBefore(null);
+            go(pausedBefore);
+          },
+        })}
+      </div>
+    );
+  }
   return (
     <div className={s.deck}>
       <div className={s.progress}>
@@ -238,7 +367,7 @@ function QuestionDeck({
           type="button"
           className={`${s.navButton} ${s.navNext}`}
           disabled={safeIndex === total - 1}
-          onClick={() => go(safeIndex + 1)}
+          onClick={goNext}
         >
           التالي <ChevronLeft size={17} aria-hidden="true" />
         </button>
@@ -370,6 +499,12 @@ function QuestionCard({
           {question.aiExplanationAr && (
             <p className={s.explainAr} dir="rtl">
               {question.aiExplanationAr}
+            </p>
+          )}
+          {question.mnemonicAr && (
+            <p className={s.mnemonic} dir="auto">
+              <span aria-hidden="true">🔗</span> <strong>اربطها:</strong>{" "}
+              {question.mnemonicAr}
             </p>
           )}
           {!!question.keywords?.length && (

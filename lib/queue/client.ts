@@ -13,6 +13,7 @@ import {
   getQuestionFilesEnrichmentQueueConcurrency,
   getQueueGlobalConcurrency,
   getQueueMaxAttempts,
+  getTelegramIntakeConcurrency,
 } from "./types";
 
 let _client: Client | null = null;
@@ -78,6 +79,10 @@ function resolveDestination(message: QueueMessage): string {
       return `${base}/api/books/exam-focus/finalize`;
     case "run_chapter_generation":
       return `${base}/api/books/generation-job`;
+    case "telegram_intake":
+      return `${base}/api/telegram/intake`;
+    case "telegram_watch":
+      return `${base}/api/telegram/watch`;
   }
 }
 
@@ -173,6 +178,13 @@ function defaultFlowControl(message: QueueMessage): FlowControl {
         key: "chapter-generation-pipeline",
         parallelism: getGenerationQueueConcurrency(),
       };
+    case "telegram_intake":
+      return {
+        key: "telegram-intake",
+        parallelism: getTelegramIntakeConcurrency(),
+      };
+    case "telegram_watch":
+      return { key: `telegram-watch-${message.uploadId}`, parallelism: 1 };
   }
 }
 

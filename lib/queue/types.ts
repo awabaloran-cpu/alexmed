@@ -43,7 +43,12 @@ export type QueueMessage =
   // insights, MCQ validation) — one message per chapter_generation_jobs row
   // (lib/generation-jobs.ts); the worker claims the row atomically before
   // any AI call.
-  | { type: "run_chapter_generation"; jobId: string };
+  | { type: "run_chapter_generation"; jobId: string }
+  // ✈️ Telegram gateway (lib/telegram/intake.ts): fetch a PDF the bot was
+  // sent and hand it to the existing pipelines, then follow that file's
+  // status and report it back in the chat. Neither does any AI work.
+  | { type: "telegram_intake"; uploadId: string }
+  | { type: "telegram_watch"; uploadId: string };
 
 function readIntEnv(name: string, fallback: number): number {
   const raw = process.env[name];
@@ -115,6 +120,12 @@ export function getMirrorImagesQueueConcurrency(): number {
 // (lib/queue/concurrency.ts), checked inside the worker.
 export function getGenerationQueueConcurrency(): number {
   return readIntEnv("GENERATION_QUEUE_CONCURRENCY", 4);
+}
+
+// ✈️ How many Telegram files are downloaded into storage at once — each
+// one is held in memory while it is copied, so this bounds that memory.
+export function getTelegramIntakeConcurrency(): number {
+  return readIntEnv("TELEGRAM_INTAKE_CONCURRENCY", 2);
 }
 
 export function getJobCreationRateLimitMax(): number {

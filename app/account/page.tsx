@@ -13,6 +13,7 @@ import {
   GraduationCap,
   LifeBuoy,
   LogOut,
+  Send,
   Settings,
   Stethoscope,
   ShieldCheck,
@@ -256,6 +257,7 @@ export default function AccountPage() {
               </div>
             </details>
           </li>
+          <TelegramRow />
         </Group>
 
         {/* ── Pages ─────────────────────────────────────────────────── */}
@@ -337,6 +339,74 @@ function Stat({ label, value }: { label: string; value: number | string }) {
       <dt>{label}</dt>
       <dd>{value}</dd>
     </div>
+  );
+}
+
+// ✈️ Connect / disconnect the Telegram bot (lib/telegram). Renders nothing
+// while the gateway is off, so the page is unchanged until it is configured.
+function TelegramRow() {
+  const utils = trpc.useUtils();
+  const status = trpc.telegram.status.useQuery(undefined, { retry: false });
+  const createLink = trpc.telegram.createLink.useMutation({
+    // The bot receives the one-time code in the link itself.
+    onSuccess: data => window.location.assign(data.url),
+  });
+  const unlink = trpc.telegram.unlink.useMutation({
+    onSuccess: () => utils.telegram.status.invalidate(),
+  });
+  if (!status.data?.available) return null;
+  const { linked, isGuest } = status.data;
+  const error = createLink.error ?? unlink.error;
+
+  return (
+    <li>
+      <details className={s.expand}>
+        <RowSummary
+          icon={Send}
+          label="Telegram"
+          value={linked ? "مربوط بحسابك" : "غير مربوط"}
+        />
+        <div className={s.panel}>
+          <p className={s.saved}>
+            {isGuest
+              ? "تستخدم NiroLearn كضيف من Telegram. أنشئ حسابك لتحتفظ بملفاتك وترفع ملفات أخرى."
+              : linked
+                ? "الملفات التي ترسلها إلى البوت تُضاف إلى حسابك هذا."
+                : "اربط Telegram لترسل ملفاتك إلى البوت وتجدها هنا."}
+          </p>
+          <div className={s.formActions}>
+            {isGuest ? (
+              <Link href="/register" className={s.save}>
+                أنشئ حسابك
+              </Link>
+            ) : linked ? (
+              <button
+                type="button"
+                className={s.save}
+                disabled={unlink.isPending}
+                onClick={() => unlink.mutate()}
+              >
+                فصل Telegram
+              </button>
+            ) : (
+              <button
+                type="button"
+                className={s.save}
+                disabled={createLink.isPending}
+                onClick={() => createLink.mutate()}
+              >
+                ربط Telegram
+              </button>
+            )}
+            {error ? (
+              <span className={s.saved} role="alert">
+                {error.message}
+              </span>
+            ) : null}
+          </div>
+        </div>
+      </details>
+    </li>
   );
 }
 

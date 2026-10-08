@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { CircleAlert, ClipboardList, Loader2, RotateCcw } from "lucide-react";
+import AdBreak from "@/components/ads/AdBreak";
 import QuestionList from "@/components/questions/QuestionList";
 import { trpc } from "@/lib/trpc-client";
 
@@ -37,8 +38,20 @@ export default function QuestionFileDetailPage() {
     onSuccess: () =>
       utils.questionFiles.get.invalidate({ bookId: params.bookId }),
   });
+  // Saved answers (so the student resumes where they stopped) and what, if
+  // anything, to show between groups of questions (lib/ads/policy.ts).
+  // Neither may hold the questions back: a failure just means "none".
+  const attempts = trpc.questionFiles.attempts.useQuery(
+    { bookId: params.bookId },
+    { retry: false, refetchOnWindowFocus: false, staleTime: Infinity }
+  );
+  const adPolicy = trpc.ads.questionBreakPolicy.useQuery(
+    { bookId: params.bookId },
+    { retry: false, refetchOnWindowFocus: false, staleTime: Infinity }
+  );
+  const saveAttempt = trpc.questionFiles.saveAttempt.useMutation();
 
-  if (fileQuery.isLoading) {
+  if (fileQuery.isLoading || attempts.isLoading) {
     return (
       <section className="upload-view">
         <div className="empty-state">
@@ -68,6 +81,7 @@ export default function QuestionFileDetailPage() {
   }
 
   const { book, questions } = fileQuery.data;
+  const ads = adPolicy.data;
 
   return (
     <section className="cards-view">
@@ -117,7 +131,23 @@ export default function QuestionFileDetailPage() {
         </div>
       )}
 
-      {!!questions.length && <QuestionList questions={questions} />}
+      {!!questions.length && (
+        <QuestionList
+          questions={questions}
+          initialAnswers={attempts.data}
+          onAnswered={(questionId, selectedIndex) =>
+            saveAttempt.mutate({ bookId: book.id, questionId, selectedIndex })
+          }
+          {...(ads?.enabled
+            ? {
+                breakEvery: ads.questionsPerBreak,
+                renderBreak: info => (
+                  <AdBreak policy={ads} bookId={book.id} info={info} />
+                ),
+              }
+            : {})}
+        />
+      )}
     </section>
   );
 }

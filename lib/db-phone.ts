@@ -10,7 +10,7 @@
 //   - 5 code checks per sent code (Vonage itself allows 3 wrong codes)
 import bcrypt from "bcryptjs";
 import { createHash } from "node:crypto";
-import { and, count, desc, eq, gt, gte, ne, sql } from "drizzle-orm";
+import { and, count, desc, eq, gt, gte, isNull, ne, sql } from "drizzle-orm";
 import { phoneVerifications, users } from "../drizzle/schema";
 import { requireDb } from "./db";
 import { isUniqueViolation } from "./db-errors";
@@ -250,6 +250,7 @@ export type CreateOutcome =
   | { ok: false; error: "not_verified" | "phone_taken" };
 
 class PhoneTakenError extends Error {}
+class NotGuestError extends Error {}
 
 // Consumes the verified row and creates the account together — a verified
 // code can create exactly one account, and only for the number it proved.
@@ -297,6 +298,77 @@ export async function createAccountWithVerifiedPhone(input: {
   } catch (error) {
     // The number was registered meanwhile, or a simultaneous sign-up with
     // the same number hit the unique index first.
+    if (
+      error instanceof PhoneTakenError ||
+      isUniqueViolation(error, "users_phone_unique")
+    ) {
+      return { ok: false, error: "phone_taken" };
+    }
+    throw error;
+  }
+}
+
+// ✈️ A Telegram guest (lib/telegram/accounts.ts) registering: the SAME users
+// row gets the verified number, the password and the name, so the files the
+// guest already uploaded stay where they are — nothing is copied or moved.
+// Same guarantees as createAccountWithVerifiedPhone above: the verified code
+// is consumed in the same transaction and a taken number rolls it back. The
+// WHERE clause is what makes it "guests only": a row that already has a
+// phone, an email or a password is never touched.
+export async function upgradeGuestWithVerifiedPhone(input: {
+  userId: string;
+  verificationId: string;
+  name: string;
+  password: string;
+}): Promise<CreateOutcome | { ok: false; error: "not_guest" }> {
+  const db = requireDb();
+  const passwordHash = await bcrypt.hash(input.password, 10);
+  const verifiedSince = new Date(Date.now() - VERIFIED_WINDOW_MINUTES * 60_000);
+  try {
+    return await db.transaction(async tx => {
+      const [verification] = await tx
+        .update(phoneVerifications)
+        .set({ status: "consumed", consumedAt: new Date() })
+        .where(
+          and(
+            eq(phoneVerifications.id, input.verificationId),
+            eq(phoneVerifications.status, "verified"),
+            gt(phoneVerifications.verifiedAt, verifiedSince)
+          )
+        )
+        .returning({ phone: phoneVerifications.phone });
+      if (!verification) return { ok: false, error: "not_verified" } as const;
+
+      const [taken] = await tx
+        .select({ id: users.id })
+        .from(users)
+        .where(eq(users.phone, verification.phone))
+        .limit(1);
+      // Throwing rolls the consume back too.
+      if (taken) throw new PhoneTakenError();
+      const [user] = await tx
+        .update(users)
+        .set({
+          phone: verification.phone,
+          phoneVerifiedAt: new Date(),
+          passwordHash,
+          name: input.name,
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(users.id, input.userId),
+            isNull(users.phone),
+            isNull(users.email),
+            isNull(users.passwordHash)
+          )
+        )
+        .returning({ id: users.id });
+      if (!user) throw new NotGuestError();
+      return { ok: true, userId: user.id, phone: verification.phone } as const;
+    });
+  } catch (error) {
+    if (error instanceof NotGuestError) return { ok: false, error: "not_guest" };
     if (
       error instanceof PhoneTakenError ||
       isUniqueViolation(error, "users_phone_unique")

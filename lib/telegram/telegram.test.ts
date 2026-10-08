@@ -1,0 +1,749 @@
+// ✈️ The Telegram gateway end to end on a real Postgres (PGlite): identity,
+// the bot's handling of a file, the queue steps, links and sessions.
+// Telegram itself, the queue, storage and the plan guard are replaced by
+// spies — everything between them is the real code and the real SQL.
+import { NextResponse } from "next/server";
+import {
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
+import {
+  createTestDb,
+  insertUser,
+  type TestDb,
+} from "../test-fixtures/pglite-db";
+
+const holder = vi.hoisted(() => ({ db: null as unknown }));
+vi.mock("@/lib/db", () => ({
+  getDb: () => holder.db,
+  requireDb: () => holder.db,
+}));
+
+const tg = vi.hoisted(() => ({
+  sendMessage: vi.fn(),
+  editMessage: vi.fn(),
+  answerCallback: vi.fn(),
+  getFileDownloadUrl: vi.fn(),
+}));
+vi.mock("@/lib/telegram/api", async importOriginal => ({
+  ...(await importOriginal<typeof import("./api")>()),
+  ...tg,
+}));
+
+const publishMessage = vi.hoisted(() => vi.fn());
+vi.mock("@/lib/queue/client", () => ({ publishMessage }));
+
+const storage = vi.hoisted(() => ({
+  storageGetUploadUrl: vi.fn(),
+  deleteObject: vi.fn(),
+}));
+vi.mock("@/lib/storage", () => storage);
+
+const admitUpload = vi.hoisted(() => vi.fn());
+vi.mock("@/lib/billing/upload-guard", () => ({ admitUpload }));
+
+const readLeadingPages = vi.hoisted(() => vi.fn());
+vi.mock("@/lib/telegram/pdf-sample", () => ({ readLeadingPages }));
+
+import {
+  ensureTelegramAccount,
+  findTelegramAccount,
+  isTelegramGuest,
+  linkTelegramToAccount,
+} from "./accounts";
+import { handleTelegramUpdate, type TelegramUpdate } from "./handler";
+import {
+  retryTelegramUpload,
+  runTelegramIntake,
+  runTelegramWatch,
+} from "./intake";
+import { BUTTONS, CALLBACK, TEXT } from "./messages";
+import {
+  consumeLinkToken,
+  createLinkToken,
+  findLinkToken,
+  hashToken,
+  revokeLinkTokens,
+  safeInternalPath,
+} from "./tokens";
+import { isSameOriginPost, resolveWebLogin } from "./web-session";
+
+let test: TestDb;
+
+const TG_USER = 555001;
+const REGISTERED = "00000000-0000-4000-8000-0000000000a1";
+const PDF_BYTES = new TextEncoder().encode("%PDF-1.7\nfake body\n%%EOF");
+
+const QUESTION_PAGE = Array.from(
+  { length: 6 },
+  (_, i) =>
+    `${i + 1}. Which of the following is the most likely diagnosis in this child?\n` +
+    "A. Epiglottitis\nB. Croup\nC. Bronchiolitis\nD. Asthma\n"
+).join("\n");
+const PROSE_PAGE =
+  "The respiratory system of the child differs from that of the adult in several important ways. " +
+  "The airways are narrower and more compliant, which increases resistance to airflow during illness. " +
+  "This chapter reviews the anatomy and physiology that underlie common paediatric presentations.";
+
+async function rows<T = Record<string, unknown>>(sql: string, params: unknown[] = []) {
+  return (await test.client.query<T>(sql, params)).rows;
+}
+
+let nextUpdateId = 1000;
+function documentUpdate(
+  overrides: {
+    from?: number;
+    size?: number;
+    name?: string;
+    mime?: string;
+    unique?: string;
+    updateId?: number;
+  } = {}
+): TelegramUpdate {
+  const from = overrides.from ?? TG_USER;
+  return {
+    update_id: overrides.updateId ?? nextUpdateId++,
+    message: {
+      message_id: 1,
+      from: { id: from, language_code: "ar" },
+      chat: { id: from, type: "private" },
+      document: {
+        file_id: "file-id",
+        file_unique_id: overrides.unique ?? `unique-${nextUpdateId}`,
+        file_name: overrides.name ?? "Pediatrics_MCQs.pdf",
+        mime_type: overrides.mime ?? "application/pdf",
+        file_size: overrides.size ?? 2 * 1024 * 1024,
+      },
+    },
+  };
+}
+
+function textUpdate(text: string, from = TG_USER): TelegramUpdate {
+  return {
+    update_id: nextUpdateId++,
+    message: {
+      message_id: 1,
+      from: { id: from, language_code: "ar" },
+      chat: { id: from, type: "private" },
+      text,
+    },
+  };
+}
+
+function lastSent(): { text: string; markup: unknown } {
+  const call = tg.sendMessage.mock.calls.at(-1)!;
+  return { text: call[1] as string, markup: call[2] };
+}
+
+async function onlyUpload() {
+  const [upload] = await rows<{
+    id: string;
+    status: string;
+    kind: string | null;
+    bookId: string | null;
+    error: string | null;
+  }>(`SELECT id, status, kind, "bookId", error FROM telegram_uploads`);
+  return upload;
+}
+
+// Sends a PDF and runs the intake worker, as the queue would.
+async function uploadAndIntake(options: { kind?: "questions" | "book" } = {}) {
+  readLeadingPages.mockResolvedValue(
+    options.kind === "book"
+      ? [1, 2, 3, 4].map(page => ({ page, text: PROSE_PAGE }))
+      : [{ page: 1, text: QUESTION_PAGE }]
+  );
+  await handleTelegramUpdate(documentUpdate());
+  const upload = await onlyUpload();
+  await runTelegramIntake(upload.id);
+  return (await onlyUpload())!;
+}
+
+beforeAll(async () => {
+  test = await createTestDb();
+  holder.db = test.db;
+  process.env.TELEGRAM_BOT_TOKEN = "123:test-token";
+  process.env.TELEGRAM_WEBHOOK_SECRET = "hook-secret";
+  process.env.TELEGRAM_ENABLED = "true";
+  process.env.AUTH_SECRET = "test-secret-test-secret-test-secret";
+});
+
+beforeEach(async () => {
+  await test.client.exec(`TRUNCATE users CASCADE`);
+  vi.clearAllMocks();
+  delete process.env.TELEGRAM_API_BASE;
+  delete process.env.TELEGRAM_MAX_FILE_MB;
+  delete process.env.TELEGRAM_DAILY_UPLOAD_CAP;
+  delete process.env.TELEGRAM_ACCOUNT_BURST_LIMIT;
+  delete process.env.TELEGRAM_GUEST_FREE_UPLOADS;
+  let messageId = 100;
+  tg.sendMessage.mockImplementation(async () => messageId++);
+  tg.editMessage.mockResolvedValue(true);
+  tg.getFileDownloadUrl.mockResolvedValue("https://tg.example/file.pdf");
+  storage.storageGetUploadUrl.mockResolvedValue("https://r2.example/put");
+  storage.deleteObject.mockResolvedValue(undefined);
+  admitUpload.mockResolvedValue({ receipt: {}, release: vi.fn() });
+  readLeadingPages.mockResolvedValue([{ page: 1, text: QUESTION_PAGE }]);
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (url: string, init?: RequestInit) =>
+      init?.method === "PUT"
+        ? new Response(null, { status: 200 })
+        : new Response(PDF_BYTES, { status: 200 })
+    )
+  );
+});
+
+afterEach(() => vi.unstubAllGlobals());
+
+describe("Telegram identity", () => {
+  it("creates one guest account per Telegram user, and never reuses the Telegram id as a user id", async () => {
+    const first = await ensureTelegramAccount({ telegramUserId: TG_USER, chatId: TG_USER });
+    const again = await ensureTelegramAccount({ telegramUserId: TG_USER, chatId: TG_USER });
+
+    expect(first.user.isGuest).toBe(true);
+    expect(again.user.id).toBe(first.user.id);
+    expect(first.user.id).toMatch(/^[0-9a-f-]{36}$/);
+    expect(await rows(`SELECT id FROM users`)).toHaveLength(1);
+    expect(await isTelegramGuest(first.user.id)).toBe(true);
+  });
+
+  it("simultaneous first messages from one user still make a single account", async () => {
+    await Promise.all([
+      ensureTelegramAccount({ telegramUserId: TG_USER, chatId: TG_USER }),
+      ensureTelegramAccount({ telegramUserId: TG_USER, chatId: TG_USER }),
+    ]);
+    expect(await rows(`SELECT id FROM telegram_accounts`)).toHaveLength(1);
+    expect(await rows(`SELECT id FROM users`)).toHaveLength(1);
+  });
+
+  it("links a registered account with a one-time code", async () => {
+    await insertUser(test.client, { id: REGISTERED });
+    const code = await createLinkToken({
+      userId: REGISTERED,
+      purpose: "telegram_link",
+      ttlMinutes: 10,
+    });
+
+    await handleTelegramUpdate(textUpdate(`/start link_${code}`));
+    expect(lastSent().text).toBe(TEXT.linked);
+    const account = await findTelegramAccount(TG_USER);
+    expect(account?.user.id).toBe(REGISTERED);
+    expect(account?.user.isGuest).toBe(false);
+
+    // The same code again does nothing for another Telegram user.
+    const second = await linkTelegramToAccount(code, { telegramUserId: 777, chatId: 777 });
+    expect(second).toEqual({ ok: false, reason: "invalid_code" });
+  });
+
+  it("moves an empty guest onto the registered account and removes the guest", async () => {
+    await insertUser(test.client, { id: REGISTERED });
+    const guest = await ensureTelegramAccount({ telegramUserId: TG_USER, chatId: TG_USER });
+    const code = await createLinkToken({ userId: REGISTERED, purpose: "telegram_link", ttlMinutes: 10 });
+
+    expect(await linkTelegramToAccount(code, { telegramUserId: TG_USER, chatId: TG_USER })).toEqual({ ok: true });
+    expect((await findTelegramAccount(TG_USER))?.user.id).toBe(REGISTERED);
+    expect(await rows(`SELECT id FROM users WHERE id = $1`, [guest.user.id])).toHaveLength(0);
+  });
+
+  it("never merges a guest that already owns files into another account", async () => {
+    await insertUser(test.client, { id: REGISTERED });
+    const uploaded = await uploadAndIntake();
+    expect(uploaded.status).toBe("processing");
+    const code = await createLinkToken({ userId: REGISTERED, purpose: "telegram_link", ttlMinutes: 10 });
+
+    const outcome = await linkTelegramToAccount(code, { telegramUserId: TG_USER, chatId: TG_USER });
+    expect(outcome).toEqual({ ok: false, reason: "guest_has_files" });
+    expect((await findTelegramAccount(TG_USER))?.user.isGuest).toBe(true);
+  });
+});
+
+describe("The bot receiving a file", () => {
+  it("/start greets with the main keyboard", async () => {
+    await handleTelegramUpdate(textUpdate("/start"));
+    expect(lastSent().text).toBe(TEXT.welcome);
+    expect(JSON.stringify(lastSent().markup)).toContain(BUTTONS.uploadQuestions);
+  });
+
+  it("records a PDF once and queues its intake", async () => {
+    await handleTelegramUpdate(documentUpdate());
+    const upload = await onlyUpload();
+    expect(upload.status).toBe("received");
+    expect(lastSent().text).toBe(TEXT.received);
+    expect(publishMessage).toHaveBeenCalledWith({ type: "telegram_intake", uploadId: upload.id });
+  });
+
+  it("a webhook delivered twice creates one upload and one job", async () => {
+    const update = documentUpdate({ updateId: 4242, unique: "same" });
+    await handleTelegramUpdate(update);
+    // Clear the duplicate-file path so only update-id idempotency is tested.
+    await test.client.exec(`UPDATE telegram_uploads SET "fileUniqueId" = 'other'`);
+    await handleTelegramUpdate(update);
+
+    expect(await rows(`SELECT id FROM telegram_uploads`)).toHaveLength(1);
+    expect(publishMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it("the same file sent again is not processed twice", async () => {
+    const first = documentUpdate({ unique: "dup" });
+    await handleTelegramUpdate(first);
+    await handleTelegramUpdate(documentUpdate({ unique: "dup" }));
+
+    expect(await rows(`SELECT id FROM telegram_uploads`)).toHaveLength(1);
+    expect(lastSent().text).toBe(TEXT.duplicateProcessing);
+    expect(publishMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it("refuses a file that is not a PDF", async () => {
+    await handleTelegramUpdate(documentUpdate({ name: "notes.docx", mime: "application/msword" }));
+    expect(lastSent().text).toBe(TEXT.notPdf);
+    expect(await rows(`SELECT id FROM telegram_uploads`)).toHaveLength(0);
+  });
+
+  it("refuses a file above the limit before downloading anything (20 MB on Telegram's own API)", async () => {
+    await handleTelegramUpdate(documentUpdate({ size: 21 * 1024 * 1024 }));
+    expect(lastSent().text).toBe(TEXT.tooLarge(20 * 1024 * 1024));
+    expect(await rows(`SELECT id FROM telegram_uploads`)).toHaveLength(0);
+    expect(publishMessage).not.toHaveBeenCalled();
+  });
+
+  it("accepts up to 70 MB once a self-hosted Bot API server is configured", async () => {
+    process.env.TELEGRAM_API_BASE = "https://botapi.internal";
+    await handleTelegramUpdate(documentUpdate({ size: 69 * 1024 * 1024 }));
+    expect((await onlyUpload()).status).toBe("received");
+
+    await handleTelegramUpdate(documentUpdate({ size: 71 * 1024 * 1024, from: 888 }));
+    expect(lastSent().text).toBe(TEXT.tooLarge(70 * 1024 * 1024));
+  });
+
+  it("a guest's second file asks them to create their account; a registered user is not asked", async () => {
+    await uploadAndIntake();
+    tg.sendMessage.mockClear();
+    await handleTelegramUpdate(documentUpdate());
+    expect(lastSent().text).toBe(TEXT.guestLimit);
+    expect(await rows(`SELECT id FROM telegram_uploads`)).toHaveLength(1);
+
+    // The same person after registering (the guest row gains a phone).
+    await test.client.exec(`UPDATE users SET phone = '+962790000001', "passwordHash" = 'x'`);
+    await handleTelegramUpdate(documentUpdate());
+    expect(await rows(`SELECT id FROM telegram_uploads`)).toHaveLength(2);
+  });
+
+  it("limits how many files one account can send in a short time", async () => {
+    process.env.TELEGRAM_ACCOUNT_BURST_LIMIT = "2";
+    process.env.TELEGRAM_GUEST_FREE_UPLOADS = "50";
+    await handleTelegramUpdate(documentUpdate());
+    await handleTelegramUpdate(documentUpdate());
+    await handleTelegramUpdate(documentUpdate());
+    expect(lastSent().text).toBe(TEXT.slowDown);
+    expect(await rows(`SELECT id FROM telegram_uploads`)).toHaveLength(2);
+  });
+
+  it("stops accepting files once the channel's daily ceiling is reached", async () => {
+    process.env.TELEGRAM_DAILY_UPLOAD_CAP = "1";
+    await handleTelegramUpdate(documentUpdate({ from: 901 }));
+    await handleTelegramUpdate(documentUpdate({ from: 902 }));
+    expect(lastSent().text).toBe(TEXT.busy);
+    expect(await rows(`SELECT id FROM telegram_uploads`)).toHaveLength(1);
+  });
+
+  it("ignores groups and other bots", async () => {
+    await handleTelegramUpdate({
+      update_id: 1,
+      message: { message_id: 1, from: { id: 5 }, chat: { id: -100, type: "group" }, text: "/start" },
+    });
+    await handleTelegramUpdate({
+      update_id: 2,
+      message: { message_id: 1, from: { id: 6, is_bot: true }, chat: { id: 6, type: "private" }, text: "/start" },
+    });
+    expect(tg.sendMessage).not.toHaveBeenCalled();
+    expect(await rows(`SELECT id FROM telegram_accounts`)).toHaveLength(0);
+  });
+});
+
+describe("Intake: from the bot's file to the existing pipeline", () => {
+  it("a question file becomes an ordinary question-file book and starts the existing job", async () => {
+    const upload = await uploadAndIntake({ kind: "questions" });
+    expect(upload).toMatchObject({ status: "processing", kind: "question_file" });
+
+    const [book] = await rows<{ sourceType: string; status: string; fileKey: string; userId: string }>(
+      `SELECT "sourceType", status, "fileKey", "userId" FROM books WHERE id = $1`,
+      [upload.bookId]
+    );
+    expect(book.sourceType).toBe("question_file");
+    expect(book.status).toBe("extracting");
+    // Stored under a key issued to the owner, like a web upload.
+    expect(book.fileKey).toMatch(new RegExp(`^book-pdfs/${book.userId}/`));
+    expect(publishMessage).toHaveBeenCalledWith({ type: "extract_question_file_job", bookId: upload.bookId });
+    expect(publishMessage).toHaveBeenCalledWith({ type: "telegram_watch", uploadId: upload.id }, { delay: 6 });
+    // Filed in the student's own "Telegram" folder.
+    expect(await rows(`SELECT id FROM subjects WHERE name = 'Telegram'`)).toHaveLength(1);
+  });
+
+  it("a book goes to the book pipeline, not the question one", async () => {
+    const upload = await uploadAndIntake({ kind: "book" });
+    expect(upload.kind).toBe("book");
+    const [book] = await rows<{ sourceType: string }>(`SELECT "sourceType" FROM books`);
+    expect(book.sourceType).toBe("study_book");
+    expect(publishMessage).toHaveBeenCalledWith(
+      { type: "extract_book_job", bookId: upload.bookId },
+      expect.anything()
+    );
+  });
+
+  it("asks the student when the file contradicts what they said, then follows their answer", async () => {
+    await handleTelegramUpdate(textUpdate(BUTTONS.uploadBook));
+    readLeadingPages.mockResolvedValue([{ page: 1, text: QUESTION_PAGE }]);
+    await handleTelegramUpdate(documentUpdate());
+    const upload = await onlyUpload();
+    await runTelegramIntake(upload.id);
+
+    expect((await onlyUpload()).status).toBe("awaiting_kind");
+    expect(await rows(`SELECT id FROM books`)).toHaveLength(0);
+
+    await handleTelegramUpdate({
+      update_id: nextUpdateId++,
+      callback_query: {
+        id: "cb1",
+        from: { id: TG_USER },
+        data: CALLBACK.kind(upload.id, "question_file"),
+        message: { message_id: 1, chat: { id: TG_USER, type: "private" } },
+      },
+    });
+    await runTelegramIntake(upload.id);
+    expect(await onlyUpload()).toMatchObject({ status: "processing", kind: "question_file" });
+    // The file was downloaded once, not again after the answer.
+    expect(tg.getFileDownloadUrl).toHaveBeenCalledTimes(1);
+  });
+
+  it("another Telegram user cannot answer or retry someone else's upload", async () => {
+    await handleTelegramUpdate(textUpdate(BUTTONS.uploadBook));
+    await handleTelegramUpdate(documentUpdate());
+    const upload = await onlyUpload();
+    await runTelegramIntake(upload.id);
+
+    await handleTelegramUpdate({
+      update_id: nextUpdateId++,
+      callback_query: {
+        id: "cb2",
+        from: { id: 31337 },
+        data: CALLBACK.kind(upload.id, "book"),
+        message: { message_id: 1, chat: { id: 31337, type: "private" } },
+      },
+    });
+    expect((await onlyUpload()).status).toBe("awaiting_kind");
+  });
+
+  it("a second delivery of the same job does nothing", async () => {
+    await handleTelegramUpdate(documentUpdate());
+    const upload = await onlyUpload();
+    const [a, b] = await Promise.all([runTelegramIntake(upload.id), runTelegramIntake(upload.id)]);
+    expect([a, b].sort()).toEqual(["done", "skipped"]);
+    expect(await rows(`SELECT id FROM books`)).toHaveLength(1);
+  });
+
+  it("refuses a file whose content is not a PDF, whatever its name", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("<html>not a pdf</html>")));
+    await handleTelegramUpdate(documentUpdate());
+    const upload = await onlyUpload();
+    await runTelegramIntake(upload.id);
+    expect((await onlyUpload()).status).toBe("rejected");
+    expect(await rows(`SELECT id FROM books`)).toHaveLength(0);
+  });
+
+  it("stops a download that turns out larger than Telegram reported", async () => {
+    process.env.TELEGRAM_MAX_FILE_MB = "1";
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(new Uint8Array(2 * 1024 * 1024).fill(37)))
+    );
+    await handleTelegramUpdate(documentUpdate({ size: 500_000 }));
+    const upload = await onlyUpload();
+    await runTelegramIntake(upload.id);
+    expect((await onlyUpload()).status).toBe("rejected");
+    expect(storage.storageGetUploadUrl).not.toHaveBeenCalled();
+  });
+
+  it("a plan limit refuses the file with the plan's own message and removes the stored copy", async () => {
+    admitUpload.mockResolvedValue(
+      NextResponse.json({ error: "وصلت إلى حد ملفاتك اليوم." }, { status: 402 })
+    );
+    await handleTelegramUpdate(documentUpdate());
+    const upload = await onlyUpload();
+    await runTelegramIntake(upload.id);
+
+    const after = await onlyUpload();
+    expect(after.status).toBe("rejected");
+    expect(after.error).toBe("وصلت إلى حد ملفاتك اليوم.");
+    expect(storage.deleteObject).toHaveBeenCalled();
+    expect(tg.editMessage.mock.calls.at(-1)![2]).toBe(TEXT.refused("وصلت إلى حد ملفاتك اليوم."));
+  });
+
+  it("a transient failure hands the upload back for the queue's retry; the last attempt tells the student", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(null, { status: 502 })));
+    await handleTelegramUpdate(documentUpdate());
+    const upload = await onlyUpload();
+
+    await expect(runTelegramIntake(upload.id)).rejects.toThrow();
+    expect((await onlyUpload()).status).toBe("received");
+
+    await runTelegramIntake(upload.id, { finalAttempt: true });
+    expect((await onlyUpload()).status).toBe("failed");
+    expect(tg.editMessage.mock.calls.at(-1)![2]).toBe(TEXT.downloadFailed);
+  });
+});
+
+describe("Watch: reporting the pipeline's status in the chat", () => {
+  async function finishQuestions(bookId: string, count: number) {
+    await test.client.query(`UPDATE books SET status = 'complete', "pageCount" = 2 WHERE id = $1`, [bookId]);
+    await test.client.query(
+      `INSERT INTO question_file_pages ("bookId", "pageNumber", status) VALUES ($1, 1, 'complete')`,
+      [bookId]
+    );
+    for (let i = 0; i < count; i++) {
+      await test.client.query(
+        `INSERT INTO extracted_questions ("bookId", "orderIndex", "questionText", options, "extractedAnswerIndex", "sourcePage", "aiStatus")
+         VALUES ($1, $2, 'Q?', '["A","B","C","D"]', 1, 1, 'complete')`,
+        [bookId, i]
+      );
+    }
+  }
+
+  it("keeps polling while the file is being read", async () => {
+    const upload = await uploadAndIntake();
+    publishMessage.mockClear();
+    expect(await runTelegramWatch(upload.id)).toBe("requeued");
+    expect(publishMessage).toHaveBeenCalledWith(
+      { type: "telegram_watch", uploadId: upload.id },
+      expect.objectContaining({ delay: expect.any(Number) })
+    );
+  });
+
+  it("announces a finished question file with its count and a guest link that hides every internal key", async () => {
+    const upload = await uploadAndIntake();
+    await finishQuestions(upload.bookId!, 80);
+
+    expect(await runTelegramWatch(upload.id)).toBe("done");
+    expect((await onlyUpload()).status).toBe("complete");
+    const { text, markup } = lastSent();
+    expect(text).toBe(TEXT.questionsReady(80));
+    const url = (markup as { inline_keyboard: { url: string }[][] }).inline_keyboard[0][0].url;
+    expect(url).toMatch(/^https:\/\/nirolearn\.com\/t\/[A-Za-z0-9_-]{43}$/);
+    expect(url).not.toContain(upload.bookId!);
+    expect(url).not.toContain("book-pdfs");
+  });
+
+  it("announces a finished book", async () => {
+    const upload = await uploadAndIntake({ kind: "book" });
+    await test.client.query(`UPDATE books SET status = 'pending', "pageCount" = 120 WHERE id = $1`, [upload.bookId]);
+    await runTelegramWatch(upload.id);
+    expect(lastSent().text).toBe(TEXT.bookReady(120));
+  });
+
+  it("a registered user gets the page itself, never a link that signs them in", async () => {
+    const upload = await uploadAndIntake();
+    await test.client.exec(`UPDATE users SET phone = '+962790000002', "passwordHash" = 'x'`);
+    await finishQuestions(upload.bookId!, 3);
+    await runTelegramWatch(upload.id);
+    const url = (lastSent().markup as { inline_keyboard: { url: string }[][] }).inline_keyboard[0][0].url;
+    expect(url).toBe(`https://nirolearn.com/books/question-files/${upload.bookId}`);
+  });
+
+  it("explains a failure with its reason and offers a retry that restarts the same file", async () => {
+    const upload = await uploadAndIntake();
+    await test.client.query(
+      `UPDATE books SET status = 'failed', "extractionError" = 'تعذر قراءة أي صفحة من هذا الملف.' WHERE id = $1`,
+      [upload.bookId]
+    );
+
+    await runTelegramWatch(upload.id);
+    expect((await onlyUpload()).status).toBe("failed");
+    const call = tg.editMessage.mock.calls.at(-1)!;
+    expect(call[2]).toBe(TEXT.failed("تعذر قراءة أي صفحة من هذا الملف."));
+    expect(JSON.stringify(call[3])).toContain(CALLBACK.retry(upload.id));
+
+    publishMessage.mockClear();
+    expect(await retryTelegramUpload(upload.id)).toBe(true);
+    expect(await onlyUpload()).toMatchObject({ status: "processing", bookId: upload.bookId });
+    expect(publishMessage).toHaveBeenCalledWith({ type: "extract_question_file_job", bookId: upload.bookId });
+    // No second book, no second quota unit.
+    expect(await rows(`SELECT id FROM books`)).toHaveLength(1);
+    expect(admitUpload).toHaveBeenCalledTimes(1);
+  });
+
+  it("a blocked bot does not fail the worker", async () => {
+    const upload = await uploadAndIntake();
+    await finishQuestions(upload.bookId!, 2);
+    const { TelegramApiError } = await import("./api");
+    tg.editMessage.mockRejectedValue(new TelegramApiError("editMessageText", 403, "bot was blocked by the user"));
+    tg.sendMessage.mockRejectedValue(new TelegramApiError("sendMessage", 403, "bot was blocked by the user"));
+
+    await expect(runTelegramWatch(upload.id)).resolves.toBe("done");
+    expect((await onlyUpload()).status).toBe("complete");
+  });
+});
+
+describe("Link tokens and the guest web session", () => {
+  async function guestToken(path = "/books/question-files/x") {
+    const guest = await ensureTelegramAccount({ telegramUserId: TG_USER, chatId: TG_USER });
+    const token = await createLinkToken({ userId: guest.user.id, purpose: "web_login", path, ttlMinutes: 60 });
+    return { guest, token };
+  }
+
+  it("stores only the token's hash", async () => {
+    const { token } = await guestToken();
+    expect(token).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    const [row] = await rows<{ tokenHash: string }>(`SELECT "tokenHash" FROM access_link_tokens`);
+    expect(row.tokenHash).toBe(hashToken(token));
+    expect(row.tokenHash).not.toContain(token);
+  });
+
+  it("two links never share a token", async () => {
+    const { guest, token } = await guestToken();
+    const other = await createLinkToken({ userId: guest.user.id, purpose: "web_login", ttlMinutes: 60 });
+    expect(other).not.toBe(token);
+  });
+
+  it("rejects unknown, malformed, wrong-purpose, expired and revoked tokens alike", async () => {
+    const { guest, token } = await guestToken();
+    expect(await findLinkToken("x".repeat(43), "web_login")).toBeNull();
+    expect(await findLinkToken("../../etc/passwd", "web_login")).toBeNull();
+    expect(await findLinkToken(token, "telegram_link")).toBeNull();
+    expect(await resolveWebLogin(token)).not.toBeNull();
+
+    await test.client.exec(`UPDATE access_link_tokens SET "expiresAt" = now() - interval '1 minute'`);
+    expect(await resolveWebLogin(token)).toBeNull();
+
+    await test.client.exec(`UPDATE access_link_tokens SET "expiresAt" = now() + interval '1 hour'`);
+    await revokeLinkTokens(guest.user.id, "web_login");
+    expect(await resolveWebLogin(token)).toBeNull();
+  });
+
+  it("a link stops working the moment the guest registers", async () => {
+    const { token } = await guestToken();
+    await test.client.exec(`UPDATE users SET phone = '+962790000003', "passwordHash" = 'x'`);
+    expect(await resolveWebLogin(token)).toBeNull();
+  });
+
+  it("a suspended guest cannot enter", async () => {
+    const { token } = await guestToken();
+    await test.client.exec(`UPDATE users SET "suspendedAt" = now()`);
+    expect(await resolveWebLogin(token)).toBeNull();
+  });
+
+  it("a one-time code works once, even under a race", async () => {
+    await insertUser(test.client, { id: REGISTERED });
+    const code = await createLinkToken({ userId: REGISTERED, purpose: "telegram_link", ttlMinutes: 10 });
+    const results = await Promise.all([
+      consumeLinkToken(code, "telegram_link"),
+      consumeLinkToken(code, "telegram_link"),
+    ]);
+    expect(results.filter(Boolean)).toHaveLength(1);
+  });
+
+  it("only allows destinations inside the site", () => {
+    expect(safeInternalPath("/books/1")).toBe("/books/1");
+    for (const bad of ["https://evil.example", "//evil.example", "/\\evil.example", "javascript:alert(1)", ""]) {
+      expect(safeInternalPath(bad)).toBe("/subjects");
+    }
+  });
+
+  it("tells a same-site form post from a cross-site one", () => {
+    const post = (headers: Record<string, string>) =>
+      new Request("https://nirolearn.com/api/telegram/session", { method: "POST", headers });
+    const site = "https://nirolearn.com";
+    expect(isSameOriginPost(post({ origin: "https://nirolearn.com", host: "nirolearn.com" }), site)).toBe(true);
+    expect(isSameOriginPost(post({ origin: "https://evil.example", host: "nirolearn.com" }), site)).toBe(false);
+    expect(isSameOriginPost(post({ "sec-fetch-site": "cross-site", origin: "https://nirolearn.com" }), site)).toBe(false);
+    expect(isSameOriginPost(post({ host: "nirolearn.com" }), site)).toBe(false);
+  });
+
+  it("the session route signs the guest in with the ordinary session cookie and sends them to their file", async () => {
+    const { POST } = await import("@/app/api/telegram/session/route");
+    const { token } = await guestToken("/books/question-files/abc");
+    const body = new FormData();
+    body.set("token", token);
+    const response = await POST(
+      new Request("https://nirolearn.com/api/telegram/session", {
+        method: "POST",
+        headers: { origin: "https://nirolearn.com", host: "nirolearn.com" },
+        body,
+      })
+    );
+
+    expect(response.status).toBe(303);
+    expect(response.headers.get("location")).toBe("/books/question-files/abc");
+    const cookie = response.headers.get("set-cookie") ?? "";
+    expect(cookie).toMatch(/authjs\.session-token=/);
+    expect(cookie).toMatch(/HttpOnly/i);
+    expect(cookie).toMatch(/SameSite=lax/i);
+  });
+
+  it("the session route refuses a cross-site post and an invalid token", async () => {
+    const { POST } = await import("@/app/api/telegram/session/route");
+    const { token } = await guestToken();
+    const form = (value: string) => {
+      const body = new FormData();
+      body.set("token", value);
+      return body;
+    };
+
+    const crossSite = await POST(
+      new Request("https://nirolearn.com/api/telegram/session", {
+        method: "POST",
+        headers: { origin: "https://evil.example", host: "nirolearn.com" },
+        body: form(token),
+      })
+    );
+    expect(crossSite.status).toBe(403);
+    expect(crossSite.headers.get("set-cookie")).toBeNull();
+
+    const invalid = await POST(
+      new Request("https://nirolearn.com/api/telegram/session", {
+        method: "POST",
+        headers: { origin: "https://nirolearn.com", host: "nirolearn.com" },
+        body: form("y".repeat(43)),
+      })
+    );
+    expect(invalid.status).toBe(303);
+    expect(invalid.headers.get("set-cookie")).toBeNull();
+  });
+});
+
+describe("The webhook route", () => {
+  const call = async (headers: Record<string, string>, body: unknown = { update_id: 1 }) => {
+    const { POST } = await import("@/app/api/telegram/webhook/route");
+    return POST(
+      new Request("https://nirolearn.com/api/telegram/webhook", {
+        method: "POST",
+        headers,
+        body: JSON.stringify(body),
+      })
+    );
+  };
+
+  it("refuses a call without Telegram's secret", async () => {
+    expect((await call({})).status).toBe(401);
+    expect((await call({ "x-telegram-bot-api-secret-token": "wrong-secret" })).status).toBe(401);
+  });
+
+  it("handles an authentic update", async () => {
+    const response = await call({ "x-telegram-bot-api-secret-token": "hook-secret" }, textUpdate("/start"));
+    expect(response.status).toBe(200);
+    expect(lastSent().text).toBe(TEXT.welcome);
+  });
+
+  it("does not exist while the gateway is switched off", async () => {
+    process.env.TELEGRAM_ENABLED = "false";
+    try {
+      expect((await call({ "x-telegram-bot-api-secret-token": "hook-secret" })).status).toBe(404);
+    } finally {
+      process.env.TELEGRAM_ENABLED = "true";
+    }
+  });
+});

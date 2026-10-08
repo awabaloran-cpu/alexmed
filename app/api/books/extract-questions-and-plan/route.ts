@@ -1,8 +1,6 @@
 import { auth } from "@/lib/auth";
-import { admitUpload } from "@/lib/billing/upload-guard";
-import { createQuestionFileShell } from "@/lib/db-question-files";
 import { getSubjectForUser } from "@/lib/db-subjects";
-import { publishMessage } from "@/lib/queue/client";
+import { admitAndStartStudentFile } from "@/lib/file-intake";
 import {
   assertJobCreationAllowed,
   RateLimitedError,
@@ -59,37 +57,14 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "المجلد غير موجود." }, { status: 400 });
   }
 
-  // 💳 Plan: the stored file's real size + one question file from quota.
-  const admitted = await admitUpload(session.user.id, key, "QUESTION_FILE");
-  if (admitted instanceof NextResponse) return admitted;
+  // 💳 Plan checks, the file row and the extraction job (lib/file-intake.ts).
+  const started = await admitAndStartStudentFile(session.user.id, {
+    kind: "question_file",
+    key,
+    fileName,
+    subjectId,
+  });
+  if (started instanceof NextResponse) return started;
 
-  let book;
-  try {
-    book = await createQuestionFileShell(session.user.id, {
-      fileName,
-      fileKey: key,
-      subjectId,
-    });
-  } catch (error) {
-    await admitted.release();
-    throw error;
-  }
-
-  try {
-    await publishMessage({
-      type: "extract_question_file_job",
-      bookId: book.id,
-    });
-  } catch (publishError) {
-    console.error("[QuestionFiles] Failed to enqueue extraction", publishError);
-    await admitted.release();
-    return NextResponse.json(
-      {
-        error: "تم إنشاء الملف لكن تعذر بدء الاستخراج. حاول إعادة رفع الملف.",
-      },
-      { status: 502 }
-    );
-  }
-
-  return NextResponse.json({ bookId: book.id });
+  return NextResponse.json({ bookId: started.bookId });
 }

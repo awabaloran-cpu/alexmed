@@ -248,6 +248,12 @@
 .explainAr {
   font-family: var(--nl-font-read);
 }
+.mnemonic {
+  padding: 8px 12px;
+  border-radius: var(--nl-r-md);
+  background: var(--nl-marker-soft);
+  font-family: var(--nl-font-read);
+}
 .aiNote {
   color: var(--nl-ink-2);
   font-size: 12.5px;

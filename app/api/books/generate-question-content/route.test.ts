@@ -147,6 +147,8 @@ describe("POST /api/books/generate-question-content", () => {
       aiExplanationAr: "شرح Arabic مع English terms.",
       inferredAnswerIndex: null,
       hasStatedAnswer: true,
+      // «اربطها»: the model's answer here has none, so none is stored.
+      mnemonicAr: null,
     });
   });
 

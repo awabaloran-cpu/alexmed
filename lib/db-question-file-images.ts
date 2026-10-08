@@ -221,6 +221,7 @@ export async function saveExtractedQuestionEnrichment(
     // Only the parts the file didn't provide — never overwrites the file's
     // own Arabic. Present = a machine translation was produced.
     translation?: { questionTextAr?: string; optionsAr?: string[] };
+    mnemonicAr?: string | null;
   }
 ): Promise<void> {
   const db = getDb();
@@ -231,6 +232,7 @@ export async function saveExtractedQuestionEnrichment(
     .set({
       keywords: update.keywords,
       aiExplanationAr: update.aiExplanationAr,
+      mnemonicAr: update.mnemonicAr?.trim().slice(0, 300) || null,
       ...(update.hasStatedAnswer
         ? {}
         : { aiInferredAnswerIndex: update.inferredAnswerIndex }),

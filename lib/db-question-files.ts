@@ -107,6 +107,7 @@ const questionColumns = {
   sourcePage: extractedQuestions.sourcePage,
   keywords: extractedQuestions.keywords,
   aiExplanationAr: extractedQuestions.aiExplanationAr,
+  mnemonicAr: extractedQuestions.mnemonicAr,
   aiStatus: extractedQuestions.aiStatus,
   questionTextAr: extractedQuestions.questionTextAr,
   optionsAr: extractedQuestions.optionsAr,

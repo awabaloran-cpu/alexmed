@@ -125,6 +125,10 @@ export async function POST(request: Request) {
           aiExplanationAr: enrichment.explanationAr,
           inferredAnswerIndex: enrichment.inferredAnswerIndex,
           hasStatedAnswer,
+          mnemonicAr:
+            typeof enrichment.mnemonicAr === "string"
+              ? enrichment.mnemonicAr
+              : null,
           ...(questionAr || optionsAr
             ? {
                 translation: {

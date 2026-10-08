@@ -1,7 +1,13 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { createAccountWithVerifiedPhone } from "@/lib/db-phone";
+import { auth } from "@/lib/auth";
+import {
+  createAccountWithVerifiedPhone,
+  upgradeGuestWithVerifiedPhone,
+} from "@/lib/db-phone";
 import { phoneSignupError } from "@/lib/phone-signup-http";
+import { isTelegramGuest } from "@/lib/telegram/accounts";
+import { revokeLinkTokens } from "@/lib/telegram/tokens";
 
 // Step 3 of phone sign-up (RegisterForm): creates the account from a phone
 // number whose SMS code was already confirmed (verificationId). There is
@@ -22,6 +28,12 @@ const registerSchema = z.object({
     .max(100, "الاسم طويل جداً."),
 });
 
+async function currentTelegramGuestId(): Promise<string | null> {
+  const session = await auth();
+  const userId = session?.user?.id;
+  return userId && (await isTelegramGuest(userId)) ? userId : null;
+}
+
 export async function POST(request: Request) {
   const parsed = registerSchema.safeParse(
     await request.json().catch(() => null)
@@ -34,8 +46,20 @@ export async function POST(request: Request) {
   }
 
   try {
-    const result = await createAccountWithVerifiedPhone(parsed.data);
-    if (!result.ok) return phoneSignupError(result.error);
+    // ✈️ A Telegram guest registering keeps their account: the guest row is
+    // completed in place, so the files they already uploaded stay theirs.
+    // Everyone else gets a new account, exactly as before.
+    const guestId = await currentTelegramGuestId();
+    const result = guestId
+      ? await upgradeGuestWithVerifiedPhone({ ...parsed.data, userId: guestId })
+      : await createAccountWithVerifiedPhone(parsed.data);
+    if (!result.ok) {
+      return phoneSignupError(
+        result.error === "not_guest" ? "not_verified" : result.error
+      );
+    }
+    // A registered account is never entered by a Telegram link again.
+    if (guestId) await revokeLinkTokens(guestId, "web_login");
     return NextResponse.json(
       { id: result.userId, phone: result.phone },
       { status: 201 }

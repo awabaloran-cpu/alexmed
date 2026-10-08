@@ -15,6 +15,7 @@ import { adminBillingRouter } from "./adminBillingRouter";
 import { adminJobsRouter } from "./adminJobsRouter";
 import { adminMaterialsRouter } from "./adminMaterialsRouter";
 import { adminUsersRouter } from "./adminUsersRouter";
+import { adsRouter } from "./adsRouter";
 import { annotationsRouter } from "./annotationsRouter";
 import { billingRouter } from "./billingRouter";
 import { booksRouter } from "./booksRouter";
@@ -31,6 +32,7 @@ import { studentMaterialsRouter } from "./studentMaterialsRouter";
 import { subjectsRouter } from "./subjectsRouter";
 import { protectedProcedure, publicProcedure, router } from "./trpc";
 import { systemRouter } from "./systemRouter";
+import { telegramRouter } from "./telegramRouter";
 
 export const appRouter = router({
   system: systemRouter,
@@ -114,6 +116,10 @@ export const appRouter = router({
   mirror: mirrorRouter,
   subjects: subjectsRouter,
   questionFiles: questionFilesRouter,
+  // ✈️ Telegram gateway (account linking) and 📣 ad breaks — lib/telegram,
+  // lib/ads. Both are off until configured (TELEGRAM_ENABLED, ADS_ENABLED).
+  telegram: telegramRouter,
+  ads: adsRouter,
   annotations: annotationsRouter,
   cardMarks: cardMarksRouter,
   chat: chatRouter,

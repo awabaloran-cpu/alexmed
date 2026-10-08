@@ -1,6 +1,10 @@
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import {
+  listQuestionAttempts,
+  saveQuestionAttempt,
+} from "../db-question-attempts";
+import {
   getQuestionFileForUser,
   listQuestionFilesForUser,
   retryQuestionFileExtraction,
@@ -28,6 +32,32 @@ export const questionFilesRouter = router({
         });
       }
       return result;
+    }),
+
+  // The student's saved answers for one of their own files (questionId →
+  // chosen option), so the viewer resumes where they stopped.
+  attempts: protectedProcedure
+    .input(z.object({ bookId: z.string().uuid() }))
+    .query(({ ctx, input }) => listQuestionAttempts(ctx.user.id, input.bookId)),
+
+  // Saves one answer; correctness is decided on the server.
+  saveAttempt: protectedProcedure
+    .input(
+      z.object({
+        bookId: z.string().uuid(),
+        questionId: z.string().uuid(),
+        selectedIndex: z.number().int().min(0).max(25),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const saved = await saveQuestionAttempt(ctx.user.id, input);
+      if (!saved) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Question not found",
+        });
+      }
+      return saved;
     }),
 
   retryExtraction: protectedProcedure
