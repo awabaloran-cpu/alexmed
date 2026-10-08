@@ -371,6 +371,20 @@ describe("The bot receiving a file", () => {
     expect(publishMessage).toHaveBeenCalledTimes(1);
   });
 
+  it("an upload that got stuck before the pipeline neither blocks a re-send nor uses up a guest's free file", async () => {
+    await handleTelegramUpdate(documentUpdate({ unique: "stuck" }));
+    // As seen in production: the intake never ran, the row stayed "received".
+    await test.client.exec(
+      `UPDATE telegram_uploads SET "updatedAt" = now() - interval '20 minutes', "createdAt" = now() - interval '20 minutes'`
+    );
+    publishMessage.mockClear();
+
+    await handleTelegramUpdate(documentUpdate({ unique: "stuck" }));
+    expect(lastSent().text).toBe(TEXT.received);
+    expect(await rows(`SELECT id FROM telegram_uploads`)).toHaveLength(2);
+    expect(publishMessage).toHaveBeenCalledTimes(1);
+  });
+
   it("refuses a file that is not a PDF", async () => {
     await handleTelegramUpdate(documentUpdate({ name: "notes.docx", mime: "application/msword" }));
     expect(lastSent().text).toBe(TEXT.notPdf);
@@ -555,6 +569,25 @@ describe("Intake: from the bot's file to the existing pipeline", () => {
     expect(after.error).toBe("وصلت إلى حد ملفاتك اليوم.");
     expect(storage.deleteObject).toHaveBeenCalled();
     expect(tg.editMessage.mock.calls.at(-1)![2]).toBe(TEXT.refused("وصلت إلى حد ملفاتك اليوم."));
+  });
+
+  it("if even claiming the upload fails, the last attempt still tells the student instead of leaving them waiting", async () => {
+    await handleTelegramUpdate(documentUpdate());
+    const upload = await onlyUpload();
+    const uploads = await import("./uploads");
+    const claim = vi
+      .spyOn(uploads, "claimUploadForIntake")
+      .mockRejectedValue(new Error("database unavailable"));
+    try {
+      await expect(runTelegramIntake(upload.id)).rejects.toThrow("database unavailable");
+      expect((await onlyUpload()).status).toBe("received");
+
+      expect(await runTelegramIntake(upload.id, { finalAttempt: true })).toBe("done");
+      expect((await onlyUpload()).status).toBe("failed");
+      expect(tg.editMessage.mock.calls.at(-1)![2]).toBe(TEXT.downloadFailed);
+    } finally {
+      claim.mockRestore();
+    }
   });
 
   it("a transient failure hands the upload back for the queue's retry; the last attempt tells the student", async () => {

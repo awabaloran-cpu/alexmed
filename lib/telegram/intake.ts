@@ -200,15 +200,39 @@ async function discard(key: string | null) {
   if (key) await deleteObject(key).catch(() => undefined);
 }
 
+// Best effort, each step on its own: mark the upload failed and say so.
+async function abandonUpload(uploadId: string) {
+  try {
+    const context = await getUploadContext(uploadId);
+    await markUploadFailed(uploadId, "download_failed");
+    if (context) await progress(context, TEXT.downloadFailed);
+  } catch (error) {
+    console.error("[Telegram] Could not report a failed intake", error);
+  }
+}
+
 // `finalAttempt`: the queue will not deliver this message again, so a
 // failure now must be told to the student instead of retried.
 export async function runTelegramIntake(
   uploadId: string,
   options: { finalAttempt?: boolean } = {}
 ): Promise<"done" | "skipped"> {
-  const claimed = await claimUploadForIntake(uploadId);
-  if (!claimed) return "skipped";
-  const context = await getUploadContext(uploadId);
+  let context: UploadContext | null;
+  try {
+    const claimed = await claimUploadForIntake(uploadId);
+    if (!claimed) return "skipped";
+    context = await getUploadContext(uploadId);
+  } catch (error) {
+    // Even the first step failed (the database, usually). The student must
+    // still hear about it once the queue has given up — never a progress
+    // message left saying "receiving…" forever.
+    console.error("[Telegram] Intake could not start", { uploadId, error });
+    if (options.finalAttempt) {
+      await abandonUpload(uploadId);
+      return "done";
+    }
+    throw error;
+  }
   if (!context) return "skipped";
   const { upload, userId } = context;
 

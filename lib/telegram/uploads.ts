@@ -3,7 +3,19 @@
 // Each transition is a single UPDATE with its precondition in the WHERE
 // clause (the lib/queue/claim.ts pattern), so a webhook or queue message
 // delivered twice can never run a step twice.
-import { and, count, desc, eq, gte, inArray, ne, sql } from "drizzle-orm";
+import {
+  and,
+  count,
+  desc,
+  eq,
+  gte,
+  inArray,
+  isNotNull,
+  lt,
+  ne,
+  or,
+  sql,
+} from "drizzle-orm";
 import {
   books,
   telegramAccounts,
@@ -89,14 +101,33 @@ export async function getUploadContext(id: string) {
 
 const COUNTED = ne(telegramUploads.status, "rejected");
 
-// Uploads this account had accepted (anything not refused outright).
+// Uploads of this account that count as "used": ones that reached the
+// pipeline, plus ones still on their way in. A file that was refused, that
+// failed, or that got stuck before the pipeline costs the student nothing —
+// a guest whose only file never arrived can simply send it again.
 export async function countAcceptedUploads(
   telegramAccountId: string
 ): Promise<number> {
+  const liveSince = new Date(Date.now() - STUCK_INTAKE_MS);
   const [row] = await requireDb()
     .select({ value: count() })
     .from(telegramUploads)
-    .where(and(eq(telegramUploads.telegramAccountId, telegramAccountId), COUNTED));
+    .where(
+      and(
+        eq(telegramUploads.telegramAccountId, telegramAccountId),
+        or(
+          inArray(telegramUploads.status, ["processing", "complete"]),
+          and(
+            inArray(telegramUploads.status, [
+              "received",
+              "downloading",
+              "awaiting_kind",
+            ]),
+            gte(telegramUploads.updatedAt, liveSince)
+          )
+        )
+      )
+    );
   return Number(row?.value ?? 0);
 }
 
@@ -127,12 +158,19 @@ export async function countUploadsLastDay(): Promise<number> {
   return Number(row?.value ?? 0);
 }
 
+// An upload that has not reached the pipeline after this long is not
+// coming back on its own (its queue retries are long over): it no longer
+// blocks the student from sending the file again, or counts against them.
+const STUCK_INTAKE_MS = 15 * 60_000;
+
 // The same file sent again by the same account, while an earlier copy is
-// still being processed or is ready (and its book still exists).
+// still on its way in, being processed, or ready (and its book still
+// exists). An earlier copy that got stuck before the pipeline is ignored.
 export async function findDuplicateUpload(
   telegramAccountId: string,
   fileUniqueId: string
 ): Promise<TelegramUpload | null> {
+  const liveSince = new Date(Date.now() - STUCK_INTAKE_MS);
   const [row] = await requireDb()
     .select({ upload: telegramUploads })
     .from(telegramUploads)
@@ -141,10 +179,17 @@ export async function findDuplicateUpload(
       and(
         eq(telegramUploads.telegramAccountId, telegramAccountId),
         eq(telegramUploads.fileUniqueId, fileUniqueId),
-        sql`(
-          ${telegramUploads.status} in ('received','downloading','awaiting_kind')
-          or (${telegramUploads.status} in ('processing','complete') and ${books.id} is not null)
-        )`
+        or(
+          and(
+            inArray(telegramUploads.status, ["received", "downloading"]),
+            gte(telegramUploads.updatedAt, liveSince)
+          ),
+          eq(telegramUploads.status, "awaiting_kind"),
+          and(
+            inArray(telegramUploads.status, ["processing", "complete"]),
+            isNotNull(books.id)
+          )
+        )
       )
     )
     .orderBy(desc(telegramUploads.createdAt))
@@ -183,10 +228,16 @@ export async function claimUploadForIntake(
     .where(
       and(
         eq(telegramUploads.id, id),
-        sql`(
-          ${telegramUploads.status} = 'received'
-          or (${telegramUploads.status} = 'downloading' and ${telegramUploads.updatedAt} < ${staleBefore})
-        )`
+        // Typed comparisons, not a raw sql fragment: the production driver
+        // (postgres-js under drizzle) cannot bind a JS Date inside raw sql —
+        // it threw here, before anything was claimed, on every delivery.
+        or(
+          eq(telegramUploads.status, "received"),
+          and(
+            eq(telegramUploads.status, "downloading"),
+            lt(telegramUploads.updatedAt, staleBefore)
+          )
+        )
       )
     )
     .returning();
