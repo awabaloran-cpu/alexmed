@@ -9,7 +9,11 @@ import {
 } from "@/components/landing/PageBits";
 import { MarketingPage } from "@/components/landing/SiteChrome";
 import s from "@/components/landing/landing.module.css";
-import { BASE_OPEN_GRAPH, BOT_PAGE_PATH } from "@/lib/site";
+import {
+  BASE_OPEN_GRAPH,
+  BOT_PAGE_PATH,
+  PAST_QUESTIONS_PATH,
+} from "@/lib/site";
 import { telegramBotUsername } from "@/lib/telegram/config";
 import b from "./bot.module.css";
 
@@ -156,7 +160,8 @@ export default function TelegramBotPage() {
           <li>
             <strong>أرسل الملف</strong>
             <p>
-              افتح البوت واضغط «ابدأ»، ثم أرسل ملف PDF: ملف أسئلة سنوات سابقة،
+              افتح البوت واضغط «ابدأ»، ثم أرسل ملف PDF:{" "}
+              <Link href={PAST_QUESTIONS_PATH}>ملف أسئلة سنوات سابقة</Link>،
               أو كتابًا، أو محاضرة.
             </p>
           </li>

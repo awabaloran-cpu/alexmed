@@ -16,6 +16,7 @@ const MARKETING = new Set([
   "mind-map",
   "how-to-study",
   "telegram-bot",
+  "past-exam-questions",
 ]);
 
 function pages(dir: string): string[] {

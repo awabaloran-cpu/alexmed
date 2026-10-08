@@ -33,6 +33,9 @@ export const SITE_DESCRIPTION =
 // The Telegram bot's public page (app/telegram-bot). A public, indexable
 // page like the tool pages, but not one of the header's tools.
 export const BOT_PAGE_PATH = "/telegram-bot";
+// The page for students who study from past-exam question files
+// (app/past-exam-questions). Public and indexable, like the bot's page.
+export const PAST_QUESTIONS_PATH = "/past-exam-questions";
 
 export const PUBLIC_BASE_PATHS = [
   "/",
@@ -41,6 +44,7 @@ export const PUBLIC_BASE_PATHS = [
   "/mind-map",
   "/how-to-study",
   BOT_PAGE_PATH,
+  PAST_QUESTIONS_PATH,
   "/pricing",
   "/register",
   "/contact",

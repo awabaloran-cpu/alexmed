@@ -6,6 +6,7 @@ import NiroCharacter from "@/components/niro/NiroCharacter";
 import { LEGAL_CONTACT_EMAIL } from "@/components/legal/LegalPage";
 import {
   BOT_PAGE_PATH,
+  PAST_QUESTIONS_PATH,
   SITE_ENTITY_DESCRIPTION_AR,
   SITE_ENTITY_IDS,
   SITE_NAME,
@@ -138,7 +139,7 @@ export function PageJsonLd({
   faq,
   article,
 }: {
-  path: ToolPath | typeof BOT_PAGE_PATH;
+  path: ToolPath | typeof BOT_PAGE_PATH | typeof PAST_QUESTIONS_PATH;
   name: string;
   description: string;
   faq: readonly FaqItem[];

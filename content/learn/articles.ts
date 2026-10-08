@@ -67,6 +67,11 @@ const productFeatures: Record<string, LearnFeatureLink> = {
     label: "بوت Telegram",
     description: "أرسل ملف PDF في تلغرام وافتح أسئلته كاختبار تفاعلي.",
   },
+  pastQuestions: {
+    href: "/past-exam-questions",
+    label: "أسئلة سنوات سابقة",
+    description: "حوّل ملف أسئلة السنوات إلى اختبار تحلّه مع شرح.",
+  },
   register: {
     href: "/register",
     label: "ابدأ مجانًا",
@@ -554,6 +559,7 @@ export const LEARN_ARTICLES: LearnArticle[] = [
     ],
     relatedFeatures: [
       productFeatures.telegramBot,
+      productFeatures.pastQuestions,
       productFeatures.flashcards,
       productFeatures.studyMethod,
     ],

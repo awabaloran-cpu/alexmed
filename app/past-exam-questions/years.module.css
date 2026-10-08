@@ -1,0 +1,41 @@
+/* The past-exam-questions page (app/past-exam-questions/page.tsx): the
+   before/after figure in the hero. The question card and the steps come
+   from the bot page's module. */
+.figure {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 0;
+  padding: 18px;
+  border: 1px solid var(--nl-rule);
+  border-radius: var(--nl-r-lg);
+  background: var(--nl-paper);
+}
+.figure figcaption {
+  color: var(--nl-ink-2);
+  font-size: 12.5px;
+  text-align: center;
+}
+.sheet {
+  padding: 14px;
+  border: 1px dashed var(--nl-rule);
+  border-radius: var(--nl-r-md);
+  background: var(--nl-sheet);
+  color: var(--nl-ink-2);
+  direction: ltr;
+  font-size: 13.5px;
+  line-height: 1.6;
+  text-align: left;
+}
+.sheet p {
+  margin: 0 0 4px;
+}
+.tag {
+  display: block;
+  margin-bottom: 8px;
+  color: var(--nl-ink-2);
+  font-size: 12px;
+  font-weight: 600;
+  direction: rtl;
+  text-align: right;
+}

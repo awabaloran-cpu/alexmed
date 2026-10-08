@@ -6,6 +6,7 @@ import Link from "next/link";
 import NiroSpark from "@/components/niro/NiroSpark";
 import {
   BOT_PAGE_PATH,
+  PAST_QUESTIONS_PATH,
   SITE_NAME,
   TOOL_PAGES,
   type ToolPath,
@@ -99,6 +100,7 @@ function SiteFooter() {
             <Link href="/">الرئيسية</Link>
             <Link href="/learn">Learn</Link>
             <Link href={BOT_PAGE_PATH}>بوت Telegram</Link>
+            <Link href={PAST_QUESTIONS_PATH}>أسئلة سنوات سابقة</Link>
             <Link href="/pricing">الأسعار</Link>
             <Link href="/register">إنشاء حساب</Link>
             <Link href="/login">تسجيل الدخول</Link>

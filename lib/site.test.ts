@@ -39,6 +39,7 @@ describe("site constants", () => {
       "/mind-map",
       "/how-to-study",
       "/telegram-bot",
+      "/past-exam-questions",
       "/pricing",
       "/register",
       "/contact",
