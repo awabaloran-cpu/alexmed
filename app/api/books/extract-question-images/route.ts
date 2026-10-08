@@ -18,6 +18,7 @@ import {
   questionFilePageImageResponseSchema,
 } from "@/lib/question-file-analysis";
 import { invokeLLM, DEFAULT_VISION_MODEL } from "@/lib/llm";
+import { transientAiRetryDelaySeconds } from "@/lib/ai/types";
 import { claimQuestionFilePage } from "@/lib/queue/claim";
 import { publishMessage } from "@/lib/queue/client";
 import { storageGetSignedUrl, storagePut } from "@/lib/storage";
@@ -86,6 +87,9 @@ export async function POST(request: Request) {
   const questions = await listQuestionsForImageOwnership(bookId);
 
   let parser: PDFParse | undefined;
+  // Set when the AI service failed in a way that passes: the batch stops
+  // there and the next one waits (see app/api/books/analyze-page-visuals).
+  let retryDelay: number | null = null;
   try {
     for (let i = 0; i < PAGES_PER_INVOCATION; i++) {
       const candidate = await getNextPendingQuestionFilePage(bookId);
@@ -172,6 +176,11 @@ export async function POST(request: Request) {
           candidate.id,
           "تعذر تحليل صور هذه الصفحة."
         );
+        retryDelay = transientAiRetryDelaySeconds(
+          pageError,
+          claimed.attemptCount
+        );
+        if (retryDelay !== null) break;
       }
     }
 
@@ -199,6 +208,7 @@ export async function POST(request: Request) {
             key: `question-file-images-${bookId}`,
             parallelism: 1,
           },
+          ...(retryDelay !== null ? { delay: retryDelay } : {}),
         }
       );
       return NextResponse.json({ bookId, status: "processing" });

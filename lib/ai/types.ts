@@ -159,6 +159,30 @@ export function aiRetryAfterMs(error: unknown): number | undefined {
   return undefined;
 }
 
+// For a worker that walks many small items (the pages of a file) and gives
+// each a few attempts: after a transient failure, how many seconds to stop
+// for before the next attempt — 30s, 90s, 270s, or longer if the failure
+// asked for it. null when the failure is not transient (waiting would not
+// help). Live, 2026-10-08: with the vision model's circuit open, such a
+// worker spent a page's three attempts in two seconds and failed 5 pages
+// of a 7-page book for good.
+export function transientAiRetryDelaySeconds(
+  error: unknown,
+  attemptCount: number
+): number | null {
+  const type = classifyAiError(error);
+  const transient =
+    type === "rate_limit" ||
+    type === "timeout" ||
+    type === "upstream" ||
+    type === "network" ||
+    type === "circuit_open";
+  if (!transient) return null;
+  const backoff = 30 * 3 ** Math.max(0, attemptCount - 1);
+  const asked = Math.ceil((aiRetryAfterMs(error) ?? 0) / 1000);
+  return Math.min(Math.max(backoff, asked), 300);
+}
+
 export interface AiProvider {
   generateText(params: GenerateParams): Promise<GenerateResult>;
   streamText(params: GenerateParams): AsyncGenerator<StreamChunk, void, void>;

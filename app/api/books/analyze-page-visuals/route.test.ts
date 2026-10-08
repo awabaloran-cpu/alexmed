@@ -48,6 +48,8 @@ import {
   updateBookPageVisualResult,
 } from "@/lib/db-books";
 import { invokeLLM } from "@/lib/llm";
+import { AiCircuitOpenError, AiUpstreamError } from "@/lib/ai/types";
+import { publishMessage } from "@/lib/queue/client";
 import { POST } from "./route";
 
 const mockVerify = verifyQStashRequest as unknown as ReturnType<typeof vi.fn>;
@@ -79,6 +81,7 @@ describe("POST /api/books/analyze-page-visuals", () => {
   beforeEach(() => {
     mockVerify.mockReset().mockResolvedValue(true);
     mockClaim.mockReset();
+    vi.mocked(publishMessage).mockReset();
     mockGetBook
       .mockReset()
       .mockResolvedValue({ id: "b1", fileKey: "books/b1.pdf" });
@@ -118,6 +121,71 @@ describe("POST /api/books/analyze-page-visuals", () => {
     expect(body.status).toBe("done");
     expect(mockInvoke).not.toHaveBeenCalled();
     expect(mockUpdateResult).not.toHaveBeenCalled();
+  });
+
+  const page = (n: number) => ({
+    id: "p" + n,
+    bookId: "b1",
+    pageNumber: n,
+    chapterId: null,
+    extractedText: "text",
+  });
+
+  it("stops the batch and waits when the AI service is down, instead of spending the pages' attempts", async () => {
+    mockNextPage.mockResolvedValue(page(1));
+    mockClaim.mockResolvedValue({ id: "p1", bookId: "b1", attemptCount: 1 });
+    mockInvoke.mockRejectedValue(new AiCircuitOpenError("open", 60_000));
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const response = await POST(request({ bookId: "b1" }));
+    logged.mockRestore();
+
+    expect((await response.json()).status).toBe("processing");
+    // One page tried, not twelve.
+    expect(mockClaim).toHaveBeenCalledTimes(1);
+    expect(mockMarkFailed).toHaveBeenCalledTimes(1);
+    expect(publishMessage).toHaveBeenCalledWith(
+      { type: "analyze_book_page_visuals", bookId: "b1" },
+      {
+        flowControl: { key: "books-visual-b1", parallelism: 1 },
+        delay: 60,
+      }
+    );
+  });
+
+  it("waits longer on a page's later attempts", async () => {
+    mockNextPage.mockResolvedValue(page(1));
+    mockClaim.mockResolvedValue({ id: "p1", bookId: "b1", attemptCount: 2 });
+    mockInvoke.mockRejectedValue(new AiUpstreamError("502"));
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    await POST(request({ bookId: "b1" }));
+    logged.mockRestore();
+
+    expect(publishMessage).toHaveBeenCalledWith(
+      { type: "analyze_book_page_visuals", bookId: "b1" },
+      { flowControl: { key: "books-visual-b1", parallelism: 1 }, delay: 90 }
+    );
+  });
+
+  it("moves on to the next page, without a wait, when one page fails for its own reasons", async () => {
+    mockNextPage
+      .mockResolvedValueOnce(page(1))
+      .mockResolvedValueOnce(page(2))
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(null);
+    mockClaim
+      .mockResolvedValueOnce({ id: "p1", bookId: "b1", attemptCount: 1 })
+      .mockResolvedValueOnce({ id: "p2", bookId: "b1", attemptCount: 1 });
+    mockInvoke.mockRejectedValue(new Error("unreadable answer"));
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const response = await POST(request({ bookId: "b1" }));
+    logged.mockRestore();
+
+    expect((await response.json()).status).toBe("done");
+    expect(mockClaim).toHaveBeenCalledTimes(2);
+    expect(mockMarkFailed).toHaveBeenCalledTimes(2);
   });
 
   // A page whose text layer is empty (fully scanned/image page) but whose

@@ -14,6 +14,7 @@ import {
   parsePageVisualAnalysis,
 } from "@/lib/book-page-visual-analysis";
 import { invokeLLM } from "@/lib/llm";
+import { transientAiRetryDelaySeconds } from "@/lib/ai/types";
 import { claimBookPageVisual } from "@/lib/queue/claim";
 import { publishMessage } from "@/lib/queue/client";
 import { storageGetSignedUrl, storagePut } from "@/lib/storage";
@@ -71,6 +72,10 @@ export async function POST(request: Request) {
   }
 
   let parser: PDFParse | undefined;
+  // Set when the AI service failed in a way that passes (an outage, a rate
+  // limit, an open circuit): the batch stops there and the next one waits,
+  // so a page's attempts are spread over minutes instead of spent at once.
+  let retryDelay: number | null = null;
   try {
     for (let i = 0; i < PAGES_PER_INVOCATION; i++) {
       const candidate = await getNextPendingBookPage(bookId);
@@ -175,6 +180,11 @@ export async function POST(request: Request) {
           candidate.id,
           "تعذر تحليل هذه الصفحة بصريًا."
         );
+        retryDelay = transientAiRetryDelaySeconds(
+          pageError,
+          claimed.attemptCount
+        );
+        if (retryDelay !== null) break;
       }
     }
 
@@ -182,7 +192,10 @@ export async function POST(request: Request) {
     if (remaining) {
       await publishMessage(
         { type: "analyze_book_page_visuals", bookId },
-        { flowControl: { key: `books-visual-${bookId}`, parallelism: 1 } }
+        {
+          flowControl: { key: `books-visual-${bookId}`, parallelism: 1 },
+          ...(retryDelay !== null ? { delay: retryDelay } : {}),
+        }
       );
       return NextResponse.json({ bookId, status: "processing" });
     }

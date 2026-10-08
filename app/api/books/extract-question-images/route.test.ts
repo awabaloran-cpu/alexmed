@@ -64,6 +64,7 @@ import {
   saveImageOwnerDecision,
 } from "@/lib/db-question-file-images";
 import { invokeLLM } from "@/lib/llm";
+import { AiCircuitOpenError } from "@/lib/ai/types";
 import { POST } from "./route";
 
 const mockVerify = verifyQStashRequest as unknown as ReturnType<typeof vi.fn>;
@@ -261,6 +262,32 @@ describe("POST /api/books/extract-question-images", () => {
     const response = await POST(request({ bookId: "b1" }));
     expect(response.status).toBe(200);
     expect(mockMarkFailed).toHaveBeenCalledWith("p1", expect.any(String));
+  });
+
+  it("stops the batch and waits when the AI service is down, instead of spending the pages' attempts", async () => {
+    mockNextPage.mockResolvedValue({ id: "p1", bookId: "b1", pageNumber: 1 });
+    mockClaim.mockResolvedValue({
+      id: "p1",
+      bookId: "b1",
+      pageNumber: 1,
+      attemptCount: 1,
+    });
+    mockInvoke.mockRejectedValue(new AiCircuitOpenError("open", 60_000));
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const response = await POST(request({ bookId: "b1" }));
+    logged.mockRestore();
+
+    expect((await response.json()).status).toBe("processing");
+    expect(mockClaim).toHaveBeenCalledTimes(1);
+    expect(mockMarkFailed).toHaveBeenCalledTimes(1);
+    expect(mockPublish).toHaveBeenCalledWith(
+      { type: "extract_question_file_images", bookId: "b1" },
+      {
+        flowControl: { key: "question-file-images-b1", parallelism: 1 },
+        delay: 60,
+      }
+    );
   });
 
   // Self-chaining / TEST E — simulates a queue that never runs dry within

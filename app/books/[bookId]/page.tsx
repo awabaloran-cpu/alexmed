@@ -751,11 +751,23 @@ export default function BookDetailPage() {
       {book.status === "partial_failed" && (
         <div className="inline-alert warning wide">
           <CircleAlert size={16} />
-          اكتمل معظم الكتاب، لكن {failedChapters.length} فصل تعذّر تحليله
-          {failedTextPages.length > 0
-            ? ` و${failedTextPages.length} صفحة تعذّرت قراءتها`
-            : ""}
-          . يمكنك إعادة المحاولة أدناه.
+          {failedChapters.length === 0 && failedTextPages.length === 0 ? (
+            // Only page pictures failed: the text was read, so the study
+            // tools are built from all of it.
+            <>
+              قُرئ نص الكتاب كاملًا، لكن تعذّر تحليل صور{" "}
+              {coverageQuery.data?.failed ?? "بعض"} صفحة. أدوات الدراسة
+              تُبنى من النص كله.
+            </>
+          ) : (
+            <>
+              اكتمل معظم الكتاب، لكن {failedChapters.length} فصل تعذّر تحليله
+              {failedTextPages.length > 0
+                ? ` و${failedTextPages.length} صفحة تعذّرت قراءتها`
+                : ""}
+              . يمكنك إعادة المحاولة أدناه.
+            </>
+          )}
         </div>
       )}
 
