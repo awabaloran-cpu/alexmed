@@ -2133,6 +2133,44 @@ export const bookShareStatusEnum = pgEnum("book_share_status", [
   "removed",
 ]);
 
+// 🔗 A file's share link (lib/share-links.ts): t.me/<bot>?start=sh_<code>.
+// Anyone who opens it gets an accepted book_shares row for the file — the
+// same access a share by username gives, over the same single copy. One
+// live link per file; revoking it stops new joins AND withdraws everyone
+// who joined through it. The code is meant to be passed around, so it is
+// stored as it is (it opens study content only, never an account).
+export const fileShareLinks = pgTable(
+  "file_share_links",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    bookId: uuid("bookId")
+      .notNull()
+      .references(() => books.id, { onDelete: "cascade" }),
+    ownerId: uuid("ownerId")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    code: varchar("code", { length: 24 }).notNull(),
+    joinCount: integer("joinCount").default(0).notNull(),
+    // Distinct students who reported the file, and when last.
+    reportCount: integer("reportCount").default(0).notNull(),
+    lastReportedAt: timestamp("lastReportedAt", { withTimezone: true }),
+    revokedAt: timestamp("revokedAt", { withTimezone: true }),
+    // "owner" | "admin" — an admin's stop cannot be undone by re-sharing.
+    revokedBy: varchar("revokedBy", { length: 8 }),
+    createdAt: timestamp("createdAt", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  table => ({
+    codeUnique: uniqueIndex("file_share_links_code_idx").on(table.code),
+    bookIdx: index("file_share_links_book_idx").on(table.bookId),
+    // At most one live link per file.
+    liveUnique: uniqueIndex("file_share_links_live_book_idx")
+      .on(table.bookId)
+      .where(sql`${table.revokedAt} is null`),
+  })
+);
+
 export const bookShares = pgTable(
   "book_shares",
   {
@@ -2146,6 +2184,11 @@ export const bookShares = pgTable(
     recipientId: uuid("recipientId")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
+    // Set when the share came from a share link rather than a request by
+    // username (null for those).
+    linkId: uuid("linkId").references(() => fileShareLinks.id, {
+      onDelete: "set null",
+    }),
     status: bookShareStatusEnum("status").default("pending").notNull(),
     createdAt: timestamp("createdAt", { withTimezone: true })
       .defaultNow()

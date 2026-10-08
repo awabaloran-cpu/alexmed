@@ -686,7 +686,11 @@ export async function listSharedWithMe(recipientId: string) {
     .where(
       and(
         eq(bookShares.recipientId, recipientId),
-        eq(bookShares.status, "accepted")
+        eq(bookShares.status, "accepted"),
+        // Study books only: a shared QUESTION FILE (lib/share-links.ts) has
+        // its own list and its own viewer (questionFiles.sharedWithMe), and
+        // every client of this list opens what it returns as a book.
+        eq(books.sourceType, "study_book")
       )
     )
     .orderBy(desc(bookShares.respondedAt));
@@ -753,6 +757,7 @@ export async function getSharingHomeSummary(userId: string) {
         and(
           eq(bookShares.recipientId, userId),
           eq(bookShares.status, "accepted"),
+          eq(books.sourceType, "study_book"),
           gt(
             bookShares.respondedAt,
             new Date(Date.now() - 14 * 24 * 60 * 60 * 1000)

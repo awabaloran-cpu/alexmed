@@ -122,6 +122,42 @@ six columns on `telegram_accounts`).
 - Not built: a public leaderboard, rewards other than files, the daily
   question in a channel (the owner declined it).
 
+## Sharing a file by link (`lib/share-links.ts`)
+
+Migration `0045_file_share_links` (table `file_share_links`, column
+`book_shares.linkId`). A student shares a file they uploaded; classmates who
+open the link study from the **same single copy** — nothing is copied or
+re-processed, so a share costs no AI work.
+
+- **Link**: `https://t.me/<bot>?start=sh_<16-char code>`. One live link per
+  file, made by its owner only (bot: «📤 شارك الملف مع زملائك» under a ready
+  file; web: the panel on the question-file page and the book page). No cap
+  on how many classmates join (owner's decision, 2026-10-08).
+- **Joining** writes an ordinary accepted `book_shares` row (with `linkId`),
+  so a book uses the existing shared-book access (`lib/book-access.ts`) and a
+  question file uses `lib/question-file-access.ts`. No owner approval step.
+  A brand-new student who arrives this way gets `source = share` and is
+  credited to the sharer like an invite.
+- **What a classmate gets**: read and study only. Their answers and progress
+  are their own rows; the file's storage key is never sent to them (shared
+  images go through `/api/books/question-files/<bookId>/images/<imageId>`,
+  which re-checks access on every request).
+- **Never shareable**: a file still being read or failed, and a doctor's
+  protected question set — also closed on read, so a forged `book_shares`
+  row gives nothing.
+- **Ending it**: the owner stops the link (everyone who joined through it
+  loses access at once; a new link is a new code). A classmate the owner
+  removed or blocked cannot rejoin. A suspended owner's link is dead.
+  Deleting the file removes links and shares (cascade).
+- **Abuse**: a classmate can report a shared file once; reports are listed
+  in `/admin/telegram`, where an admin can stop the link — the owner cannot
+  re-share that file afterwards.
+- The older "shared with me" list (web home + the Flutter app) stays study
+  books only; shared question files have their own list
+  (`questionFiles.sharedWithMe`), shown on `/books/question-files`.
+- Not verified on a phone: the whole flow inside Telegram. Not built: the
+  Flutter app does not list shared question files yet.
+
 ## Links and security
 
 - `/t/<token>`: 32 random bytes, only the SHA-256 is stored, expires

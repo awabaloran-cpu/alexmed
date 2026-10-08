@@ -5,8 +5,9 @@ import {
   saveQuestionAttempt,
 } from "../db-question-attempts";
 import {
-  getQuestionFileForUser,
+  getQuestionFileForViewer,
   listQuestionFilesForUser,
+  listSharedQuestionFiles,
   retryQuestionFileExtraction,
 } from "../db-question-files";
 import { publishMessage } from "../queue/client";
@@ -21,10 +22,17 @@ export const questionFilesRouter = router({
     return listQuestionFilesForUser(ctx.user.id);
   }),
 
+  // Question files classmates shared with this student by link
+  // (lib/share-links.ts).
+  sharedWithMe: protectedProcedure.query(({ ctx }) =>
+    listSharedQuestionFiles(ctx.user.id)
+  ),
+
   get: protectedProcedure
     .input(z.object({ bookId: z.string() }))
     .query(async ({ ctx, input }) => {
-      const result = await getQuestionFileForUser(ctx.user.id, input.bookId);
+      // The owner, or a classmate the file was shared with.
+      const result = await getQuestionFileForViewer(ctx.user.id, input.bookId);
       if (!result) {
         throw new TRPCError({
           code: "NOT_FOUND",

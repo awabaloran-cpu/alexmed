@@ -18,7 +18,36 @@ import {
   SharingError,
   unblockUser,
 } from "../db-sharing";
-import { protectedProcedure, router } from "./trpc";
+import {
+  adminStopShareLink,
+  getOrCreateShareLink,
+  listReportedShareLinks,
+  reportSharedFile,
+  revokeShareLink,
+  shareLinkStatus,
+  shareLinkUrl,
+} from "../share-links";
+import { shareUrl } from "../telegram/growth";
+import { TEXT } from "../telegram/messages";
+import { adminProcedure, protectedProcedure, router } from "./trpc";
+
+const LINK_REFUSALS = {
+  not_found: "الملف غير موجود.",
+  not_ready: "انتظر حتى تنتهي معالجة الملف ثم شاركه.",
+  protected: "مجموعات الأسئلة المحمية لا تُشارَك برابط.",
+  stopped_by_admin: "أوقفت الإدارة مشاركة هذا الملف.",
+} as const;
+
+// What the UI needs to show and send a share link.
+function linkView(code: string, joinCount: number) {
+  const url = shareLinkUrl(code);
+  if (!url) return null;
+  return {
+    url,
+    shareUrl: shareUrl(url, TEXT.fileShare),
+    joinCount,
+  };
+}
 
 // 📤 Study Pack sharing. Every procedure derives "who" from the session
 // (ctx.user.id) — the client never supplies an owner or recipient identity
@@ -52,6 +81,57 @@ async function run<T>(fn: () => Promise<T>): Promise<T> {
 }
 
 export const sharingRouter = router({
+  // 🔗 Share a file by link (lib/share-links.ts) — the owner's side.
+  link: protectedProcedure
+    .input(z.object({ bookId: z.string().uuid() }))
+    .query(async ({ ctx, input }) => {
+      const live = await shareLinkStatus(ctx.user.id, input.bookId);
+      return live ? linkView(live.code, live.joinCount) : null;
+    }),
+
+  createLink: protectedProcedure
+    .input(z.object({ bookId: z.string().uuid() }))
+    .mutation(async ({ ctx, input }) => {
+      const outcome = await getOrCreateShareLink(ctx.user.id, input.bookId);
+      if (!outcome.ok) {
+        throw new TRPCError({
+          code: outcome.reason === "not_found" ? "NOT_FOUND" : "PRECONDITION_FAILED",
+          message: LINK_REFUSALS[outcome.reason],
+        });
+      }
+      const view = linkView(outcome.code, outcome.joinCount);
+      if (!view) {
+        throw new TRPCError({
+          code: "PRECONDITION_FAILED",
+          message: "المشاركة برابط غير متاحة الآن.",
+        });
+      }
+      return view;
+    }),
+
+  // Stops the link: nobody new can join, and everyone who joined through
+  // it loses access.
+  revokeLink: protectedProcedure
+    .input(z.object({ bookId: z.string().uuid() }))
+    .mutation(async ({ ctx, input }) => ({
+      success: await revokeShareLink(ctx.user.id, input.bookId),
+    })),
+
+  // A classmate reports a file that was shared with them.
+  reportFile: protectedProcedure
+    .input(z.object({ bookId: z.string().uuid() }))
+    .mutation(async ({ ctx, input }) => ({
+      success: await reportSharedFile(ctx.user.id, input.bookId),
+    })),
+
+  // Admin: reported links, and stopping one for good.
+  reportedLinks: adminProcedure.query(() => listReportedShareLinks()),
+  adminStopLink: adminProcedure
+    .input(z.object({ linkId: z.string().uuid() }))
+    .mutation(async ({ ctx, input }) => ({
+      success: await adminStopShareLink(ctx.user.id, input.linkId),
+    })),
+
   profile: protectedProcedure.query(({ ctx }) =>
     getSharingProfile(ctx.user.id)
   ),

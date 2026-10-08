@@ -1,27 +1,27 @@
-// A student's answers to the questions of their OWN question file — what
+// A student's answers to the questions of a question file they may read —
+// their own, or one shared with them (lib/question-file-access.ts) — what
 // lets the viewer resume where they stopped and keeps the "answered /
 // correct" tally across visits and devices. The answer is checked here, on
 // the server, against the same rule the card uses (the file's stated
 // answer, else the pipeline's suggestion); a question with neither is
 // stored with isCorrect = null.
 import { and, eq, sql } from "drizzle-orm";
-import {
-  books,
-  extractedQuestions,
-  questionAttempts,
-} from "../drizzle/schema";
+import { extractedQuestions, questionAttempts } from "../drizzle/schema";
 import { requireDb } from "./db";
 import { studentVisibleQuestion } from "./db-question-files";
+import { getQuestionFileAccess } from "./question-file-access";
 
 export type SavedAttempt = { isCorrect: boolean | null };
 
-// Null when the question isn't one the student may answer: not their file,
-// not a question file, hidden for review, or an option that doesn't exist.
+// Null when the question isn't one the student may answer: a file they may
+// not read, not a question file, hidden for review, or an option that
+// doesn't exist.
 export async function saveQuestionAttempt(
   userId: string,
   input: { bookId: string; questionId: string; selectedIndex: number }
 ): Promise<SavedAttempt | null> {
   const db = requireDb();
+  if (!(await getQuestionFileAccess(userId, input.bookId))) return null;
   const [question] = await db
     .select({
       options: extractedQuestions.options,
@@ -29,13 +29,10 @@ export async function saveQuestionAttempt(
       aiInferredAnswerIndex: extractedQuestions.aiInferredAnswerIndex,
     })
     .from(extractedQuestions)
-    .innerJoin(books, eq(books.id, extractedQuestions.bookId))
     .where(
       and(
         eq(extractedQuestions.id, input.questionId),
         eq(extractedQuestions.bookId, input.bookId),
-        eq(books.userId, userId),
-        eq(books.sourceType, "question_file"),
         studentVisibleQuestion
       )
     )

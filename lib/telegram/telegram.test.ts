@@ -1388,3 +1388,129 @@ describe("The webhook route", () => {
     }
   });
 });
+
+describe("Sharing a file by link through the bot", () => {
+  const OWNER_TG = 820001;
+  const FRIEND_TG = 820002;
+  const userIdOf = async (telegramUserId: number) =>
+    (
+      await rows<{ userId: string }>(
+        `SELECT "userId" FROM telegram_accounts WHERE "telegramUserId" = $1`,
+        [telegramUserId]
+      )
+    )[0]?.userId;
+  const shareTap = (uploadId: string, from: number) =>
+    handleTelegramUpdate({
+      update_id: nextUpdateId++,
+      callback_query: {
+        id: "cb-share",
+        from: { id: from },
+        data: CALLBACK.share(uploadId),
+        message: { message_id: 1, chat: { id: from, type: "private" } },
+      },
+    });
+  // The owner sends a question file, it finishes, and they tap "share".
+  async function ownerSharesFile() {
+    await handleTelegramUpdate(documentUpdate({ from: OWNER_TG }));
+    const upload = await onlyUpload();
+    await runTelegramIntake(upload.id);
+    await test.client.exec(`UPDATE books SET status = 'complete'`);
+    await shareTap(upload.id, OWNER_TG);
+    const code = /https:\/\/t\.me\/Nirolearnbot\?start=sh_([A-Z0-9]{16})/.exec(
+      lastSent().text
+    );
+    expect(code).not.toBeNull();
+    return { uploadId: upload.id, code: code![1], bookId: (await onlyUpload()).bookId! };
+  }
+
+  beforeEach(() => {
+    process.env.TELEGRAM_BOT_USERNAME = "Nirolearnbot";
+  });
+
+  it("the owner's share button answers with the file's link and Telegram's share sheet", async () => {
+    const { uploadId, code } = await ownerSharesFile();
+    expect(lastSent().text).toContain(TEXT.shareLinkReady("Pediatrics_MCQs.pdf", 0));
+    expect(JSON.stringify(lastSent().markup)).toContain("https://t.me/share/url?url=");
+    // The same link on the next tap, not a second one.
+    await shareTap(uploadId, OWNER_TG);
+    expect(lastSent().text).toContain(`start=sh_${code}`);
+    expect(await rows(`SELECT id FROM file_share_links`)).toHaveLength(1);
+  });
+
+  it("another Telegram user cannot get a link out of someone else's upload", async () => {
+    const { uploadId } = await ownerSharesFile();
+    tg.sendMessage.mockClear();
+    await shareTap(uploadId, 31337);
+    expect(tg.sendMessage).not.toHaveBeenCalled();
+    expect(await rows(`SELECT id FROM file_share_links`)).toHaveLength(1);
+  });
+
+  it("a classmate who opens the link gets the file, a button to open it, and is credited to the sharer", async () => {
+    const { code, bookId } = await ownerSharesFile();
+    await handleTelegramUpdate(textUpdate(`/start sh_${code}`, FRIEND_TG));
+
+    expect(lastSent().text).toContain("Pediatrics_MCQs.pdf");
+    expect(JSON.stringify(lastSent().markup)).toContain(LABELS.startQuestions);
+    const friend = (await userIdOf(FRIEND_TG))!;
+    expect(
+      await rows(
+        `SELECT id FROM book_shares WHERE "bookId" = $1 AND "recipientId" = $2 AND status = 'accepted'`,
+        [bookId, friend]
+      )
+    ).toHaveLength(1);
+    const [account] = await rows<{ source: string; referredById: string | null }>(
+      `SELECT source, "referredById" FROM telegram_accounts WHERE "telegramUserId" = $1`,
+      [FRIEND_TG]
+    );
+    const [owner] = await rows<{ id: string }>(
+      `SELECT id FROM telegram_accounts WHERE "telegramUserId" = $1`,
+      [OWNER_TG]
+    );
+    expect(account).toEqual({ source: "share", referredById: owner.id });
+
+    // Opening it again changes nothing, and the file is listed in "ملفاتي".
+    await handleTelegramUpdate(textUpdate(`/start sh_${code}`, FRIEND_TG));
+    expect(await rows(`SELECT id FROM book_shares`)).toHaveLength(1);
+    await handleTelegramUpdate(textUpdate(BUTTONS.myFiles, FRIEND_TG));
+    expect(JSON.stringify(lastSent().markup)).toContain("👥 📄 Pediatrics_MCQs.pdf");
+    // A shared file is not the classmate's upload: their free file is untouched.
+    expect(
+      await rows(
+        `SELECT u.id FROM telegram_uploads u JOIN telegram_accounts a ON a.id = u."telegramAccountId"
+         WHERE a."telegramUserId" = $1`,
+        [FRIEND_TG]
+      )
+    ).toHaveLength(0);
+  });
+
+  it("the owner opening their own link is shown their file", async () => {
+    const { code } = await ownerSharesFile();
+    await handleTelegramUpdate(textUpdate(`/start sh_${code}`, OWNER_TG));
+    expect(lastSent().text).toBe(TEXT.sharedOwn);
+    expect(await rows(`SELECT id FROM book_shares`)).toHaveLength(0);
+  });
+
+  it("a stopped, unknown or malformed link gives nothing — and a malformed one is an ordinary /start", async () => {
+    const { code, bookId } = await ownerSharesFile();
+    await test.client.exec(`UPDATE file_share_links SET "revokedAt" = now(), "revokedBy" = 'owner'`);
+    await handleTelegramUpdate(textUpdate(`/start sh_${code}`, FRIEND_TG));
+    expect(lastSent().text).toBe(TEXT.sharedInvalid);
+    await handleTelegramUpdate(textUpdate("/start sh_ABCDEFGH23456789", FRIEND_TG));
+    expect(lastSent().text).toBe(TEXT.sharedInvalid);
+    expect(await rows(`SELECT id FROM book_shares WHERE "bookId" = $1`, [bookId])).toHaveLength(0);
+
+    await handleTelegramUpdate(textUpdate("/start sh_nope", FRIEND_TG));
+    expect(tg.sendMessage.mock.calls.map(call => call[1])).toContain(TEXT.welcome);
+  });
+
+  it("a file that is not ready yet cannot be shared", async () => {
+    await handleTelegramUpdate(documentUpdate({ from: OWNER_TG }));
+    const upload = await onlyUpload();
+    await runTelegramIntake(upload.id);
+    await test.client.exec(`UPDATE books SET status = 'extracting'`);
+    tg.sendMessage.mockClear();
+    await shareTap(upload.id, OWNER_TG);
+    expect(tg.sendMessage).not.toHaveBeenCalled();
+    expect(tg.answerCallback).toHaveBeenLastCalledWith("cb-share", TEXT.shareUnavailable);
+  });
+});

@@ -7,14 +7,18 @@
 // and(eq(id,...), eq(userId,...)).
 import { and, asc, count, desc, eq, sql } from "drizzle-orm";
 import {
+  bookShares,
   books,
   extractedQuestionImageRelations,
   extractedQuestionImages,
   extractedQuestions,
+  questionSets,
+  users,
   type Book,
 } from "../drizzle/schema";
 import { getDb, requireDb } from "./db";
 import { getQuestionFileCoverage } from "./db-question-file-images";
+import { getQuestionFileAccess } from "./question-file-access";
 import type { ExtractedQuestionInput } from "./question-extraction";
 
 // `subjectId` is the student's folder (required by the student upload
@@ -156,6 +160,77 @@ export async function getQuestionFileForUser(userId: string, bookId: string) {
   if (!book) return null;
 
   return { book, ...(await readQuestionFileContent(bookId, ownerImageUrl)) };
+}
+
+// A shared file's images go through a route that checks the viewer's own
+// access (app/api/books/question-files/[bookId]/images/[imageId]); the
+// storage key never reaches a classmate.
+const sharedImageUrl =
+  (bookId: string): QuestionImageUrlBuilder =>
+  image =>
+    `/api/books/question-files/${bookId}/images/${image.imageId}`;
+
+// The question file as `userId` may see it — its owner, or a classmate it
+// was shared with (lib/question-file-access.ts). `sharedBy` is the owner's
+// display name for a classmate, null for the owner.
+export async function getQuestionFileForViewer(userId: string, bookId: string) {
+  const db = getDb();
+  if (!db) return null;
+  const access = await getQuestionFileAccess(userId, bookId);
+  if (!access) return null;
+  const [book] = await db
+    .select(questionFileBookColumns)
+    .from(books)
+    .where(eq(books.id, bookId))
+    .limit(1);
+  if (!book) return null;
+  const shared = access.role === "shared";
+  return {
+    book,
+    shared,
+    sharedBy: shared ? access.ownerName : null,
+    ...(await readQuestionFileContent(
+      bookId,
+      shared ? sharedImageUrl(bookId) : ownerImageUrl
+    )),
+  };
+}
+
+// Question files classmates shared with this student (accepted shares),
+// in the same shape as their own list.
+export async function listSharedQuestionFiles(userId: string) {
+  const db = getDb();
+  if (!db) return [];
+  return db
+    .select({
+      id: books.id,
+      fileName: books.fileName,
+      status: books.status,
+      extractionError: books.extractionError,
+      createdAt: books.createdAt,
+      questionCount: count(extractedQuestions.id),
+      sharedBy: users.name,
+    })
+    .from(bookShares)
+    .innerJoin(books, eq(books.id, bookShares.bookId))
+    .innerJoin(users, eq(users.id, books.userId))
+    .leftJoin(
+      extractedQuestions,
+      and(eq(extractedQuestions.bookId, books.id), studentVisibleQuestion)
+    )
+    .where(
+      and(
+        eq(bookShares.recipientId, userId),
+        eq(bookShares.status, "accepted"),
+        eq(books.sourceType, "question_file"),
+        // Never a doctor's protected set (lib/question-file-access.ts).
+        sql`not exists (
+          select 1 from ${questionSets} where ${questionSets.bookId} = ${books.id}
+        )`
+      )
+    )
+    .groupBy(books.id, users.name, bookShares.respondedAt)
+    .orderBy(desc(bookShares.respondedAt));
 }
 
 // Questions + their images + processing coverage for a question-file book

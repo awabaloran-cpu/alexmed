@@ -27,6 +27,7 @@ import {
 } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { ShareStudyPackModal } from "@/components/sharing/ShareStudyPackModal";
+import ShareLinkPanel from "@/components/sharing/ShareLinkPanel";
 import { bookDisplayTitle } from "@/lib/book-title";
 
 // Background analysis now happens entirely server-side, driven by Upstash
@@ -408,6 +409,11 @@ export default function BookDetailPage() {
         <div className="inline-alert error wide" role="alert">
           <CircleAlert size={16} /> {removeFromLibrary.error.message}
         </div>
+      )}
+      {/* 🔗 Share by link (lib/share-links.ts) — next to the share by
+          username above; both give the same access to the same copy. */}
+      {isOwner && book.status !== "extracting" && book.status !== "failed" && (
+        <ShareLinkPanel bookId={bookId} />
       )}
 
       {/* Study modes. No chapter is analyzed until the student asks for it

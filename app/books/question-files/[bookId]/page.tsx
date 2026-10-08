@@ -2,9 +2,17 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { CircleAlert, ClipboardList, Loader2, RotateCcw } from "lucide-react";
+import {
+  CircleAlert,
+  ClipboardList,
+  Flag,
+  Loader2,
+  RotateCcw,
+  Users,
+} from "lucide-react";
 import AdBreak from "@/components/ads/AdBreak";
 import ShareResultCard from "@/components/growth/ShareResultCard";
+import ShareLinkPanel from "@/components/sharing/ShareLinkPanel";
 import { adPreviewRequested } from "@/components/ads/useAdBreak";
 import QuestionList from "@/components/questions/QuestionList";
 import { trpc } from "@/lib/trpc-client";
@@ -52,6 +60,7 @@ export default function QuestionFileDetailPage() {
     { retry: false, refetchOnWindowFocus: false, staleTime: Infinity }
   );
   const saveAttempt = trpc.questionFiles.saveAttempt.useMutation();
+  const report = trpc.sharing.reportFile.useMutation();
 
   if (fileQuery.isLoading || attempts.isLoading) {
     return (
@@ -82,7 +91,7 @@ export default function QuestionFileDetailPage() {
     );
   }
 
-  const { book, questions } = fileQuery.data;
+  const { book, questions, shared, sharedBy } = fileQuery.data;
   const ads = adPolicy.data;
 
   return (
@@ -101,6 +110,29 @@ export default function QuestionFileDetailPage() {
         </div>
       </div>
 
+      {/* 🔗 A classmate's file: who shared it, and a way to report it. The
+          owner instead gets the share-by-link panel. */}
+      {shared ? (
+        <div className="inline-alert wide" role="note">
+          <Users size={16} aria-hidden="true" />
+          <span>
+            شاركه معك {sharedBy ?? "زميلك"}. إجاباتك وتقدّمك خاصة بك.
+          </span>
+          <button
+            type="button"
+            className="secondary-button"
+            style={{ marginRight: 12 }}
+            disabled={report.isPending || report.isSuccess}
+            onClick={() => report.mutate({ bookId: book.id })}
+          >
+            <Flag size={14} aria-hidden="true" />{" "}
+            {report.isSuccess ? "وصل بلاغك" : "إبلاغ"}
+          </button>
+        </div>
+      ) : book.status !== "extracting" && book.status !== "failed" ? (
+        <ShareLinkPanel bookId={book.id} />
+      ) : null}
+
       {book.status === "extracting" && (
         <div className="inline-alert warning wide">
           <Loader2 size={16} className="spin" />
@@ -108,7 +140,7 @@ export default function QuestionFileDetailPage() {
         </div>
       )}
 
-      {book.status === "failed" && (
+      {book.status === "failed" && !shared && (
         <div className="inline-alert error wide">
           <CircleAlert size={16} />
           <span>

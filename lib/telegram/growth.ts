@@ -26,6 +26,8 @@ import { telegramBotUsername } from "./config";
 
 export const MAX_BONUS_UPLOADS = 30;
 export const INVITE_SOURCE = "invite";
+// A new student who arrived by opening a file a classmate shared.
+export const SHARE_SOURCE = "share";
 
 const SOURCE_PREFIX = "src_";
 const REFERRAL_PREFIX = "ref_";

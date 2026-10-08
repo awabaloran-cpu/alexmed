@@ -120,6 +120,11 @@ async function openButton(
   return [[await linkButton(await userFor(context), label, path)]];
 }
 
+// "📤 شارك الملف مع زملائك" under a ready file (handled in handler.ts).
+const shareRow = (uploadId: string): InlineButton[] => [
+  { text: LABELS.shareFile, callback_data: CALLBACK.share(uploadId) },
+];
+
 // ── Intake ──────────────────────────────────────────────────────────────
 
 class RefusedFile extends Error {}
@@ -427,7 +432,10 @@ export async function runTelegramWatch(
       await finish(
         context,
         TEXT.bookReady(book.pageCount),
-        await openButton(context, LABELS.openBook, filePath(kind, book.id))
+        [
+          ...(await openButton(context, LABELS.openBook, filePath(kind, book.id))),
+          shareRow(uploadId),
+        ]
       );
       return "done";
     }
@@ -446,7 +454,14 @@ export async function runTelegramWatch(
       coverage.done
         ? TEXT.questionsReady(coverage.questionsTotal)
         : TEXT.questionsReadyPartial(coverage.questionsTotal),
-      await openButton(context, LABELS.startQuestions, filePath(kind, book.id))
+      [
+        ...(await openButton(
+          context,
+          LABELS.startQuestions,
+          filePath(kind, book.id)
+        )),
+        shareRow(uploadId),
+      ]
     );
     return "done";
   } else if (timedOut) {

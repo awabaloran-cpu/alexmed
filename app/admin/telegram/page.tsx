@@ -30,6 +30,13 @@ const percent = (part: number, whole: number) =>
 export default function AdminTelegramPage() {
   const sources = trpc.telegram.sources.useQuery(undefined, { retry: false });
   const status = trpc.telegram.status.useQuery(undefined, { retry: false });
+  const utils = trpc.useUtils();
+  const reported = trpc.sharing.reportedLinks.useQuery(undefined, {
+    retry: false,
+  });
+  const stopLink = trpc.sharing.adminStopLink.useMutation({
+    onSuccess: () => utils.sharing.reportedLinks.invalidate(),
+  });
   const [label, setLabel] = useState("");
   const [copied, setCopied] = useState(false);
 
@@ -155,6 +162,69 @@ export default function AdminTelegramPage() {
           </TableBody>
         </Table>
       </div>
+      {/* 🔗 Files shared by link that students reported
+          (lib/share-links.ts). Stopping one withdraws everyone who joined
+          and cannot be undone by the owner. */}
+      <div className="space-y-2">
+        <h2 className="text-lg font-bold">بلاغات الملفات المشارَكة</h2>
+        <div className="overflow-x-auto rounded-lg border border-border">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>الملف</TableHead>
+                <TableHead>صاحبه</TableHead>
+                <TableHead>انضموا</TableHead>
+                <TableHead>بلاغات</TableHead>
+                <TableHead>إجراء</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {(reported.data ?? []).map(row => (
+                <TableRow key={row.linkId}>
+                  <TableCell>
+                    <bdi>{row.title}</bdi>
+                    <div className="text-xs text-muted-foreground">
+                      {row.sourceType === "question_file" ? "ملف أسئلة" : "كتاب"}
+                    </div>
+                  </TableCell>
+                  <TableCell>{row.ownerName ?? "—"}</TableCell>
+                  <TableCell>{row.joinCount}</TableCell>
+                  <TableCell>{row.reportCount}</TableCell>
+                  <TableCell>
+                    {row.revokedAt ? (
+                      <span className="text-sm text-muted-foreground">
+                        {row.revokedBy === "admin"
+                          ? "أوقفته الإدارة"
+                          : "أوقفه صاحبه"}
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        className="rounded-md border border-destructive px-2 py-1 text-sm text-destructive"
+                        disabled={stopLink.isPending}
+                        onClick={() => stopLink.mutate({ linkId: row.linkId })}
+                      >
+                        إيقاف المشاركة
+                      </button>
+                    )}
+                  </TableCell>
+                </TableRow>
+              ))}
+              {reported.data && !reported.data.length ? (
+                <TableRow>
+                  <TableCell
+                    colSpan={5}
+                    className="text-center text-sm text-muted-foreground"
+                  >
+                    لا توجد بلاغات.
+                  </TableCell>
+                </TableRow>
+              ) : null}
+            </TableBody>
+          </Table>
+        </div>
+      </div>
+
       {sources.error ? (
         <p className="text-sm text-destructive" role="alert">
           {sources.error.message}

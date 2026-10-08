@@ -11,6 +11,7 @@
 import { publishMessage } from "../queue/client";
 import {
   ensureTelegramAccount,
+  findTelegramAccountByUserId,
   linkTelegramToAccount,
   setPendingKind,
   type AccountContext,
@@ -26,8 +27,17 @@ import { isDocumentKind, type DocumentKind } from "./detect";
 import { retryTelegramUpload } from "./intake";
 import { parsePhone } from "../phone";
 import {
+  getOrCreateShareLink,
+  joinByShareLink,
+  listSharedFilesForUser,
+  parseShareCode,
+  shareLinkOwnerId,
+  shareLinkUrl,
+} from "../share-links";
+import {
   findInviterId,
   inviteLink,
+  SHARE_SOURCE,
   inviteStats,
   parseStartOrigin,
   refundBonusUpload,
@@ -228,24 +238,93 @@ async function handleDocument(
 }
 
 async function handleFilesList(context: AccountContext, chatId: number) {
-  const files = await listRecentFiles(context.account.id);
-  if (!files.length) {
+  const [own, shared] = await Promise.all([
+    listRecentFiles(context.account.id),
+    listSharedFilesForUser(context.user.id),
+  ]);
+  if (!own.length && !shared.length) {
     await sendMessage(chatId, TEXT.noFiles);
     return;
   }
   const rows: InlineButton[][] = [];
-  for (const file of files) {
+  const add = async (
+    file: { bookId: string; fileName: string; sourceType: string },
+    sharedWithMe: boolean
+  ) => {
     const kind: DocumentKind =
       file.sourceType === "question_file" ? "question_file" : "book";
     rows.push([
       await openButton(
         context.user,
-        `${kind === "book" ? "📚" : "📄"} ${file.fileName}`.slice(0, 60),
+        // 👥 marks a file a classmate shared.
+        `${sharedWithMe ? "👥 " : ""}${kind === "book" ? "📚" : "📄"} ${file.fileName}`.slice(
+          0,
+          60
+        ),
         filePath(kind, file.bookId)
       ),
     ]);
-  }
+  };
+  for (const file of own) await add(file, false);
+  for (const file of shared) await add(file, true);
   await sendMessage(chatId, TEXT.filesHeader, { inline_keyboard: rows });
+}
+
+// Someone opened a share link: give them the file (once) and a button to
+// open it. A dead link and a student the owner removed get the same answer.
+async function handleSharedFile(
+  context: AccountContext,
+  chatId: number,
+  code: string
+) {
+  const joined = await joinByShareLink(code, context.user.id);
+  if (!joined.ok) {
+    await sendMessage(chatId, TEXT.sharedInvalid, mainKeyboard());
+    return;
+  }
+  const isBook = joined.kind === "book";
+  await sendMessage(
+    chatId,
+    joined.role === "own"
+      ? TEXT.sharedOwn
+      : isBook
+        ? TEXT.sharedBook(joined.title, joined.ownerName)
+        : TEXT.sharedQuestions(joined.title, joined.ownerName),
+    {
+      inline_keyboard: [
+        [
+          await openButton(
+            context.user,
+            isBook ? LABELS.openBook : LABELS.startQuestions,
+            filePath(joined.kind, joined.bookId)
+          ),
+        ],
+      ],
+    }
+  );
+}
+
+// "📤 شارك الملف": the file's share link and a button that opens Telegram's
+// share sheet with it.
+async function handleShareRequest(
+  context: AccountContext,
+  chatId: number,
+  bookId: string,
+  title: string
+): Promise<boolean> {
+  const link = await getOrCreateShareLink(context.user.id, bookId);
+  const url = link.ok ? shareLinkUrl(link.code) : null;
+  if (!link.ok || !url) return false;
+  await sendMessage(
+    chatId,
+    `${TEXT.shareLinkReady(title, link.joinCount)}\n\n🔗 ${url}`,
+    {
+      inline_keyboard: [
+        [{ text: LABELS.sendToFriends, url: shareUrl(url, TEXT.fileShare) }],
+      ],
+    }
+  );
+  return true;
 }
 
 // "🎁 ادعُ زميلًا": the student's own link, what it earned so far, and a
@@ -357,20 +436,36 @@ async function handleMessage(updateId: number, message: TelegramMessage) {
     return;
   }
 
-  // 📈 Where a NEW student came from: a campaign label or a classmate's
-  // invite (lib/telegram/growth.ts). Ignored for an existing account.
+  // 📈 Where a NEW student came from: a campaign label, a classmate's
+  // invite (lib/telegram/growth.ts) or a file a classmate shared — which
+  // credits that classmate like an invite. Ignored for an existing account.
+  const shareCode = parseShareCode(start?.[1]);
   const origin = parseStartOrigin(start?.[1]);
+  const sharer = shareCode ? await shareLinkOwnerId(shareCode) : null;
   const context = await ensureTelegramAccount(
     { telegramUserId: from.id, chatId, languageCode: from.language_code },
-    {
-      source: origin.source,
-      referredById: origin.referralCode
-        ? await findInviterId(origin.referralCode)
-        : null,
-    }
+    shareCode
+      ? {
+          source: SHARE_SOURCE,
+          referredById: sharer
+            ? ((await findTelegramAccountByUserId(sharer))?.account.id ?? null)
+            : null,
+        }
+      : {
+          source: origin.source,
+          referredById: origin.referralCode
+            ? await findInviterId(origin.referralCode)
+            : null,
+        }
   );
   if (context.user.suspended) {
     await sendMessage(chatId, TEXT.suspended);
+    return;
+  }
+
+  // 🔗 A file a classmate shared (lib/share-links.ts).
+  if (shareCode) {
+    await handleSharedFile(context, chatId, shareCode);
     return;
   }
 
@@ -439,6 +534,19 @@ async function handleCallback(
       await publishMessage({ type: "telegram_intake", uploadId: upload.id });
     }
     await answerCallback(query.id);
+    return;
+  }
+
+  if (parsed.action === "share") {
+    const shared = upload.bookId
+      ? await handleShareRequest(
+          context,
+          chat.id,
+          upload.bookId,
+          upload.fileName
+        )
+      : false;
+    await answerCallback(query.id, shared ? undefined : TEXT.shareUnavailable);
     return;
   }
 

@@ -7,6 +7,7 @@ import {
   KeyRound,
   Loader2,
   Plus,
+  Users,
 } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 
@@ -25,6 +26,10 @@ const STATUS_LABELS: Record<string, string> = {
 export default function QuestionFilesPage() {
   const filesQuery = trpc.questionFiles.list.useQuery();
   const files = filesQuery.data ?? [];
+  // 🔗 Question files classmates shared by link (lib/share-links.ts).
+  const sharedFiles =
+    trpc.questionFiles.sharedWithMe.useQuery(undefined, { retry: false })
+      .data ?? [];
   // 🔒 Protected Doctor Question Sets live next to the student's own
   // question files (same question cards), behind their feature flag.
   const doctorSetsOn = trpc.questionSets.enabled.useQuery().data === true;
@@ -72,7 +77,7 @@ export default function QuestionFilesPage() {
           <Loader2 size={28} className="spin" />
           <h3>جاري التحميل...</h3>
         </div>
-      ) : !files.length ? (
+      ) : !files.length && !sharedFiles.length ? (
         <div className="empty-state">
           <ClipboardList size={28} />
           <h3>لا توجد ملفات أسئلة بعد</h3>
@@ -87,6 +92,24 @@ export default function QuestionFilesPage() {
         </div>
       ) : (
         <div className="library-grid">
+          {sharedFiles.map(file => (
+            <Link
+              key={file.id}
+              href={`/books/question-files/${file.id}`}
+              className="library-item"
+              style={{ display: "contents" }}
+            >
+              <div className="library-item-icon">
+                <Users size={18} />
+              </div>
+              <div className="library-item-meta">
+                <strong>{file.fileName}</strong>
+                <span>
+                  شاركه {file.sharedBy ?? "زميلك"} · {file.questionCount} سؤال
+                </span>
+              </div>
+            </Link>
+          ))}
           {files.map(file => (
             <Link
               key={file.id}

@@ -1,0 +1,120 @@
+/* The owner's share-by-link panel (components/sharing/ShareLinkPanel.tsx).
+   Same --nl-* tokens as the cards around it. */
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 14px 0;
+  padding: 16px;
+  border: 1px solid var(--nl-rule);
+  border-radius: var(--nl-r-lg);
+  background: var(--nl-sheet);
+  color: var(--nl-ink);
+}
+.head {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+.head svg {
+  flex: none;
+  margin-top: 3px;
+}
+.head p {
+  margin: 4px 0 0;
+  color: var(--nl-ink-2);
+  font-size: 14px;
+  line-height: 1.7;
+}
+.url {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: var(--nl-r-md);
+  background: var(--nl-marker-soft);
+  font-size: 13.5px;
+  text-align: left;
+  word-break: break-all;
+}
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.primary,
+.secondary {
+  display: inline-flex;
+  flex: 1 1 160px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 46px;
+  padding: 0 16px;
+  border-radius: var(--nl-r-md);
+  font: inherit;
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+}
+.primary {
+  border: 0;
+  background: var(--nl-ink);
+  color: #fff;
+}
+.primary:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.secondary {
+  border: 1px solid var(--nl-rule);
+  background: transparent;
+  color: var(--nl-ink);
+}
+.foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--nl-ink-2);
+  font-size: 13.5px;
+}
+.joined {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.confirm {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.text,
+.danger {
+  padding: 4px 6px;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: 13.5px;
+  cursor: pointer;
+}
+.text {
+  color: var(--nl-ink-2);
+  text-decoration: underline;
+}
+.danger {
+  color: var(--nl-wrong);
+  font-weight: 600;
+}
+.error {
+  margin: 0;
+  color: var(--nl-wrong);
+  font-size: 14px;
+}
+.primary:focus-visible,
+.secondary:focus-visible,
+.text:focus-visible,
+.danger:focus-visible {
+  outline: 3px solid var(--nl-niro);
+  outline-offset: 3px;
+}

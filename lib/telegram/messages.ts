@@ -83,6 +83,23 @@ export const TEXT = {
     "• سجّل الدخول أو أنشئ حسابًا مجانيًا — ملفك وتقدّمك ينتقلان إليه كما هما.\n" +
     "• أو ادعُ زميلًا: كل زميل يرفع ملفه الأول يمنحك ملفًا إضافيًا 🎁",
 
+  // 🔗 Sharing a file by link (lib/share-links.ts).
+  fileShare:
+    "📚 شاركت معك ملفًا على NiroLearn — افتحه وادرس منه مباشرة داخل Telegram 👇",
+  shareLinkReady: (title: string, joined: number) =>
+    "📤 رابط مشاركة الملف\n\n" +
+    `«${title}»\n\n` +
+    "أرسله لزملائك: يفتحون الملف نفسه ويدرسون منه، ولكلٍّ تقدّمه الخاص. يمكنك إيقاف الرابط من صفحة الملف في أي وقت.\n\n" +
+    `👥 انضم حتى الآن: ${joined}`,
+  shareUnavailable: "لا يمكن مشاركة هذا الملف الآن.",
+  sharedQuestions: (title: string, owner: string | null) =>
+    `📄 ${owner ?? "زميلك"} شارك معك ملف أسئلة\n\n«${title}»\n\nافتحه وابدأ الحل — تقدّمك خاص بك.`,
+  sharedBook: (title: string, owner: string | null) =>
+    `📖 ${owner ?? "زميلك"} شارك معك كتابًا\n\n«${title}»\n\nافتحه وادرس من ملخصاته وبطاقاته.`,
+  sharedOwn: "هذا ملفك أنت 🙂 افتحه من هنا:",
+  sharedInvalid:
+    "⚠️ رابط المشاركة غير صالح أو أوقفه صاحبه. اطلب من زميلك رابطًا جديدًا.",
+
   // 🎁 Invites (lib/telegram/growth.ts).
   invite: (stats: { joined: number; available: number }) =>
     "🎁 ادعُ زملاءك واربح ملفات إضافية\n\n" +
@@ -195,6 +212,8 @@ export const LABELS = {
   shareContact: "📱 مشاركة رقمي",
   shareInvite: "📨 أرسل الدعوة لزملائك",
   inviteFriend: "🎁 ادعُ زميلًا واربح ملفًا",
+  shareFile: "📤 شارك الملف مع زملائك",
+  sendToFriends: "📨 أرسله لزملائك",
 } as const;
 
 // callback_data is limited to 64 bytes: a short tag + the upload's uuid.
@@ -202,6 +221,7 @@ export const CALLBACK = {
   kind: (uploadId: string, kind: DocumentKind) =>
     `k:${kind === "question_file" ? "q" : "b"}:${uploadId}`,
   retry: (uploadId: string) => `r:${uploadId}`,
+  share: (uploadId: string) => `s:${uploadId}`,
 };
 
 const UUID =
@@ -212,6 +232,7 @@ export function parseCallback(
 ):
   | { action: "kind"; uploadId: string; kind: DocumentKind }
   | { action: "retry"; uploadId: string }
+  | { action: "share"; uploadId: string }
   | null {
   const kind = new RegExp(`^k:([qb]):(${UUID})$`, "i").exec(data);
   if (kind) {
@@ -223,6 +244,8 @@ export function parseCallback(
   }
   const retry = new RegExp(`^r:(${UUID})$`, "i").exec(data);
   if (retry) return { action: "retry", uploadId: retry[1] };
+  const share = new RegExp(`^s:(${UUID})$`, "i").exec(data);
+  if (share) return { action: "share", uploadId: share[1] };
   return null;
 }
 
