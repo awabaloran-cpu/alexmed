@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { ChevronLeft } from "lucide-react";
 import type { DeckBreak } from "@/components/questions/QuestionList";
 import type { AdBreakPolicy } from "@/lib/ads/policy";
@@ -39,6 +39,21 @@ export default function AdBreak({
     });
   }, [bookId, policy.provider, info.afterPosition]);
 
+  // NiroLearn's own card: what fills the break when Google is not the
+  // provider — or has nothing to show.
+  const house = (
+    <Link
+      href="/pricing"
+      className={s.house}
+      onClick={() =>
+        record.mutate({ bookId, provider: "house", event: "click" })
+      }
+    >
+      <strong>NiroLearn Pro</strong>
+      <span>دراسة بلا إعلانات، وحدود أعلى لملفاتك وأسئلتك.</span>
+    </Link>
+  );
+
   return (
     <section className={s.break} aria-label="استراحة قصيرة">
       <div className={s.recap}>
@@ -57,18 +72,10 @@ export default function AdBreak({
             key={info.afterPosition}
             client={policy.adsense.client}
             slot={policy.adsense.slot}
+            fallback={house}
           />
         ) : (
-          <Link
-            href="/pricing"
-            className={s.house}
-            onClick={() =>
-              record.mutate({ bookId, provider: "house", event: "click" })
-            }
-          >
-            <strong>NiroLearn Pro</strong>
-            <span>دراسة بلا إعلانات، وحدود أعلى لملفاتك وأسئلتك.</span>
-          </Link>
+          house
         )}
       </div>
 
@@ -90,7 +97,48 @@ const ADSENSE_SCRIPT = "https://pagead2.googlesyndication.com/pagead/js/adsbygoo
 // A standard responsive AdSense display unit — Google's own tag, unmodified.
 // The loader script is added once per page, only when a unit is first shown,
 // so students who never see an ad never load it.
-function AdSenseUnit({ client, slot }: { client: string; slot: string }) {
+//
+// Google marks the unit data-ad-status="unfilled" when it has no ad for this
+// view (a new site, a low-inventory country), and an ad blocker leaves it
+// with no status at all. Either way an empty white box is the worst thing
+// to show in the middle of a study session, so `fallback` takes its place —
+// hiding an unfilled unit is the handling Google's own help documents.
+const NO_ANSWER_AFTER_MS = 4000;
+
+function AdSenseUnit({
+  client,
+  slot,
+  fallback,
+}: {
+  client: string;
+  slot: string;
+  fallback: ReactNode;
+}) {
+  const unit = useRef<HTMLModElement>(null);
+  const [empty, setEmpty] = useState(false);
+
+  useEffect(() => {
+    const ins = unit.current;
+    if (!ins) return;
+    const read = () => {
+      const status = ins.getAttribute("data-ad-status");
+      if (status) setEmpty(status === "unfilled");
+      return status;
+    };
+    const observer = new MutationObserver(read);
+    observer.observe(ins, {
+      attributes: true,
+      attributeFilter: ["data-ad-status"],
+    });
+    const timer = window.setTimeout(() => {
+      if (!read()) setEmpty(true);
+    }, NO_ANSWER_AFTER_MS);
+    return () => {
+      observer.disconnect();
+      window.clearTimeout(timer);
+    };
+  }, []);
+
   useEffect(() => {
     if (!document.querySelector("script[data-nl-adsense]")) {
       const script = document.createElement("script");
@@ -108,12 +156,16 @@ function AdSenseUnit({ client, slot }: { client: string; slot: string }) {
   }, [client]);
 
   return (
-    <ins
-      className={`adsbygoogle ${s.unit}`}
-      data-ad-client={client}
-      data-ad-slot={slot}
-      data-ad-format="auto"
-      data-full-width-responsive="true"
-    />
+    <>
+      <ins
+        ref={unit}
+        className={`adsbygoogle ${s.unit} ${empty ? s.unitEmpty : ""}`}
+        data-ad-client={client}
+        data-ad-slot={slot}
+        data-ad-format="auto"
+        data-full-width-responsive="true"
+      />
+      {empty ? fallback : null}
+    </>
   );
 }

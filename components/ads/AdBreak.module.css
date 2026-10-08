@@ -42,19 +42,31 @@
   width: 100%;
   min-height: 100px;
 }
+/* Google had nothing to show (or the unit was blocked): the empty box is
+   taken out and NiroLearn's own card stands in. !important because the
+   AdSense script writes inline sizes onto the element. */
+.unitEmpty {
+  display: none !important;
+}
 .house {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  padding: 14px;
+  justify-content: center;
+  gap: 6px;
+  min-height: 96px;
+  padding: 16px;
   border-radius: var(--nl-r-md);
   background: var(--nl-marker-soft);
   color: var(--nl-ink);
   text-decoration: none;
 }
+.house strong {
+  font-size: 17px;
+}
 .house span {
   color: var(--nl-ink-2);
   font-size: 14.5px;
+  line-height: 1.7;
 }
 /* Kept clear of the ad: its own row, full width, extra space above. */
 .continue {
