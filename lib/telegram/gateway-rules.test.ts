@@ -120,7 +120,7 @@ describe("ad policy", () => {
     ).toEqual({ enabled: false });
   });
 
-  it("by default only files that came through Telegram carry ads", () => {
+  it("with the scope narrowed to Telegram, only files that came through the bot carry ads", () => {
     expect(resolveAdBreakPolicy({ plan: free, source: "web", config: on })).toEqual({ enabled: false });
     expect(resolveAdBreakPolicy({ plan: free, source: "web", config: { ...on, scope: "all" } }).enabled).toBe(true);
   });
@@ -138,7 +138,8 @@ describe("ad policy", () => {
   });
 
   it("reads its configuration strictly", () => {
-    expect(readAdConfig({})).toMatchObject({ enabled: false, scope: "telegram", questionsPerBreak: 10 });
+    expect(readAdConfig({})).toMatchObject({ enabled: false, scope: "all", questionsPerBreak: 10 });
+    expect(readAdConfig({ ADS_SCOPE: "telegram" }).scope).toBe("telegram");
     const config = readAdConfig({
       ADS_ENABLED: "true",
       ADS_SCOPE: "all",

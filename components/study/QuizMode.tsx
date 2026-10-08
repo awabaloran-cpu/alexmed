@@ -14,6 +14,7 @@ import {
   X,
 } from "lucide-react";
 import StudyShell from "./StudyShell";
+import { useAdBreak } from "@/components/ads/useAdBreak";
 import { NIRO_NAME } from "@/lib/niro";
 import StudyAiSheet, { type AiRequest, type AiTarget } from "./StudyAiSheet";
 import type { McqSubmitResult } from "@/components/McqCard";
@@ -53,6 +54,7 @@ export default function QuizMode({
   onSubmit,
   onGenerate,
   generating,
+  adBookId,
 }: {
   title: string;
   subtitle?: string;
@@ -64,8 +66,12 @@ export default function QuizMode({
   // Absent for a shared (read-only) Study Pack — generation is owner-only.
   onGenerate?: () => void;
   generating: boolean;
+  // The book these questions belong to, for ad breaks (lib/ads). Absent =
+  // never an ad break.
+  adBookId?: string;
 }) {
   const [index, setIndex] = useState(0);
+  const ads = useAdBreak(adBookId);
   const [answers, setAnswers] = useState<Record<string, Answer>>({});
   // "تلميح" = remove one wrong choice (up to all-but-two). The MCQs have no
   // stored hint text, and this never gives the answer away.
@@ -188,6 +194,16 @@ export default function QuizMode({
   const answeredCount = Object.keys(answers).length;
   const removed = mcq ? (eliminated[mcq.id] ?? []) : [];
 
+  // 📣 A pause between groups of questions (free plans): the question and
+  // its answer bar are replaced by the break until the student continues.
+  if (ads.node) {
+    return (
+      <StudyShell title={title} subtitle={subtitle} onBack={onBack}>
+        <div style={{ width: "100%", maxWidth: 560, margin: "0 auto", padding: 16 }}>{ads.node}</div>
+      </StudyShell>
+    );
+  }
+
   return (
     <StudyShell
       title={title}
@@ -241,7 +257,11 @@ export default function QuizMode({
               <button
                 type="button"
                 className="quiz-next-button"
-                onClick={() => setIndex(i => i + 1)}
+                onClick={() =>
+                  ads.advance(index + 1, mcqs.length, () =>
+                    setIndex(i => i + 1)
+                  )
+                }
               >
                 {answer ? (
                   <>التالي</>

@@ -1,6 +1,7 @@
 // ✈️ Everything the bot says, in one place. Plain text (the client sends no
 // parse_mode), Arabic first, Niro's voice: short, warm, never a bare "Error".
 import type { InlineButton, ReplyMarkup } from "./api";
+import { miniAppEnabled, webUrl } from "./config";
 import type { DocumentKind } from "./detect";
 
 export const BUTTONS = {
@@ -11,15 +12,29 @@ export const BUTTONS = {
   openSite: "🌐 فتح NiroLearn",
 } as const;
 
-export const MAIN_KEYBOARD: ReplyMarkup = {
-  keyboard: [
-    [{ text: BUTTONS.uploadQuestions }, { text: BUTTONS.uploadBook }],
-    [{ text: BUTTONS.myFiles }, { text: BUTTONS.howItWorks }],
-    [{ text: BUTTONS.openSite }],
-  ],
-  resize_keyboard: true,
-  is_persistent: true,
-};
+// The keyboard under the message box. The command menu (/start, /files,
+// /help) stays on Telegram's own "menu" button, so the way into the app is
+// this keyboard's last button: with the Mini App on it opens NiroLearn
+// inside Telegram; otherwise it sends its text and the bot answers with a
+// link.
+export function mainKeyboard(): ReplyMarkup {
+  return {
+    keyboard: [
+      [{ text: BUTTONS.uploadQuestions }, { text: BUTTONS.uploadBook }],
+      [{ text: BUTTONS.myFiles }, { text: BUTTONS.howItWorks }],
+      [
+        miniAppEnabled()
+          ? {
+              text: BUTTONS.openSite,
+              web_app: { url: webUrl("/tg?to=%2Fsubjects") },
+            }
+          : { text: BUTTONS.openSite },
+      ],
+    ],
+    resize_keyboard: true,
+    is_persistent: true,
+  };
+}
 
 export function urlButton(text: string, url: string): {
   inline_keyboard: InlineButton[][];

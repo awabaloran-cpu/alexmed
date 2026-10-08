@@ -507,6 +507,7 @@ export default function BookStudyPage() {
   if (tool === "mcqs") {
     return (
       <QuizMode
+        adBookId={bookId}
         title={title}
         subtitle={subtitle}
         notice={notice}

@@ -29,7 +29,7 @@ import {
   BUTTONS,
   filePath,
   LABELS,
-  MAIN_KEYBOARD,
+  mainKeyboard,
   parseCallback,
   TEXT,
   urlButton,
@@ -226,7 +226,7 @@ async function handleLink(
     languageCode: from.language_code,
   });
   if (outcome.ok) {
-    await sendMessage(chatId, TEXT.linked, MAIN_KEYBOARD);
+    await sendMessage(chatId, TEXT.linked, mainKeyboard());
     return;
   }
   await sendMessage(
@@ -268,7 +268,7 @@ async function handleMessage(updateId: number, message: TelegramMessage) {
   }
 
   if (start) {
-    await sendMessage(chatId, TEXT.welcome, MAIN_KEYBOARD);
+    await sendMessage(chatId, TEXT.welcome, mainKeyboard());
     // A guest is shown, once per /start, how to keep their files.
     if (context.user.isGuest) {
       await sendMessage(
@@ -286,7 +286,7 @@ async function handleMessage(updateId: number, message: TelegramMessage) {
   } else if (text === BUTTONS.myFiles || /^\/files\b/i.test(text)) {
     await handleFilesList(context, chatId);
   } else if (text === BUTTONS.howItWorks || /^\/help\b/i.test(text)) {
-    await sendMessage(chatId, TEXT.howItWorks, MAIN_KEYBOARD);
+    await sendMessage(chatId, TEXT.howItWorks, mainKeyboard());
   } else if (text === BUTTONS.openSite) {
     await sendMessage(
       chatId,
@@ -294,7 +294,7 @@ async function handleMessage(updateId: number, message: TelegramMessage) {
       await openSiteButton(context, LABELS.openSite, "/subjects")
     );
   } else {
-    await sendMessage(chatId, TEXT.unknownMessage, MAIN_KEYBOARD);
+    await sendMessage(chatId, TEXT.unknownMessage, mainKeyboard());
   }
 }
 

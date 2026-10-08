@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import StudyShell from "@/components/study/StudyShell";
+import { useAdBreak } from "@/components/ads/useAdBreak";
 import ExamFocusCard from "@/components/exam-focus/ExamFocusCard";
 import ExamFocusProgress from "@/components/exam-focus/ExamFocusProgress";
 import {
@@ -174,12 +175,20 @@ export default function ExamFocusPage() {
     fetchNextPage,
   ]);
 
+  // 📣 A pause after every group of cards on a free plan (lib/ads).
+  const { advance: advanceWithAds, node: adNode } = useAdBreak(bookId);
+  const adShowing = adNode !== null;
   const go = useCallback(
     (dir: "next" | "previous") => {
-      setDirection(dir);
-      setIndex(current => stepIndex(current, dir, total));
+      if (adShowing) return; // the break's own button continues
+      const move = () => {
+        setDirection(dir);
+        setIndex(current => stepIndex(current, dir, total));
+      };
+      if (dir === "next") advanceWithAds(index + 1, total, move);
+      else move();
     },
-    [total]
+    [total, index, adShowing, advanceWithAds]
   );
 
   useEffect(() => {
@@ -562,7 +571,9 @@ export default function ExamFocusPage() {
             setDragX(0);
           }}
         >
-          {cardsQuery.isLoading || (!card && total > 0) ? (
+          {adNode ? (
+            <div className="ef-card-wrap">{adNode}</div>
+          ) : cardsQuery.isLoading || (!card && total > 0) ? (
             <div className="study-empty">
               <Loader2 size={26} className="spin" aria-hidden="true" />
             </div>

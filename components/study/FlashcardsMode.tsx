@@ -14,6 +14,7 @@ import {
   X,
 } from "lucide-react";
 import StudyShell from "./StudyShell";
+import { useAdBreak } from "@/components/ads/useAdBreak";
 import NiroAvatar from "@/components/niro/NiroAvatar";
 import { NIRO_NAME } from "@/lib/niro";
 import StudyAiSheet, { type AiRequest, type AiTarget } from "./StudyAiSheet";
@@ -79,6 +80,8 @@ export default function FlashcardsMode({
   // Snapshot so a refetch mid-session (after each rating) can't reshuffle it.
   const [queue, setQueue] = useState<StudyCard[]>(cards);
   const [index, setIndex] = useState(0);
+  // 📣 A pause after every group of cards on a free plan (lib/ads).
+  const ads = useAdBreak(bookId);
   const [flipped, setFlipped] = useState(false);
   const [lang, setLang] = useState<"en" | "ar">("en");
   const [ratings, setRatings] = useState<Record<string, Rating>>({});
@@ -114,7 +117,7 @@ export default function FlashcardsMode({
     onRate(card.id, rating);
     setRatings(current => ({ ...current, [card.id]: rating }));
     setFlipped(false);
-    setIndex(i => i + 1);
+    ads.advance(index + 1, queue.length, () => setIndex(i => i + 1));
   }
 
   function restart(onlyLearning: boolean) {
@@ -188,6 +191,7 @@ export default function FlashcardsMode({
       notice={notice}
       footer={
         !finished &&
+        !ads.node &&
         (flipped ? (
           <div className="flash-ratings">
             {RATINGS.map(option => (
@@ -277,7 +281,9 @@ export default function FlashcardsMode({
         </div>
       </div>
 
-      {finished ? (
+      {ads.node ? (
+        <div style={{ width: "100%", maxWidth: 560, margin: "0 auto", padding: 16 }}>{ads.node}</div>
+      ) : finished ? (
         <div className="quiz-result">
           <CircleCheck size={36} />
           <h2>انتهت المراجعة 🎉</h2>

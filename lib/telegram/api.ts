@@ -23,7 +23,9 @@ export type InlineButton =
 export type ReplyMarkup =
   | { inline_keyboard: InlineButton[][] }
   | {
-      keyboard: { text: string }[][];
+      // A plain button sends its text as a message; a web_app button opens
+      // the page inside Telegram instead.
+      keyboard: { text: string; web_app?: { url: string } }[][];
       resize_keyboard?: boolean;
       is_persistent?: boolean;
     };

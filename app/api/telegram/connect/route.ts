@@ -7,7 +7,7 @@ import {
   isTelegramGuest,
 } from "@/lib/telegram/accounts";
 import { sendMessage } from "@/lib/telegram/api";
-import { MAIN_KEYBOARD, TEXT } from "@/lib/telegram/messages";
+import { mainKeyboard, TEXT } from "@/lib/telegram/messages";
 import { isSameOriginPost } from "@/lib/telegram/web-session";
 
 // ✈️ The buttons of /connect/<token> post here.
@@ -77,7 +77,7 @@ export async function POST(request: Request) {
     if (!outcome.ok) return go(`${page}?error=${outcome.reason}`);
     if (outcome.chatId) {
       // The link is done either way; a failed message must not undo it.
-      await sendMessage(outcome.chatId, TEXT.linked, MAIN_KEYBOARD).catch(
+      await sendMessage(outcome.chatId, TEXT.linked, mainKeyboard()).catch(
         error => console.error("[Telegram] Could not announce the link", error)
       );
     }

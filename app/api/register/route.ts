@@ -12,7 +12,7 @@ import {
 } from "@/lib/telegram/accounts";
 import { sendMessage } from "@/lib/telegram/api";
 import { telegramEnabled } from "@/lib/telegram/config";
-import { MAIN_KEYBOARD, TEXT } from "@/lib/telegram/messages";
+import { mainKeyboard, TEXT } from "@/lib/telegram/messages";
 import { revokeLinkTokens } from "@/lib/telegram/tokens";
 
 // Step 3 of phone sign-up (RegisterForm): creates the account from a phone
@@ -47,7 +47,7 @@ async function announceAccountReady(userId: string) {
   try {
     const account = await findTelegramAccountByUserId(userId);
     if (account) {
-      await sendMessage(account.account.chatId, TEXT.accountReady, MAIN_KEYBOARD);
+      await sendMessage(account.account.chatId, TEXT.accountReady, mainKeyboard());
     }
   } catch (error) {
     console.error("[Telegram] Could not announce the new account", error);

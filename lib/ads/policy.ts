@@ -16,8 +16,8 @@ export type AdSource = "telegram" | "web";
 export type AdConfig = {
   // Master switch (ADS_ENABLED). Off = no ad anywhere.
   enabled: boolean;
-  // "telegram": only files that arrived through the Telegram bot;
-  // "all": every free student's question files.
+  // "all" (the default): every free student's questions, flashcards and
+  // Exam Focus cards. "telegram": only files that arrived through the bot.
   scope: "telegram" | "all";
   questionsPerBreak: number;
   adsenseClient: string | null;
@@ -89,7 +89,7 @@ export function readAdConfig(env: Record<string, string | undefined>): AdConfig 
   const slot = env.ADSENSE_SLOT_QUESTION_BREAK?.trim() ?? "";
   return {
     enabled: env.ADS_ENABLED === "true",
-    scope: env.ADS_SCOPE === "all" ? "all" : "telegram",
+    scope: env.ADS_SCOPE === "telegram" ? "telegram" : "all",
     questionsPerBreak: Number(env.ADS_QUESTIONS_PER_BREAK) || DEFAULT_QUESTIONS_PER_BREAK,
     adsenseClient: ADSENSE_CLIENT.test(client) ? client : null,
     adsenseSlot: ADSENSE_SLOT.test(slot) ? slot : null,

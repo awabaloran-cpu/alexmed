@@ -87,9 +87,11 @@ button to `/tg?to=<path>` (`lib/telegram/links.ts`, `openButton`):
   new tab instead. `/tg` is the only page whose headers allow that frame
   (`next.config.ts`).
 - `TELEGRAM_MINI_APP=false` turns every button back into an ordinary link.
-- The chat's menu button is set with `setChatMenuButton` (type `web_app`,
-  url `https://<domain>/tg`); the command list and descriptions with
-  `setMyCommands` / `setMyDescription`. These live in Telegram, not in the
+- The chat's menu button stays Telegram's command list (`setChatMenuButton`
+  type `commands`; the owner wanted the commands kept). The way into the app
+  is the last button of the bot's keyboard, a `web_app` keyboard button
+  (`mainKeyboard()`), sent with `/start`. The command list and descriptions
+  are set with `setMyCommands` / `setMyDescription`. These live in Telegram, not in the
   code: after creating a new bot they must be set again.
 - **Verified:** the signature check and the session route by tests. **Not
   verified from here:** the real launch on a phone.
@@ -156,10 +158,17 @@ bounds how many at once), and the existing extraction worker loads it again.
 ## Ads
 
 - Decided only in `lib/ads/policy.ts`: free plans only, off unless
-  `ADS_ENABLED=true`, by default only on files that came through Telegram
-  (`ADS_SCOPE`), one break after every `ADS_QUESTIONS_PER_BREAK` questions.
-- The question viewer only exposes a `renderBreak` slot; it knows nothing
-  about ads. Doctor sets pass no slot and are unchanged.
+  `ADS_ENABLED=true`, one break after every `ADS_QUESTIONS_PER_BREAK` cards
+  (`ADS_SCOPE=telegram` narrows it to files that came through the bot).
+- Where a break can appear (2026-10-08): question files
+  (`QuestionList`'s `renderBreak` slot), and in كتبي the quiz, the
+  flashcards and Exam Focus (`components/ads/useAdBreak.tsx`: the viewer
+  calls `advance()` when moving on and renders `node` in place of its
+  card). No viewer knows what a break contains. Doctor sets, مِرآة and the
+  admin library have none.
+- Site ownership for AdSense: with `ADSENSE_CLIENT_ID` set the site serves
+  `/ads.txt` and a `google-adsense-account` meta tag on every page. The
+  AdSense script itself is loaded only when a break is shown.
 - With `ADSENSE_CLIENT_ID` + `ADSENSE_SLOT_QUESTION_BREAK` the break shows a
   standard responsive AdSense display unit and `/ads.txt` is served.
   Otherwise it shows NiroLearn's own card.
