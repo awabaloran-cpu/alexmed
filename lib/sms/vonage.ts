@@ -7,8 +7,63 @@
 // VONAGE_BRAND (the name shown in the SMS, default "NiroLearn"),
 // VONAGE_LOCALE (message language, default "ar-xa") and VONAGE_API_BASE
 // (tests / local QA only). Secrets stay server-side.
+//
+// Application auth (needed for WhatsApp from the account's OWN number): a
+// WhatsApp Business number is linked to a Vonage *application*, and Vonage
+// only knows which application a request belongs to when it is signed with
+// that application's key. With VONAGE_APPLICATION_ID + VONAGE_PRIVATE_KEY
+// set, every Verify call carries a short-lived JWT instead of Basic auth.
+import { createSign, randomUUID } from "node:crypto";
 
 export type VonageFetch = typeof fetch;
+
+const base64url = (value: string | Buffer) =>
+  Buffer.from(value).toString("base64url");
+
+// The application's private key as PEM. Dashboards and .env files often
+// store it on one line with literal "\n".
+function applicationKey(): { id: string; pem: string } | null {
+  const id = process.env.VONAGE_APPLICATION_ID?.trim();
+  const pem = process.env.VONAGE_PRIVATE_KEY?.replace(/\\n/g, "\n").trim();
+  return id && pem ? { id, pem } : null;
+}
+
+// A Vonage application JWT (RS256), valid for five minutes.
+function applicationJwt(app: { id: string; pem: string }): string {
+  const now = Math.floor(Date.now() / 1000);
+  const unsigned =
+    base64url(JSON.stringify({ alg: "RS256", typ: "JWT" })) +
+    "." +
+    base64url(
+      JSON.stringify({
+        application_id: app.id,
+        iat: now,
+        exp: now + 300,
+        jti: randomUUID(),
+      })
+    );
+  const signature = createSign("RSA-SHA256").update(unsigned).sign(app.pem);
+  return `${unsigned}.${base64url(signature)}`;
+}
+
+// What the last refusal of the WhatsApp workflow was — kept in memory so an
+// admin can see WHY codes are going out by SMS (lib/trpc/systemRouter.ts)
+// without digging through server logs. No phone number is ever in it.
+let lastChannelRefusal: { at: string; status: number; detail: string } | null =
+  null;
+
+export function verifyDiagnostics() {
+  return {
+    channels: verifyChannels(),
+    channelTimeoutSeconds: channelTimeoutSeconds(),
+    auth: applicationKey() ? ("application_jwt" as const) : ("basic" as const),
+    whatsappFromConfigured: !!process.env.VONAGE_WHATSAPP_FROM?.replace(
+      /\D/g,
+      ""
+    ),
+    lastChannelRefusal,
+  };
+}
 
 export class SmsNotConfiguredError extends Error {
   constructor() {
@@ -92,20 +147,26 @@ function workflowFor(channels: VerifyChannel[], to: string) {
 function config() {
   const key = process.env.VONAGE_API_KEY;
   const secret = process.env.VONAGE_API_SECRET;
-  if (!key || !secret) throw new SmsNotConfiguredError();
+  const app = applicationKey();
+  if (!app && (!key || !secret)) throw new SmsNotConfiguredError();
   return {
     base: (process.env.VONAGE_API_BASE || "https://api.nexmo.com").replace(
       /\/$/,
       ""
     ),
-    auth: `Basic ${Buffer.from(`${key}:${secret}`).toString("base64")}`,
+    auth: app
+      ? `Bearer ${applicationJwt(app)}`
+      : `Basic ${Buffer.from(`${key}:${secret}`).toString("base64")}`,
     brand: process.env.VONAGE_BRAND || "NiroLearn",
     locale: process.env.VONAGE_LOCALE || "ar-xa",
   };
 }
 
 export function isSmsConfigured(): boolean {
-  return Boolean(process.env.VONAGE_API_KEY && process.env.VONAGE_API_SECRET);
+  return Boolean(
+    applicationKey() ||
+      (process.env.VONAGE_API_KEY && process.env.VONAGE_API_SECRET)
+  );
 }
 
 async function errorType(response: Response): Promise<string> {
@@ -115,6 +176,24 @@ async function errorType(response: Response): Promise<string> {
   } | null;
   // Vonage errors are RFC 7807: `type` is a URL ending in the error name.
   return `${body?.type ?? ""} ${body?.title ?? ""}`.toLowerCase();
+}
+
+// The whole problem description (title, detail, which parameter), for the
+// logs and the admin diagnostics. Vonage's error bodies describe the
+// request, not the person: no phone number is echoed in them.
+async function errorDetail(response: Response): Promise<string> {
+  const body = (await response.json().catch(() => null)) as {
+    title?: string;
+    detail?: string;
+    invalid_parameters?: { name?: string; reason?: string }[];
+  } | null;
+  const parameters = (body?.invalid_parameters ?? [])
+    .map(parameter => `${parameter.name}: ${parameter.reason}`)
+    .join("; ");
+  return [body?.title, body?.detail, parameters]
+    .filter(Boolean)
+    .join(" — ")
+    .slice(0, 400);
 }
 
 // `e164` is "+9627…"; Vonage wants the digits without "+".
@@ -153,10 +232,16 @@ export async function startVerification(
     response.status !== 401 &&
     response.status !== 403
   ) {
+    const detail = await errorDetail(response.clone());
+    lastChannelRefusal = {
+      at: new Date().toISOString(),
+      status: response.status,
+      detail,
+    };
     console.error(
       "[SMS] Vonage refused the WhatsApp workflow, falling back to SMS only",
       response.status,
-      await errorType(response.clone())
+      detail
     );
     used = ["sms"];
     lifetimeSeconds = SMS_CODE_TTL_SECONDS;

@@ -1,5 +1,6 @@
 // Vonage Verify v2 client — request shape, auth, and how every provider
 // answer maps to our outcomes. A fake fetch stands in; nothing is sent.
+import { createVerify, generateKeyPairSync } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   cancelVerification,
@@ -8,6 +9,7 @@ import {
   SmsNotConfiguredError,
   startVerification,
   verifyChannels,
+  verifyDiagnostics,
 } from "./vonage";
 
 function reply(status: number, body: unknown) {
@@ -130,6 +132,73 @@ describe("startVerification", () => {
         expect(fetchImpl).toHaveBeenCalledTimes(1);
       }
     });
+  });
+
+  it("signs requests with the application's key when one is configured, and reports why WhatsApp was refused", async () => {
+    const { privateKey, publicKey } = generateKeyPairSync("rsa", {
+      modulusLength: 2048,
+    });
+    const before = { ...process.env };
+    process.env.VONAGE_APPLICATION_ID = "app-123";
+    // As dashboards store it: one line, literal "\n".
+    process.env.VONAGE_PRIVATE_KEY = privateKey
+      .export({ type: "pkcs8", format: "pem" })
+      .toString()
+      .replace(/\n/g, "\\n");
+    process.env.VONAGE_VERIFY_CHANNELS = "whatsapp,sms";
+    process.env.VONAGE_WHATSAPP_FROM = "962790000000";
+    try {
+      const fetchImpl = vi
+        .fn()
+        .mockResolvedValueOnce(
+          reply(422, {
+            title: "Invalid sender",
+            detail: "The from number is not linked to this application",
+            invalid_parameters: [{ name: "from", reason: "not a WhatsApp number" }],
+          })
+        )
+        .mockResolvedValueOnce(reply(202, { request_id: "req-5" }));
+      const result = await startVerification("+962791234567", fetchImpl);
+      expect(result).toMatchObject({ ok: true, channel: "sms" });
+
+      const header = (
+        (fetchImpl.mock.calls[0] as [string, RequestInit])[1].headers as Record<string, string>
+      ).Authorization;
+      expect(header).toMatch(/^Bearer [\w-]+\.[\w-]+\.[\w-]+$/);
+      const [head, payload, signature] = header.slice(7).split(".");
+      expect(JSON.parse(Buffer.from(payload, "base64url").toString())).toMatchObject({
+        application_id: "app-123",
+      });
+      expect(
+        createVerify("RSA-SHA256")
+          .update(`${head}.${payload}`)
+          .verify(publicKey, Buffer.from(signature, "base64url"))
+      ).toBe(true);
+
+      const diagnostics = verifyDiagnostics();
+      expect(diagnostics).toMatchObject({
+        channels: ["whatsapp", "sms"],
+        auth: "application_jwt",
+        whatsappFromConfigured: true,
+      });
+      expect(diagnostics.lastChannelRefusal).toMatchObject({
+        status: 422,
+        detail:
+          "Invalid sender — The from number is not linked to this application — from: not a WhatsApp number",
+      });
+      // Settings and Vonage's words only: no number, no key.
+      expect(JSON.stringify(diagnostics)).not.toMatch(/9627|PRIVATE KEY/);
+    } finally {
+      for (const key of [
+        "VONAGE_APPLICATION_ID",
+        "VONAGE_PRIVATE_KEY",
+        "VONAGE_VERIFY_CHANNELS",
+        "VONAGE_WHATSAPP_FROM",
+      ]) {
+        if (before[key] === undefined) delete process.env[key];
+        else process.env[key] = before[key];
+      }
+    }
   });
 
   it("ignores unknown channels and falls back to SMS only", () => {

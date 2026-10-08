@@ -1,5 +1,6 @@
 import { z } from "zod";
-import { publicProcedure, router } from "./trpc";
+import { verifyDiagnostics } from "../sms/vonage";
+import { adminProcedure, publicProcedure, router } from "./trpc";
 
 export const systemRouter = router({
   health: publicProcedure
@@ -11,4 +12,10 @@ export const systemRouter = router({
     .query(() => ({
       ok: true,
     })),
+
+  // Admin only: how sign-up codes are configured to be sent, and — when
+  // Vonage refused the WhatsApp workflow and the code went out by SMS
+  // instead — what Vonage said. Settings and the provider's error text
+  // only; never a secret or a phone number.
+  verifyDiagnostics: adminProcedure.query(() => verifyDiagnostics()),
 });
