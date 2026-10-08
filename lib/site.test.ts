@@ -40,6 +40,7 @@ describe("site constants", () => {
       "/how-to-study",
       "/telegram-bot",
       "/past-exam-questions",
+      "/solve-questions",
       "/pricing",
       "/register",
       "/contact",

@@ -3,6 +3,7 @@ import { INDEXABLE_LEARN_ARTICLES, learnPath } from "@/content/learn/articles";
 import {
   BOT_PAGE_PATH,
   PAST_QUESTIONS_PATH,
+  SOLVE_QUESTIONS_PATH,
   PUBLIC_BASE_PATHS,
   SITE_URL,
   TOOL_PAGES,
@@ -31,7 +32,8 @@ export default function sitemap(): MetadataRoute.Sitemap {
               ? 0.8
               : TOOL_PAGES.some(page => page.href === path) ||
                   path === BOT_PAGE_PATH ||
-                  path === PAST_QUESTIONS_PATH
+                  path === PAST_QUESTIONS_PATH ||
+                  path === SOLVE_QUESTIONS_PATH
                 ? 0.9
                 : 0.5,
   }));

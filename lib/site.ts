@@ -36,6 +36,8 @@ export const BOT_PAGE_PATH = "/telegram-bot";
 // The page for students who study from past-exam question files
 // (app/past-exam-questions). Public and indexable, like the bot's page.
 export const PAST_QUESTIONS_PATH = "/past-exam-questions";
+// The page for "solve my question file with AI" (app/solve-questions).
+export const SOLVE_QUESTIONS_PATH = "/solve-questions";
 
 export const PUBLIC_BASE_PATHS = [
   "/",
@@ -45,6 +47,7 @@ export const PUBLIC_BASE_PATHS = [
   "/how-to-study",
   BOT_PAGE_PATH,
   PAST_QUESTIONS_PATH,
+  SOLVE_QUESTIONS_PATH,
   "/pricing",
   "/register",
   "/contact",

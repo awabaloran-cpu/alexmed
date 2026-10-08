@@ -7,6 +7,7 @@ import NiroSpark from "@/components/niro/NiroSpark";
 import {
   BOT_PAGE_PATH,
   PAST_QUESTIONS_PATH,
+  SOLVE_QUESTIONS_PATH,
   SITE_NAME,
   TOOL_PAGES,
   type ToolPath,
@@ -46,7 +47,10 @@ function SiteHeader({ current }: { current?: string }) {
           <span>{SITE_NAME}</span>
         </Link>
         <nav aria-label="أدوات NiroLearn" className={s.nav}>
-          <Link href="/learn" aria-current={current === "/learn" ? "page" : undefined}>
+          <Link
+            href="/learn"
+            aria-current={current === "/learn" ? "page" : undefined}
+          >
             Learn
           </Link>
           {TOOL_PAGES.map(page => (
@@ -101,6 +105,7 @@ function SiteFooter() {
             <Link href="/learn">Learn</Link>
             <Link href={BOT_PAGE_PATH}>بوت Telegram</Link>
             <Link href={PAST_QUESTIONS_PATH}>أسئلة سنوات سابقة</Link>
+            <Link href={SOLVE_QUESTIONS_PATH}>حل أسئلة بالذكاء الاصطناعي</Link>
             <Link href="/pricing">الأسعار</Link>
             <Link href="/register">إنشاء حساب</Link>
             <Link href="/login">تسجيل الدخول</Link>
