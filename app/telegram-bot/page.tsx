@@ -151,18 +151,14 @@ export default function TelegramBotPage() {
         </div>
       </section>
 
-      <Section
-        id="how"
-        title="كيف يعمل؟"
-        intro="ثلاث خطوات، كلها داخل تلغرام."
-      >
+      <Section id="how" title="كيف يعمل؟" intro="ثلاث خطوات، كلها داخل تلغرام.">
         <ol className={b.steps}>
           <li>
             <strong>أرسل الملف</strong>
             <p>
               افتح البوت واضغط «ابدأ»، ثم أرسل ملف PDF:{" "}
-              <Link href={PAST_QUESTIONS_PATH}>ملف أسئلة سنوات سابقة</Link>،
-              أو كتابًا، أو محاضرة.
+              <Link href={PAST_QUESTIONS_PATH}>ملف أسئلة سنوات سابقة</Link>، أو
+              كتابًا، أو محاضرة.
             </p>
           </li>
           <li>
@@ -175,8 +171,8 @@ export default function TelegramBotPage() {
           <li>
             <strong>ابدأ المذاكرة</strong>
             <p>
-              يصلك زر يفتح ملفك مباشرة. تقدّمك يُحفظ، فتكمل من حيث توقفت في
-              أي وقت.
+              يصلك زر يفتح ملفك مباشرة. تقدّمك يُحفظ، فتكمل من حيث توقفت في أي
+              وقت.
             </p>
           </li>
         </ol>
@@ -186,8 +182,8 @@ export default function TelegramBotPage() {
         <div className={s.prose}>
           <ul>
             <li>
-              <strong>اختبار تفاعلي</strong>: سؤال واحد في كل مرة، تختار
-              الإجابة فتعرف فورًا إن كانت صحيحة.
+              <strong>اختبار تفاعلي</strong>: سؤال واحد في كل مرة، تختار الإجابة
+              فتعرف فورًا إن كانت صحيحة.
             </li>
             <li>
               <strong>شرح بالعربي</strong> لكل إجابة، مع إبقاء المصطلحات
@@ -202,8 +198,8 @@ export default function TelegramBotPage() {
               وخياراته عند الحاجة.
             </li>
             <li>
-              <strong>الإجابة المذكورة في الملف</strong> هي المعتمدة. إن لم
-              يذكر الملف إجابة، تظهر إجابة مقترحة وعليها علامة أنها من الذكاء
+              <strong>الإجابة المذكورة في الملف</strong> هي المعتمدة. إن لم يذكر
+              الملف إجابة، تظهر إجابة مقترحة وعليها علامة أنها من الذكاء
               الاصطناعي.
             </li>
           </ul>
@@ -240,7 +236,7 @@ export default function TelegramBotPage() {
       </Section>
 
       <FaqSection items={FAQ} />
-      <RelatedPages />
+      <RelatedPages current={BOT_PAGE_PATH} />
       <section className={s.cta} aria-labelledby="cta-title">
         <div>
           <h2 id="cta-title">جرّب بملفك الآن</h2>

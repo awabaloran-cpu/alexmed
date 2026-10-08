@@ -225,7 +225,7 @@ export default function SolveQuestionsPage() {
       </Section>
 
       <FaqSection items={FAQ} />
-      <RelatedPages />
+      <RelatedPages current={SOLVE_QUESTIONS_PATH} />
       <section className={s.cta} aria-labelledby="cta-title">
         <div>
           <h2 id="cta-title">جرّب بملف الأسئلة الذي معك</h2>

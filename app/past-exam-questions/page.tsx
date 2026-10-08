@@ -154,8 +154,8 @@ export default function PastExamQuestionsPage() {
             </Link>
           </div>
           <p className={s.fineprint}>
-            أول ملف عبر البوت مجانًا وبدون تسجيل. NiroLearn لا ينشر ملفات
-            أسئلة: أنت ترفع ملفك.
+            أول ملف عبر البوت مجانًا وبدون تسجيل. NiroLearn لا ينشر ملفات أسئلة:
+            أنت ترفع ملفك.
           </p>
         </div>
         <div className={s.toolHeroFigure}>
@@ -179,8 +179,8 @@ export default function PastExamQuestionsPage() {
           <li>
             <strong>تُستخرج الأسئلة</strong>
             <p>
-              كل سؤال بخياراته والإجابة المذكورة في الملف. الملف النصي يجهز
-              خلال ثوانٍ، والمصوّر يأخذ أطول.
+              كل سؤال بخياراته والإجابة المذكورة في الملف. الملف النصي يجهز خلال
+              ثوانٍ، والمصوّر يأخذ أطول.
             </p>
           </li>
           <li>
@@ -197,8 +197,8 @@ export default function PastExamQuestionsPage() {
         <div className={s.prose}>
           <p>
             حين تقرأ السؤال وتحته إجابته، تشعر أنك تعرفه. الامتحان يسألك دون
-            إجابة أمامك. حلّ السؤال قبل رؤية إجابته هو ما يثبّت المعلومة،
-            وهذا ما يفعله الاختبار التفاعلي:
+            إجابة أمامك. حلّ السؤال قبل رؤية إجابته هو ما يثبّت المعلومة، وهذا
+            ما يفعله الاختبار التفاعلي:
           </p>
           <ul>
             <li>
@@ -206,8 +206,8 @@ export default function PastExamQuestionsPage() {
               السؤال مرور القراءة.
             </li>
             <li>
-              <strong>شرح بالعربي</strong> لكل إجابة: لماذا هي الصحيحة، مع
-              إبقاء المصطلحات الإنجليزية كما هي.
+              <strong>شرح بالعربي</strong> لكل إجابة: لماذا هي الصحيحة، مع إبقاء
+              المصطلحات الإنجليزية كما هي.
             </li>
             <li>
               <strong>«اربطها»</strong>: جملة قصيرة تربط مفتاح السؤال بإجابته،
@@ -266,7 +266,7 @@ export default function PastExamQuestionsPage() {
       </Section>
 
       <FaqSection items={FAQ} />
-      <RelatedPages />
+      <RelatedPages current={PAST_QUESTIONS_PATH} />
       <section className={s.cta} aria-labelledby="cta-title">
         <div>
           <h2 id="cta-title">جرّب بملف السنوات الذي معك</h2>

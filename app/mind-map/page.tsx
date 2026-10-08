@@ -17,7 +17,11 @@ import { BASE_OPEN_GRAPH } from "@/lib/site";
 // Targets "خريطة ذهنية" (1,900/mo, informational — people learning what a
 // mind map is and how to make one), "خريطة ذهنية بالذكاء الاصطناعي" (50),
 // "عمل خريطة ذهنية" (40). So the page teaches first, then shows the tool.
-const TITLE = "خريطة ذهنية بالذكاء الاصطناعي من ملف PDF | NiroLearn";
+// The title answers the informational search first (Search Console,
+// 2026-10: 26 impressions around position 8 and no click with the tool-led
+// title).
+const TITLE =
+  "خريطة ذهنية: ما هي وكيف تعملها للمذاكرة بالذكاء الاصطناعي | NiroLearn";
 const DESCRIPTION =
   "ما هي الخريطة الذهنية وكيف تعملها للمذاكرة؟ وكيف يبني NiroLearn خريطة ذهنية بالذكاء الاصطناعي لكل جزء من ملف PDF، بمفاهيمه وأهم نقاطه للامتحان.";
 

@@ -4,6 +4,11 @@
 // content. Sign-up and sign-in go to the existing /register and /login.
 import Link from "next/link";
 import NiroCharacter from "@/components/niro/NiroCharacter";
+import {
+  BOT_PAGE_PATH,
+  PAST_QUESTIONS_PATH,
+  SOLVE_QUESTIONS_PATH,
+} from "@/lib/site";
 import s from "./landing.module.css";
 import {
   AssistantPreview,
@@ -329,7 +334,22 @@ export default function Landing() {
           <h3>وأيضًا</h3>
           <ul>
             <li>قارئ PDF مع تظليل وملاحظات على الصفحات.</li>
-            <li>حوّل ملفات الأسئلة السابقة إلى بطاقات مراجعة.</li>
+            <li>
+              <Link href={PAST_QUESTIONS_PATH}>
+                حوّل ملف أسئلة السنوات السابقة
+              </Link>{" "}
+              إلى اختبار تفاعلي مع شرح.
+            </li>
+            <li>
+              <Link href={SOLVE_QUESTIONS_PATH}>
+                حل أسئلة ملف PDF بالذكاء الاصطناعي
+              </Link>{" "}
+              مع شرح كل إجابة.
+            </li>
+            <li>
+              <Link href={BOT_PAGE_PATH}>بوت Telegram</Link>: أرسل الملف وافتح
+              أسئلته من هاتفك.
+            </li>
             <li>شارك حزمة مذاكرة مع زملائك.</li>
             <li>ألعاب مراجعة سريعة مع Niro.</li>
           </ul>

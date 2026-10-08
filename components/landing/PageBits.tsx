@@ -12,7 +12,9 @@ import {
   SITE_ENTITY_IDS,
   SITE_NAME,
   SITE_URL,
+  QUESTION_PAGES,
   TOOL_PAGES,
+  type QuestionPagePath,
   type ToolPath,
 } from "@/lib/site";
 import s from "./landing.module.css";
@@ -107,24 +109,33 @@ export function CtaBand({ title, text }: { title: string; text: string }) {
   );
 }
 
-const RELATED_BLURB: Record<ToolPath, string> = {
+const RELATED_BLURB: Record<ToolPath | QuestionPagePath, string> = {
   "/pdf-summary": "ملخص منظم لكل جزء من الكتاب أو المحاضرة.",
   "/flashcards": "بطاقات سؤال وجواب تعود إليك في موعدها.",
   "/mind-map": "خريطة ذهنية لكل جزء بمفاهيمه وأهم نقاطه.",
   "/how-to-study": "طريقة مذاكرة عملية لملف كبير قبل الامتحان.",
+  [SOLVE_QUESTIONS_PATH]: "أرسل ملف الأسئلة واحصل على إجابة كل سؤال مع شرحها.",
+  [PAST_QUESTIONS_PATH]: "حوّل ملف أسئلة السنوات إلى اختبار تحلّه مع شرح.",
+  [BOT_PAGE_PATH]: "أرسل ملف PDF في تلغرام وافتح أسئلته من هاتفك.",
 };
 
 // `current` is left out by a page that is not itself one of the tools.
-export function RelatedPages({ current }: { current?: ToolPath }) {
+export function RelatedPages({
+  current,
+}: {
+  current?: ToolPath | QuestionPagePath;
+}) {
   return (
     <Section id="related" title="أدوات أخرى من الملف نفسه">
       <ul className={s.related}>
-        {TOOL_PAGES.filter(page => page.href !== current).map(page => (
-          <li key={page.href}>
-            <Link href={page.href}>{page.label}</Link>
-            <p>{RELATED_BLURB[page.href]}</p>
-          </li>
-        ))}
+        {[...TOOL_PAGES, ...QUESTION_PAGES]
+          .filter(page => page.href !== current)
+          .map(page => (
+            <li key={page.href}>
+              <Link href={page.href}>{page.label}</Link>
+              <p>{RELATED_BLURB[page.href]}</p>
+            </li>
+          ))}
       </ul>
     </Section>
   );
@@ -140,11 +151,7 @@ export function PageJsonLd({
   faq,
   article,
 }: {
-  path:
-    | ToolPath
-    | typeof BOT_PAGE_PATH
-    | typeof PAST_QUESTIONS_PATH
-    | typeof SOLVE_QUESTIONS_PATH;
+  path: ToolPath | QuestionPagePath;
   name: string;
   description: string;
   faq: readonly FaqItem[];

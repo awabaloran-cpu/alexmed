@@ -771,6 +771,14 @@
   padding: 0;
   list-style: none;
 }
+.alsoRow a {
+  color: var(--nl-ink);
+  font-weight: 600;
+  text-decoration: underline;
+  text-decoration-color: var(--nl-marker);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 4px;
+}
 .alsoRow li {
   color: var(--nl-ink-2);
   font-size: 16px;

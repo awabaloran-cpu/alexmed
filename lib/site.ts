@@ -68,6 +68,17 @@ export const TOOL_PAGES = [
 
 export type ToolPath = (typeof TOOL_PAGES)[number]["href"];
 
+// The public pages about question files. Listed next to the tools under
+// every marketing page (RelatedPages), so each is linked from page bodies
+// and not only from the footer.
+export const QUESTION_PAGES = [
+  { href: SOLVE_QUESTIONS_PATH, label: "حل أسئلة بالذكاء الاصطناعي" },
+  { href: PAST_QUESTIONS_PATH, label: "أسئلة سنوات سابقة" },
+  { href: BOT_PAGE_PATH, label: "بوت Telegram" },
+] as const;
+
+export type QuestionPagePath = (typeof QUESTION_PAGES)[number]["href"];
+
 // Open Graph fields every page shares. Next.js replaces (not merges) a
 // parent's openGraph when a page sets its own, so pages spread this in.
 export const BASE_OPEN_GRAPH = {
