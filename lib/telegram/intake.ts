@@ -38,7 +38,7 @@ import {
   sendMessage,
   type InlineButton,
 } from "./api";
-import { telegramMaxFileBytes } from "./config";
+import { telegramMaxFileBytes, telegramMaxPages } from "./config";
 import {
   DETECTION_SAMPLE_PAGES,
   detectDocumentKind,
@@ -141,6 +141,9 @@ const convertRow = (uploadId: string): InlineButton[] => [
 // ── Intake ──────────────────────────────────────────────────────────────
 
 class RefusedFile extends Error {}
+// Over the bot's page limit: the site would start the same work, so the
+// refusal does not send the student there.
+class TooLong extends RefusedFile {}
 
 const PDF_MAGIC = "%PDF-";
 
@@ -296,14 +299,18 @@ export async function runTelegramIntake(
         upload.fileId,
         telegramMaxFileBytes()
       );
+      const sample = await readLeadingPages(data, DETECTION_SAMPLE_PAGES);
+      // Refused before anything is stored or counted against the plan. A
+      // file whose pages could not be counted goes on to the real reader.
+      const maxPages = telegramMaxPages();
+      if (sample.total > maxPages) {
+        throw new TooLong(TEXT.tooManyPages(sample.total, maxPages));
+      }
       key = await storeUploadedPdf(userId, upload.fileName, data);
       const requested = isDocumentKind(upload.requestedKind)
         ? upload.requestedKind
         : null;
-      kind = resolveDocumentKind(
-        requested,
-        detectDocumentKind(await readLeadingPages(data, DETECTION_SAMPLE_PAGES))
-      );
+      kind = resolveDocumentKind(requested, detectDocumentKind(sample.pages));
     }
 
     if (kind === "ask") {
@@ -384,8 +391,10 @@ export async function runTelegramIntake(
       await markUploadRejected(uploadId, error.message);
       await progress(
         context,
-        TEXT.refused(error.message),
-        await openButton(context, LABELS.uploadFromSite, "/books/upload")
+        error instanceof TooLong ? error.message : TEXT.refused(error.message),
+        error instanceof TooLong
+          ? []
+          : await openButton(context, LABELS.uploadFromSite, "/books/upload")
       );
       return "done";
     }

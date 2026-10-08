@@ -203,6 +203,14 @@ A test bot must point at a **staging** deployment with its own database,
 bucket and QStash (docs/mobile/ENVIRONMENTS.md §4–5). Pointing it at a local
 machine with the current `.env` would write to production.
 
+## Page limit
+
+The bot refuses a PDF longer than `TELEGRAM_MAX_PAGES` (default 100) before it
+is stored or counted against the plan, and asks the student to split it. The
+count comes from the same cheap read that detects the file's kind; a file
+whose pages cannot be counted goes on to the real reader. The limit is the
+bot's only: the site's upload page does not apply it.
+
 ## Files above 20 MB
 
 Telegram's cloud Bot API does not let a bot download a file above 20 MB

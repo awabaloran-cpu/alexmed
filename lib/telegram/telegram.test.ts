@@ -165,12 +165,21 @@ async function onlyUpload() {
   return upload;
 }
 
+// What lib/telegram/pdf-sample.ts reads from a file: its first pages and
+// how many pages it has.
+const sample = (
+  pages: { page: number; text: string }[],
+  total = pages.length
+) => ({ pages, total });
+
 // Sends a PDF and runs the intake worker, as the queue would.
 async function uploadAndIntake(options: { kind?: "questions" | "book" } = {}) {
   readLeadingPages.mockResolvedValue(
-    options.kind === "book"
-      ? [1, 2, 3, 4].map(page => ({ page, text: PROSE_PAGE }))
-      : [{ page: 1, text: QUESTION_PAGE }]
+    sample(
+      options.kind === "book"
+        ? [1, 2, 3, 4].map(page => ({ page, text: PROSE_PAGE }))
+        : [{ page: 1, text: QUESTION_PAGE }]
+    )
   );
   await handleTelegramUpdate(documentUpdate());
   const upload = await onlyUpload();
@@ -194,6 +203,7 @@ beforeEach(async () => {
   vi.clearAllMocks();
   delete process.env.TELEGRAM_API_BASE;
   delete process.env.TELEGRAM_MAX_FILE_MB;
+  delete process.env.TELEGRAM_MAX_PAGES;
   delete process.env.TELEGRAM_DAILY_UPLOAD_CAP;
   delete process.env.TELEGRAM_ACCOUNT_BURST_LIMIT;
   delete process.env.TELEGRAM_GUEST_FREE_UPLOADS;
@@ -205,7 +215,7 @@ beforeEach(async () => {
   storage.storageGetUploadUrl.mockResolvedValue("https://r2.example/put");
   storage.deleteObject.mockResolvedValue(undefined);
   admitUpload.mockResolvedValue({ receipt: {}, release: vi.fn() });
-  readLeadingPages.mockResolvedValue([{ page: 1, text: QUESTION_PAGE }]);
+  readLeadingPages.mockResolvedValue(sample([{ page: 1, text: QUESTION_PAGE }]));
   vi.stubGlobal(
     "fetch",
     vi.fn(async (url: string, init?: RequestInit) =>
@@ -422,6 +432,56 @@ describe("The bot receiving a file", () => {
     expect(lastSent().text).toBe(TEXT.tooLarge(70 * 1024 * 1024));
   });
 
+  it("refuses a file over the page limit before storing it or counting it against the plan", async () => {
+    readLeadingPages.mockResolvedValue(
+      sample([{ page: 1, text: QUESTION_PAGE }], 101)
+    );
+    await handleTelegramUpdate(documentUpdate());
+    await runTelegramIntake((await onlyUpload()).id);
+
+    const upload = await onlyUpload();
+    expect(upload.status).toBe("rejected");
+    expect(upload.error).toBe(TEXT.tooManyPages(101, 100));
+    expect(storage.storageGetUploadUrl).not.toHaveBeenCalled();
+    expect(admitUpload).not.toHaveBeenCalled();
+    // The student is told the limit, and is not sent to the site with it.
+    const said =
+      tg.editMessage.mock.calls.at(-1) ?? tg.sendMessage.mock.calls.at(-1)!;
+    expect(JSON.stringify(said)).toContain("100 صفحة");
+    expect(JSON.stringify(said)).not.toContain(LABELS.uploadFromSite);
+  });
+
+  it("takes a file of exactly the page limit, and one whose pages could not be counted", async () => {
+    readLeadingPages.mockResolvedValue(
+      sample([{ page: 1, text: QUESTION_PAGE }], 100)
+    );
+    await handleTelegramUpdate(documentUpdate());
+    await runTelegramIntake((await onlyUpload()).id);
+    expect((await onlyUpload()).status).toBe("processing");
+
+    readLeadingPages.mockResolvedValue({ pages: [], total: 0 });
+    await handleTelegramUpdate(documentUpdate({ from: 888 }));
+    const [second] = await rows<{ id: string }>(
+      `SELECT id FROM telegram_uploads ORDER BY "createdAt" DESC LIMIT 1`
+    );
+    await runTelegramIntake(second.id);
+    const [state] = await rows<{ status: string }>(
+      `SELECT status FROM telegram_uploads WHERE id = $1`,
+      [second.id]
+    );
+    expect(state.status).not.toBe("rejected");
+  });
+
+  it("the page limit follows TELEGRAM_MAX_PAGES", async () => {
+    process.env.TELEGRAM_MAX_PAGES = "300";
+    readLeadingPages.mockResolvedValue(
+      sample([{ page: 1, text: QUESTION_PAGE }], 250)
+    );
+    await handleTelegramUpdate(documentUpdate());
+    await runTelegramIntake((await onlyUpload()).id);
+    expect((await onlyUpload()).status).toBe("processing");
+  });
+
   it("a guest's second file asks them to create their account; a registered user is not asked", async () => {
     await uploadAndIntake();
     tg.sendMessage.mockClear();
@@ -500,7 +560,7 @@ describe("Intake: from the bot's file to the existing pipeline", () => {
 
   it("asks the student when the file contradicts what they said, then follows their answer", async () => {
     await handleTelegramUpdate(textUpdate(BUTTONS.uploadBook));
-    readLeadingPages.mockResolvedValue([{ page: 1, text: QUESTION_PAGE }]);
+    readLeadingPages.mockResolvedValue(sample([{ page: 1, text: QUESTION_PAGE }]));
     await handleTelegramUpdate(documentUpdate());
     const upload = await onlyUpload();
     await runTelegramIntake(upload.id);

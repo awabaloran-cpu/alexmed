@@ -57,6 +57,13 @@ export function telegramMaxFileBytes(): number {
   return reachable * MB;
 }
 
+// The longest PDF the bot takes, in pages. A long file costs one AI call a
+// page and more: a 5,057-page bank sent on 2026-10-08 had to be stopped by
+// hand.
+export function telegramMaxPages(): number {
+  return readInt("TELEGRAM_MAX_PAGES", 100);
+}
+
 // How many files a guest (no registered account yet) may send before the
 // bot asks them to create their account.
 export function guestFreeUploads(): number {

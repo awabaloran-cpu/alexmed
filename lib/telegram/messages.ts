@@ -77,6 +77,10 @@ export const TEXT = {
     `⚠️ حجم الملف أكبر من الحد المسموح هنا (${megabytes(limitBytes)} ميغابايت).\n\n` +
     "يمكنك رفعه من موقع NiroLearn مباشرة.",
 
+  tooManyPages: (pages: number, limit: number) =>
+    `⚠️ هذا الملف ${pages} صفحة، والحد هنا ${limit} صفحة للملف الواحد.\n\n` +
+    "قسّمه إلى أجزاء أصغر وأرسل كل جزء وحده.",
+
   guestLimit:
     "🎓 جرّبت NiroLearn بملفك الأول.\n\n" +
     "لرفع ملف آخر:\n" +
