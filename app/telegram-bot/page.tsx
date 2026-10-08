@@ -202,6 +202,13 @@ export default function TelegramBotPage() {
               الاصطناعي.
             </li>
           </ul>
+          <p>
+            للتفاصيل، وما الذي يجعل الملف يُقرأ بدقة:{" "}
+            <Link href="/learn/pdf-questions-to-interactive-quiz">
+              تحويل ملف أسئلة PDF إلى اختبار تفاعلي
+            </Link>
+            .
+          </p>
         </div>
       </Section>
 
