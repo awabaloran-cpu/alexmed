@@ -8,8 +8,9 @@ import { createHash, randomBytes } from "node:crypto";
 import { and, eq, gt, isNull } from "drizzle-orm";
 import { accessLinkTokens } from "../../drizzle/schema";
 import { requireDb } from "../db";
+import { safeCallbackUrl } from "../safe-redirect";
 
-export type LinkPurpose = "web_login" | "telegram_link";
+export type LinkPurpose = "web_login" | "telegram_link" | "guest_claim";
 
 const TOKEN_PATTERN = /^[A-Za-z0-9_-]{43}$/;
 
@@ -17,14 +18,9 @@ export function hashToken(token: string): string {
   return createHash("sha256").update(token).digest("hex");
 }
 
-// A destination inside this site only: one leading slash, no scheme, no
-// protocol-relative or backslash form a browser could read as another host.
+// A destination inside this site only (lib/safe-redirect.ts).
 export function safeInternalPath(path: string | null | undefined): string {
-  if (!path || !path.startsWith("/")) return "/subjects";
-  if (path.startsWith("//") || path.includes("\\") || /[\r\n]/.test(path)) {
-    return "/subjects";
-  }
-  return path;
+  return safeCallbackUrl(path);
 }
 
 export async function createLinkToken(input: {

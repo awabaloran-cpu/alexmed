@@ -253,23 +253,93 @@ describe("Telegram identity", () => {
     expect(await rows(`SELECT id FROM users WHERE id = $1`, [guest.user.id])).toHaveLength(0);
   });
 
-  it("never merges a guest that already owns files into another account", async () => {
+  it("a guest with files who links an existing account keeps everything: files, folder, answers", async () => {
     await insertUser(test.client, { id: REGISTERED });
     const uploaded = await uploadAndIntake();
-    expect(uploaded.status).toBe("processing");
+    const guestId = (await findTelegramAccount(TG_USER))!.user.id;
+    await test.client.query(
+      `INSERT INTO extracted_questions ("bookId", "orderIndex", "questionText", options, "extractedAnswerIndex", "sourcePage")
+       VALUES ($1, 0, 'Q?', '["A","B"]', 1, 1)`,
+      [uploaded.bookId]
+    );
+    await test.client.query(
+      `INSERT INTO question_attempts ("userId", "bookId", "questionId", "selectedIndex", "isCorrect")
+       SELECT $1, "bookId", id, 1, true FROM extracted_questions WHERE "bookId" = $2`,
+      [guestId, uploaded.bookId]
+    );
     const code = await createLinkToken({ userId: REGISTERED, purpose: "telegram_link", ttlMinutes: 10 });
 
-    const outcome = await linkTelegramToAccount(code, { telegramUserId: TG_USER, chatId: TG_USER });
-    expect(outcome).toEqual({ ok: false, reason: "guest_has_files" });
+    await handleTelegramUpdate(textUpdate(`/start link_${code}`));
+    expect(lastSent().text).toBe(TEXT.linked);
+
+    const account = await findTelegramAccount(TG_USER);
+    expect(account?.user).toMatchObject({ id: REGISTERED, isGuest: false });
+    expect(await rows(`SELECT id FROM users WHERE id = $1`, [guestId])).toHaveLength(0);
+    for (const table of ["books", "subjects", "question_attempts"]) {
+      const owned = await rows<{ userId: string }>(`SELECT "userId" FROM ${table}`);
+      expect(owned.map(row => row.userId)).toEqual([REGISTERED]);
+    }
+    // The upload still points at the same book, now the account's.
+    expect((await onlyUpload()).bookId).toBe(uploaded.bookId);
+  });
+
+  it("merging keeps the account's own row where only one is allowed, and one Telegram folder", async () => {
+    await insertUser(test.client, { id: REGISTERED });
+    await uploadAndIntake();
+    const guestId = (await findTelegramAccount(TG_USER))!.user.id;
+    await test.client.query(`INSERT INTO subjects ("userId", name) VALUES ($1, 'Telegram')`, [REGISTERED]);
+    // Both accounts used the assistant today: one counter per (user, day).
+    for (const [userId, used] of [[REGISTERED, 7], [guestId, 2]]) {
+      await test.client.query(
+        `INSERT INTO usage_daily ("userId", day, "assistantMessages") VALUES ($1, '2026-10-08', $2)`,
+        [userId, used]
+      );
+    }
+    const code = await createLinkToken({ userId: REGISTERED, purpose: "telegram_link", ttlMinutes: 10 });
+
+    expect(await linkTelegramToAccount(code, { telegramUserId: TG_USER, chatId: TG_USER })).toEqual({ ok: true });
+    const usage = await rows<{ userId: string; assistantMessages: number }>(
+      `SELECT "userId", "assistantMessages" FROM usage_daily`
+    );
+    expect(usage).toEqual([{ userId: REGISTERED, assistantMessages: 7 }]);
+    const folders = await rows<{ id: string }>(`SELECT id FROM subjects WHERE name = 'Telegram'`);
+    expect(folders).toHaveLength(1);
+    const [book] = await rows<{ userId: string; subjectId: string }>(`SELECT "userId", "subjectId" FROM books`);
+    expect(book).toEqual({ userId: REGISTERED, subjectId: folders[0].id });
+  });
+
+  it("refuses to attach a second Telegram to an account, and to steal a registered Telegram", async () => {
+    await insertUser(test.client, { id: REGISTERED });
+    const first = await createLinkToken({ userId: REGISTERED, purpose: "telegram_link", ttlMinutes: 10 });
+    await linkTelegramToAccount(first, { telegramUserId: 111, chatId: 111 });
+
+    await uploadAndIntake();
+    const second = await createLinkToken({ userId: REGISTERED, purpose: "telegram_link", ttlMinutes: 10 });
+    expect(
+      await linkTelegramToAccount(second, { telegramUserId: TG_USER, chatId: TG_USER })
+    ).toEqual({ ok: false, reason: "account_has_other_telegram" });
+    // Nothing was moved.
     expect((await findTelegramAccount(TG_USER))?.user.isGuest).toBe(true);
+    expect(await rows(`SELECT id FROM books WHERE "userId" = $1`, [REGISTERED])).toHaveLength(0);
+
+    const OTHER = "00000000-0000-4000-8000-0000000000a2";
+    await insertUser(test.client, { id: OTHER });
+    const third = await createLinkToken({ userId: OTHER, purpose: "telegram_link", ttlMinutes: 10 });
+    expect(
+      await linkTelegramToAccount(third, { telegramUserId: 111, chatId: 111 })
+    ).toEqual({ ok: false, reason: "already_linked_elsewhere" });
   });
 });
 
 describe("The bot receiving a file", () => {
   it("/start greets with the main keyboard", async () => {
     await handleTelegramUpdate(textUpdate("/start"));
-    expect(lastSent().text).toBe(TEXT.welcome);
-    expect(JSON.stringify(lastSent().markup)).toContain(BUTTONS.uploadQuestions);
+    const [welcome, hint] = tg.sendMessage.mock.calls;
+    expect(welcome[1]).toBe(TEXT.welcome);
+    expect(JSON.stringify(welcome[2])).toContain(BUTTONS.uploadQuestions);
+    // A guest is also shown how to keep their files: a /connect link.
+    expect(hint[1]).toBe(TEXT.guestConnectHint);
+    expect(JSON.stringify(hint[2])).toMatch(/https:\/\/nirolearn\.com\/connect\/[A-Za-z0-9_-]{43}/);
   });
 
   it("records a PDF once and queues its intake", async () => {
@@ -328,6 +398,7 @@ describe("The bot receiving a file", () => {
     tg.sendMessage.mockClear();
     await handleTelegramUpdate(documentUpdate());
     expect(lastSent().text).toBe(TEXT.guestLimit);
+    expect(JSON.stringify(lastSent().markup)).toMatch(/nirolearn\.com\/connect\/[A-Za-z0-9_-]{43}/);
     expect(await rows(`SELECT id FROM telegram_uploads`)).toHaveLength(1);
 
     // The same person after registering (the guest row gains a phone).
@@ -553,7 +624,10 @@ describe("Watch: reporting the pipeline's status in the chat", () => {
     await finishQuestions(upload.bookId!, 3);
     await runTelegramWatch(upload.id);
     const url = (lastSent().markup as { inline_keyboard: { url: string }[][] }).inline_keyboard[0][0].url;
-    expect(url).toBe(`https://nirolearn.com/books/question-files/${upload.bookId}`);
+    expect(url).toBe(
+      `https://nirolearn.com/api/telegram/open?to=${encodeURIComponent(`/books/question-files/${upload.bookId}`)}`
+    );
+    expect(url).not.toMatch(/\/t\//);
   });
 
   it("explains a failure with its reason and offers a retry that restarts the same file", async () => {
@@ -724,6 +798,109 @@ describe("Link tokens and the guest web session", () => {
   });
 });
 
+describe("Connecting a guest to an account from the web (/connect)", () => {
+  const authState = vi.hoisted(() => ({ userId: null as string | null }));
+  vi.mock("@/lib/auth", () => ({
+    auth: async () => (authState.userId ? { user: { id: authState.userId } } : null),
+  }));
+
+  async function post(fields: Record<string, string>, headers: Record<string, string> = {}) {
+    const { POST } = await import("@/app/api/telegram/connect/route");
+    const body = new FormData();
+    for (const [key, value] of Object.entries(fields)) body.set(key, value);
+    return POST(
+      new Request("https://nirolearn.com/api/telegram/connect", {
+        method: "POST",
+        headers: { "sec-fetch-site": "same-origin", ...headers },
+        body,
+      })
+    );
+  }
+
+  async function guestWithFile() {
+    const upload = await uploadAndIntake();
+    const guest = (await findTelegramAccount(TG_USER))!;
+    const { connectLink } = await import("./links");
+    const token = (await connectLink(guest.user)).split("/connect/")[1];
+    return { upload, guest, token };
+  }
+
+  beforeEach(() => {
+    authState.userId = null;
+  });
+
+  it("the student who signs in to an existing account and confirms gets the guest's files, and the chat is told", async () => {
+    await insertUser(test.client, { id: REGISTERED });
+    const { upload, guest, token } = await guestWithFile();
+    authState.userId = REGISTERED;
+    tg.sendMessage.mockClear();
+
+    const response = await post({ token, action: "link" });
+    expect(response.status).toBe(303);
+    expect(response.headers.get("location")).toBe(`/connect/${token}`);
+
+    expect((await findTelegramAccount(TG_USER))?.user).toMatchObject({ id: REGISTERED, isGuest: false });
+    expect(await rows(`SELECT id FROM users WHERE id = $1`, [guest.user.id])).toHaveLength(0);
+    const [book] = await rows<{ userId: string }>(`SELECT "userId" FROM books WHERE id = $1`, [upload.bookId]);
+    expect(book.userId).toBe(REGISTERED);
+    expect(tg.sendMessage).toHaveBeenCalledWith(TG_USER, TEXT.linked, expect.anything());
+
+    // The link is spent: a second confirmation changes nothing.
+    const again = await post({ token, action: "link" });
+    expect(again.headers.get("location")).toBe(`/connect/${token}?error=invalid_code`);
+  });
+
+  it("sends a visitor to sign in or register and back, ending a guest session first", async () => {
+    const { guest, token } = await guestWithFile();
+    const back = encodeURIComponent(`/connect/${token}`);
+
+    const login = await post({ token, action: "login" });
+    expect(login.headers.get("location")).toBe(`/login?callbackUrl=${back}`);
+    expect(login.headers.get("set-cookie")).toBeNull();
+
+    authState.userId = guest.user.id;
+    const register = await post({ token, action: "register" });
+    expect(register.headers.get("location")).toBe(`/register?callbackUrl=${back}`);
+    // Signed in as the guest: that session is cleared so a real account follows.
+    expect(register.headers.get("set-cookie")).toMatch(/authjs\.session-token=;/);
+  });
+
+  it("never links for someone who is not signed in to a real account", async () => {
+    const { guest, token } = await guestWithFile();
+    await post({ token, action: "link" });
+    authState.userId = guest.user.id;
+    await post({ token, action: "link" });
+    expect((await findTelegramAccount(TG_USER))?.user.isGuest).toBe(true);
+  });
+
+  it("refuses a cross-site post and a malformed token", async () => {
+    await insertUser(test.client, { id: REGISTERED });
+    const { token } = await guestWithFile();
+    authState.userId = REGISTERED;
+
+    const crossSite = await post({ token, action: "link" }, { "sec-fetch-site": "cross-site" });
+    expect(crossSite.status).toBe(403);
+    expect((await findTelegramAccount(TG_USER))?.user.isGuest).toBe(true);
+
+    const malformed = await post({ token: "../../admin", action: "login" });
+    expect(malformed.headers.get("location")).toBe("/login");
+  });
+
+  it("a registered student's bot button opens the page when signed in, the login otherwise — and only inside the site", async () => {
+    const { GET } = await import("@/app/api/telegram/open/route");
+    const open = (to: string) =>
+      GET(new Request(`https://nirolearn.com/api/telegram/open?to=${encodeURIComponent(to)}`));
+
+    expect((await open("/books/abc")).headers.get("location")).toBe(
+      `/login?callbackUrl=${encodeURIComponent("/books/abc")}`
+    );
+    authState.userId = REGISTERED;
+    expect((await open("/books/abc")).headers.get("location")).toBe("/books/abc");
+    expect((await open("https://evil.example/x")).headers.get("location")).toBe("/subjects");
+    expect((await open("//evil.example")).headers.get("location")).toBe("/subjects");
+  });
+});
+
 describe("The webhook route", () => {
   const call = async (headers: Record<string, string>, body: unknown = { update_id: 1 }) => {
     const { POST } = await import("@/app/api/telegram/webhook/route");
@@ -744,7 +921,7 @@ describe("The webhook route", () => {
   it("handles an authentic update", async () => {
     const response = await call({ "x-telegram-bot-api-secret-token": "hook-secret" }, textUpdate("/start"));
     expect(response.status).toBe(200);
-    expect(lastSent().text).toBe(TEXT.welcome);
+    expect(tg.sendMessage.mock.calls[0][1]).toBe(TEXT.welcome);
   });
 
   it("does not exist while the gateway is switched off", async () => {

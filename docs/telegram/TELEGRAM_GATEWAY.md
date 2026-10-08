@@ -47,14 +47,25 @@ Button ──► /t/<token> ──POST──► /api/telegram/session ──► 
 
 - First contact creates a **guest**: a `users` row with no phone, email or
   password, mapped in `telegram_accounts`. The Telegram id is never a user id.
-- A guest gets **one file** (`TELEGRAM_GUEST_FREE_UPLOADS`). The next one asks
-  them to create their account. Registering through `/register` while signed
-  in as the guest **completes the same row** (`upgradeGuestWithVerifiedPhone`),
-  so their file and progress stay.
-- An existing student connects from **حسابي → Telegram**: a one-time code
-  (10 minutes) carried to the bot in `t.me/<bot>?start=link_<code>`.
-- A guest who already owns files is never merged into another account; they
-  are told to register the guest account instead. A real merge is not built.
+- A guest gets **one file** (`TELEGRAM_GUEST_FREE_UPLOADS`). The next one —
+  and every `/start` — offers the **connect page** `/connect/<token>`:
+  - *sign in to an existing account* or *create a new one*; both return to
+    the connect page, where the student confirms;
+  - on confirm the guest is **merged** into that account
+    (`mergeGuestInto`, `lib/telegram/accounts.ts`): every row that points
+    at the guest's user id is re-pointed at the account (the columns are read
+    from the database catalog, so new tables are covered), the two "Telegram"
+    folders become one, and the guest row is deleted. Where a unique rule
+    allows one row per user (a day's usage counter, a game's progress) the
+    account's own row is kept. Files are not copied or re-processed.
+  - the bot then says so in the chat, and the page offers "back to Telegram".
+- An existing student can also start from **حسابي → Telegram**: a one-time
+  code (10 minutes) carried to the bot in `t.me/<bot>?start=link_<code>`.
+  A guest that already has files is merged the same way.
+- A guest who registers while signed in as the guest (e.g. from حسابي) has
+  the same row completed in place (`upgradeGuestWithVerifiedPhone`).
+- One Telegram per account, one account per Telegram: a second is refused
+  until the first is unlinked from حسابي.
 
 ## Links and security
 
@@ -63,9 +74,13 @@ Button ──► /t/<token> ──POST──► /api/telegram/session ──► 
   session starts on the confirm button's POST, which is refused from any
   other origin. So link previews and prefetches sign nobody in.
 - Only a **guest** account can be entered by a link. A registered account's
-  buttons open the page itself and go through the normal login. (After the
-  login the student lands on `/subjects`; the file is in the "Telegram"
-  folder. A return-to-file redirect after login is not built.)
+  buttons go through `/api/telegram/open?to=<path>`: the page itself when
+  already signed in, otherwise the normal login and then that page
+  (`callbackUrl`, checked by `lib/safe-redirect.ts`).
+- `/connect/<token>` never signs anyone in and never links on a GET: the
+  student must be signed in to a real account and press confirm (a same-site
+  POST). A guest session on that browser is ended before the login /
+  sign-up step.
 - The webhook requires Telegram's secret header; workers require the QStash
   signature. No storage key, signed URL or file id ever appears in a message.
 - Limits, in order: PDF only → size → already sent? → guest's free file →
@@ -142,8 +157,6 @@ Clicks inside a Google unit are measured by Google, not by `ad_events`
 
 ## Not built yet
 
-- Merging a guest that owns files into an existing account.
-- Returning to the file after a registered user's login.
 - Cleaning up a stored file whose "which kind?" question was never answered.
 - Admin dashboard for Telegram / ad numbers (the tables hold the data).
 - Flutter: the app does not use saved answers, the «اربطها» line or ad breaks.

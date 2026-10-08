@@ -6,7 +6,13 @@ import {
   upgradeGuestWithVerifiedPhone,
 } from "@/lib/db-phone";
 import { phoneSignupError } from "@/lib/phone-signup-http";
-import { isTelegramGuest } from "@/lib/telegram/accounts";
+import {
+  findTelegramAccountByUserId,
+  isTelegramGuest,
+} from "@/lib/telegram/accounts";
+import { sendMessage } from "@/lib/telegram/api";
+import { telegramEnabled } from "@/lib/telegram/config";
+import { MAIN_KEYBOARD, TEXT } from "@/lib/telegram/messages";
 import { revokeLinkTokens } from "@/lib/telegram/tokens";
 
 // Step 3 of phone sign-up (RegisterForm): creates the account from a phone
@@ -34,6 +40,20 @@ async function currentTelegramGuestId(): Promise<string | null> {
   return userId && (await isTelegramGuest(userId)) ? userId : null;
 }
 
+// Tells the student, in the chat, that the bot now knows their account —
+// best effort: the account exists whether or not the message arrives.
+async function announceAccountReady(userId: string) {
+  if (!telegramEnabled()) return;
+  try {
+    const account = await findTelegramAccountByUserId(userId);
+    if (account) {
+      await sendMessage(account.account.chatId, TEXT.accountReady, MAIN_KEYBOARD);
+    }
+  } catch (error) {
+    console.error("[Telegram] Could not announce the new account", error);
+  }
+}
+
 export async function POST(request: Request) {
   const parsed = registerSchema.safeParse(
     await request.json().catch(() => null)
@@ -59,7 +79,10 @@ export async function POST(request: Request) {
       );
     }
     // A registered account is never entered by a Telegram link again.
-    if (guestId) await revokeLinkTokens(guestId, "web_login");
+    if (guestId) {
+      await revokeLinkTokens(guestId);
+      await announceAccountReady(guestId);
+    }
     return NextResponse.json(
       { id: result.userId, phone: result.phone },
       { status: 201 }

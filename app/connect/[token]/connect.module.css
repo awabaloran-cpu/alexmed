@@ -1,0 +1,45 @@
+/* The connect page's buttons (app/connect/[token]/page.tsx): stacked and
+   full-width so they are easy to tap in Telegram's in-app browser. The
+   panel itself is app/status.module.css. */
+.actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.actions form {
+  display: contents;
+}
+.primary {
+  justify-content: center;
+  width: 100%;
+  min-height: 48px;
+}
+.secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 48px;
+  padding: 11px 20px;
+  border: 1px solid var(--nl-rule);
+  border-radius: var(--nl-r-md);
+  background: transparent;
+  color: var(--nl-ink);
+  font: inherit;
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+}
+.secondary:focus-visible {
+  outline: 3px solid var(--nl-niro);
+  outline-offset: 3px;
+}
+.error {
+  margin: 0 0 16px;
+  padding: 10px 12px;
+  border-radius: var(--nl-r-md);
+  background: var(--nl-marker-soft);
+  color: var(--nl-ink);
+  font-size: 14.5px;
+  line-height: 1.7;
+}

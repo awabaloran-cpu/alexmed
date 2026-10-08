@@ -24,7 +24,7 @@ import {
 } from "./config";
 import { isDocumentKind, type DocumentKind } from "./detect";
 import { retryTelegramUpload } from "./intake";
-import { openLink } from "./links";
+import { connectLink, openLink } from "./links";
 import {
   BUTTONS,
   filePath,
@@ -152,7 +152,7 @@ async function handleDocument(
     await sendMessage(
       chatId,
       TEXT.guestLimit,
-      await openSiteButton(context, LABELS.createAccount, "/register")
+      urlButton(LABELS.connectAccount, await connectLink(user))
     );
     return;
   }
@@ -228,19 +228,6 @@ async function handleLink(
     await sendMessage(chatId, TEXT.linked, MAIN_KEYBOARD);
     return;
   }
-  if (outcome.reason === "guest_has_files") {
-    const context = await ensureTelegramAccount({
-      telegramUserId: from.id,
-      chatId,
-      languageCode: from.language_code,
-    });
-    await sendMessage(
-      chatId,
-      TEXT.linkGuestHasFiles,
-      await openSiteButton(context, LABELS.createAccount, "/register")
-    );
-    return;
-  }
   await sendMessage(
     chatId,
     outcome.reason === "already_linked_elsewhere"
@@ -281,6 +268,14 @@ async function handleMessage(updateId: number, message: TelegramMessage) {
 
   if (start) {
     await sendMessage(chatId, TEXT.welcome, MAIN_KEYBOARD);
+    // A guest is shown, once per /start, how to keep their files.
+    if (context.user.isGuest) {
+      await sendMessage(
+        chatId,
+        TEXT.guestConnectHint,
+        urlButton(LABELS.connectAccount, await connectLink(context.user))
+      );
+    }
   } else if (text === BUTTONS.uploadQuestions) {
     await setPendingKind(context.account.id, "question_file");
     await sendMessage(chatId, TEXT.askForFile("question_file"));

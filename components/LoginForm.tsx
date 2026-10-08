@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { signIn } from "next-auth/react";
+import { safeCallbackUrl } from "@/lib/safe-redirect";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 import NiroAuthScene from "@/components/niro/NiroAuthScene";
@@ -35,6 +36,7 @@ export default function LoginForm({
   );
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
+  const callbackUrl = safeCallbackUrl(searchParams.get("callbackUrl"));
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
@@ -64,13 +66,13 @@ export default function LoginForm({
       return;
     }
 
-    router.push("/subjects");
+    router.push(callbackUrl);
     router.refresh();
   }
 
   async function handleGoogle() {
     setGoogleLoading(true);
-    await signIn("google", { callbackUrl: "/subjects" });
+    await signIn("google", { callbackUrl });
   }
 
   return (
@@ -143,7 +145,10 @@ export default function LoginForm({
 
       <p className="mt-6 text-center text-sm text-muted-foreground">
         ليس لديك حساب؟{" "}
-        <a href="/register" className="text-primary underline">
+        <a
+          href={`/register?callbackUrl=${encodeURIComponent(callbackUrl)}`}
+          className="text-primary underline"
+        >
           أنشئ حسابًا
         </a>
       </p>
