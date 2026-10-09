@@ -97,6 +97,7 @@ const on: AdConfig = {
   questionsPerBreak: 10,
   adsenseClient: "ca-pub-1234567890123456",
   adsenseSlot: "1234567890",
+  adsgramBlockId: null,
 };
 
 describe("ad policy", () => {
@@ -135,6 +136,25 @@ describe("ad policy", () => {
     expect(
       resolveAdBreakPolicy({ plan: free, source: "telegram", config: { ...on, adsenseSlot: null } })
     ).toEqual({ enabled: true, questionsPerBreak: 10, provider: "house" });
+  });
+
+  it("with an AdsGram block the policy carries the rewarded ad next to the ordinary break", () => {
+    const withBlock = { ...on, adsenseSlot: null, adsgramBlockId: "53005" };
+    expect(resolveAdBreakPolicy({ plan: free, source: "telegram", config: withBlock })).toEqual({
+      enabled: true,
+      questionsPerBreak: 10,
+      provider: "house",
+      adsgram: { blockId: "53005" },
+    });
+    // Still nobody on a paid plan, and nothing while ads are off.
+    expect(resolveAdBreakPolicy({ plan: pro, source: "telegram", config: withBlock })).toEqual({ enabled: false });
+    expect(
+      resolveAdBreakPolicy({ plan: free, source: "telegram", config: { ...withBlock, enabled: false } })
+    ).toEqual({ enabled: false });
+    expect(readAdConfig({ ADSGRAM_BLOCK_ID: " 53005 " }).adsgramBlockId).toBe("53005");
+    expect(readAdConfig({ ADSGRAM_BLOCK_ID: "int-53005" }).adsgramBlockId).toBe("int-53005");
+    expect(readAdConfig({ ADSGRAM_BLOCK_ID: "53005<script>" }).adsgramBlockId).toBeNull();
+    expect(readAdConfig({}).adsgramBlockId).toBeNull();
   });
 
   it("reads its configuration strictly", () => {

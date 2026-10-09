@@ -66,13 +66,15 @@ export const adsRouter = router({
 
   // An impression or a click on a break — counts only (who, which file,
   // which provider). Clicks inside a Google unit happen in Google's own
-  // frame and are reported by Google, not here.
+  // frame and are reported by Google, not here. A rewarded break also
+  // reports how it ended: watched ("reward"), closed early ("skip"), or no
+  // ad to show ("unavailable").
   record: protectedProcedure
     .input(
       z.object({
         bookId: z.string().uuid(),
-        provider: z.enum(["adsense", "house"]),
-        event: z.enum(["impression", "click"]),
+        provider: z.enum(["adsense", "house", "adsgram"]),
+        event: z.enum(["impression", "click", "reward", "skip", "unavailable"]),
       })
     )
     .mutation(async ({ ctx, input }) => {

@@ -2,10 +2,11 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { ChevronLeft } from "lucide-react";
+import { ChevronLeft, Loader2, Play } from "lucide-react";
 import type { DeckBreak } from "@/components/questions/QuestionList";
 import type { AdBreakPolicy } from "@/lib/ads/policy";
 import { trpc } from "@/lib/trpc-client";
+import { insideTelegram, loadAdsgram, watchRewardedAd } from "./adsgram";
 import s from "./AdBreak.module.css";
 
 type ActivePolicy = Extract<AdBreakPolicy, { enabled: true }>;
@@ -17,6 +18,10 @@ type ActivePolicy = Extract<AdBreakPolicy, { enabled: true }>;
 // comes first, the ad sits in its own labelled box, and "متابعة" is a
 // separate, full-width button well below it — nothing here looks like, or
 // sits next to, an answer button. Nothing asks the student to tap the ad.
+//
+// Inside Telegram, with an AdsGram block configured, the pause is a rewarded
+// ad instead: one button plays it, and the next questions open when it has
+// been watched to the end (components/ads/adsgram.ts).
 export default function AdBreak({
   policy,
   bookId,
@@ -30,14 +35,17 @@ export default function AdBreak({
   const recordRef = useRef(record.mutate);
   recordRef.current = record.mutate;
 
+  // Decided once, when the pause appears (a pause is only ever drawn in
+  // the browser, after the student moved on from a question).
+  const [rewardedBlock] = useState(() =>
+    policy.adsgram && insideTelegram() ? policy.adsgram.blockId : null
+  );
+  const provider = rewardedBlock ? "adsgram" : policy.provider;
+
   // One impression per pause shown.
   useEffect(() => {
-    recordRef.current({
-      bookId,
-      provider: policy.provider,
-      event: "impression",
-    });
-  }, [bookId, policy.provider, info.afterPosition]);
+    recordRef.current({ bookId, provider, event: "impression" });
+  }, [bookId, provider, info.afterPosition]);
 
   // NiroLearn's own card: what fills the break when Google is not the
   // provider — or has nothing to show.
@@ -65,24 +73,117 @@ export default function AdBreak({
         )}
       </div>
 
-      <div className={s.adBox}>
-        <span className={s.adLabel}>إعلان</span>
-        {policy.provider === "adsense" && policy.adsense ? (
-          <AdSenseUnit
-            key={info.afterPosition}
-            client={policy.adsense.client}
-            slot={policy.adsense.slot}
-            fallback={house}
-          />
-        ) : (
-          house
+      {rewardedBlock ? (
+        <RewardedGate
+          key={info.afterPosition}
+          blockId={rewardedBlock}
+          onContinue={info.onContinue}
+          report={event =>
+            record.mutate({ bookId, provider: "adsgram", event })
+          }
+        />
+      ) : (
+        <>
+          <div className={s.adBox}>
+            <span className={s.adLabel}>إعلان</span>
+            {policy.provider === "adsense" && policy.adsense ? (
+              <AdSenseUnit
+                key={info.afterPosition}
+                client={policy.adsense.client}
+                slot={policy.adsense.slot}
+                fallback={house}
+              />
+            ) : (
+              house
+            )}
+          </div>
+
+          <button
+            type="button"
+            className={s.continue}
+            onClick={info.onContinue}
+          >
+            متابعة الأسئلة <ChevronLeft size={17} aria-hidden="true" />
+          </button>
+        </>
+      )}
+    </section>
+  );
+}
+
+// The rewarded pause: the questions after it open when the ad has played to
+// its end. Closing the ad early keeps the pause; an ad that cannot be shown
+// at all (none available, blocked, an error) lets the student through —
+// they are never held back by something they cannot do.
+function RewardedGate({
+  blockId,
+  onContinue,
+  report,
+}: {
+  blockId: string;
+  onContinue: () => void;
+  report: (event: "reward" | "skip" | "unavailable") => void;
+}) {
+  const [state, setState] = useState<"ready" | "loading" | "skipped">("ready");
+
+  // Fetched while the student reads the pause, so the press plays at once.
+  useEffect(() => {
+    loadAdsgram().catch(() => {});
+  }, []);
+
+  const watch = async () => {
+    if (state === "loading") return;
+    setState("loading");
+    const result = await watchRewardedAd(blockId);
+    if (result === "skipped") {
+      report("skip");
+      setState("skipped");
+      return;
+    }
+    report(result === "watched" ? "reward" : "unavailable");
+    onContinue();
+  };
+
+  return (
+    <>
+      <div className={s.gate}>
+        <span className={s.adLabel}>إعلان قصير</span>
+        <p>
+          شاهد إعلانًا قصيرًا لتفتح الأسئلة التالية. الإعلانات تُبقي NiroLearn
+          مجانيًا لك ولزملائك.
+        </p>
+        {state === "skipped" && (
+          <p className={s.gateNote} role="status">
+            أُغلق الإعلان قبل نهايته. شاهده حتى النهاية لتتابع.
+          </p>
         )}
       </div>
 
-      <button type="button" className={s.continue} onClick={info.onContinue}>
-        متابعة الأسئلة <ChevronLeft size={17} aria-hidden="true" />
+      <button
+        type="button"
+        className={s.continue}
+        onClick={() => void watch()}
+        disabled={state === "loading"}
+      >
+        {state === "loading" ? (
+          <>
+            <Loader2 size={17} className="spin" aria-hidden="true" />
+            جاري تحميل الإعلان…
+          </>
+        ) : (
+          <>
+            <Play size={16} aria-hidden="true" />
+            {state === "skipped"
+              ? "شاهد الإعلان مرة أخرى"
+              : "شاهد الإعلان وتابع الأسئلة"}
+          </>
+        )}
       </button>
-    </section>
+
+      <Link href="/pricing" className={s.noAds}>
+        ادرس بلا إعلانات مع NiroLearn Pro
+      </Link>
+    </>
   );
 }
 

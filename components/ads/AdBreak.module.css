@@ -85,6 +85,33 @@
   font-weight: 600;
   cursor: pointer;
 }
+.continue:disabled {
+  opacity: 0.7;
+  cursor: progress;
+}
+/* The rewarded pause (inside Telegram): what the button does, said plainly
+   above it. */
+.gate {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px;
+  border-radius: var(--nl-r-md);
+  background: var(--nl-marker-soft);
+}
+.gate p {
+  margin: 0;
+  font-size: 14.5px;
+  line-height: 1.8;
+}
+.gateNote {
+  font-weight: 600;
+}
+.noAds {
+  align-self: center;
+  color: var(--nl-ink-2);
+  font-size: 13.5px;
+}
 .continue:focus-visible {
   outline: 3px solid var(--nl-niro);
   outline-offset: 3px;

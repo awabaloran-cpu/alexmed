@@ -313,6 +313,32 @@ bounds how many at once), and the existing extraction worker loads it again.
   standard responsive AdSense display unit and `/ads.txt` is served.
   Otherwise it shows NiroLearn's own card.
 
+### Rewarded break inside Telegram (AdsGram, 2026-10-10)
+
+With `ADSGRAM_BLOCK_ID` set (and `ADS_ENABLED=true`), a break shown to a
+free student **inside the Mini App** is a rewarded ad
+(`components/ads/adsgram.ts`, `RewardedGate` in `AdBreak.tsx`): one button
+plays the ad, and the next group of questions opens when it was watched to
+the end.
+
+- Closed early → the break stays, with a button to watch again.
+- No ad available, script blocked, an error, or no start within 12 s → the
+  student goes on. Nobody is locked out because the network had nothing.
+- Outside Telegram (a browser, the Android app) AdsGram cannot serve: the
+  break is the ordinary one (AdSense unit or NiroLearn's card, free
+  "متابعة"). "Inside Telegram" = the launch data Telegram's script stores in
+  sessionStorage when the student enters through `/tg`.
+- `ad_events` rows with provider `adsgram`: `impression`, `reward`,
+  `skip`, `unavailable`.
+- A break shows once per visit, so reloading the page passes it. Not
+  hardened: that needs the server to remember the position.
+- Needs `TELEGRAM_MINI_APP` on (otherwise bot buttons open a browser).
+
+**Not verified** (needs the live bot and an active block): that AdsGram
+accepts this origin for the block, that an ad fills, and that the block is
+of type Reward (an interstitial block resolves when closed, so it would not
+be mandatory).
+
 **Before turning AdSense on, the owner must confirm with Google:**
 
 1. The site is approved in AdSense and the ad unit exists.
