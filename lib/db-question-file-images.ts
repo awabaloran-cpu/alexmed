@@ -225,6 +225,43 @@ export async function getNextPendingExtractedQuestion(bookId: string) {
   return question ?? null;
 }
 
+// What stage 3 leaves behind when it finds nothing to explain right now:
+// how many questions are still owed an explanation (held back by a page
+// stage 2 has not settled), and whether stage 2 itself looks dead — pages
+// still to do, and none of the file's pages touched for a few minutes.
+//
+// Both happened to a real file (2026-10-09): a server restart killed the
+// runs holding two pages, stage 3 stopped at the first of them with half
+// the file unexplained, and nothing ever started either stage again.
+export async function getQuestionsHeldBack(
+  bookId: string
+): Promise<{ waiting: number; pagesStalled: boolean }> {
+  const maxAttempts = 3;
+  const db = getDb();
+  if (!db) return { waiting: 0, pagesStalled: false };
+  const [questions] = await db
+    .select({ waiting: count() })
+    .from(extractedQuestions)
+    .where(
+      and(
+        eq(extractedQuestions.bookId, bookId),
+        inArray(extractedQuestions.aiStatus, ["pending", "failed"]),
+        sql`${extractedQuestions.aiAttemptCount} < ${maxAttempts}`
+      )
+    );
+  const [pages] = await db
+    .select({
+      toDo: sql<number>`count(*) filter (where ${questionFilePages.status} = 'pending' or (${questionFilePages.status} = 'failed' and ${questionFilePages.attemptCount} < ${maxAttempts}))::int`,
+      recent: sql<number>`count(*) filter (where ${questionFilePages.updatedAt} > now() - interval '3 minutes')::int`,
+    })
+    .from(questionFilePages)
+    .where(eq(questionFilePages.bookId, bookId));
+  return {
+    waiting: questions?.waiting ?? 0,
+    pagesStalled: (pages?.toDo ?? 0) > 0 && (pages?.recent ?? 0) === 0,
+  };
+}
+
 // A question has at most one image in v1 (one page -> one screenshot), but
 // this reads through the many-to-many relation table regardless, so a future
 // real-cropping pass that links more than one image never needs this query

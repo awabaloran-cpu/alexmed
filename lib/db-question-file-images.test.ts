@@ -12,7 +12,10 @@ vi.mock("@/lib/db", () => ({
   requireDb: () => holder.db,
 }));
 
-import { getNextPendingExtractedQuestion } from "./db-question-file-images";
+import {
+  getNextPendingExtractedQuestion,
+  getQuestionsHeldBack,
+} from "./db-question-file-images";
 
 const OWNER = "11111111-1111-4111-8111-111111111111";
 const BOOK = "33333333-3333-4333-8333-333333333333";
@@ -157,5 +160,45 @@ describe("getNextPendingExtractedQuestion — explanations while pages are still
     await pages([done, done]);
     await pages([waiting, waiting], OTHER_BOOK);
     expect(await next()).toBe(0);
+  });
+});
+
+describe("getQuestionsHeldBack — what is left when nothing can be explained right now", () => {
+  it("counts the questions still owed an explanation", async () => {
+    await questionsOnPages([1, 1, 2, 3]);
+    await pages([done, done, done]);
+    await explain(0);
+    await test.client.query(
+      `UPDATE extracted_questions SET "aiStatus" = 'failed', "aiAttemptCount" = 3 WHERE "bookId" = $1 AND "orderIndex" = 1`,
+      [BOOK]
+    );
+    // One explained, one out of attempts: two are still owed.
+    expect(await getQuestionsHeldBack(BOOK)).toEqual({
+      waiting: 2,
+      pagesStalled: false,
+    });
+  });
+
+  it("says the page stage is alive while a page was touched lately", async () => {
+    await questionsOnPages([1, 2, 3]);
+    await pages([done, { status: "processing", minutesAgo: 1 }, waiting]);
+    expect((await getQuestionsHeldBack(BOOK)).pagesStalled).toBe(false);
+  });
+
+  it("says it has stalled when pages are left and none was touched for minutes", async () => {
+    await questionsOnPages([1, 2, 3]);
+    await pages([
+      { status: "complete", minutesAgo: 20 },
+      { status: "processing", minutesAgo: 15 },
+      { status: "pending", minutesAgo: 15 },
+    ]);
+    expect((await getQuestionsHeldBack(BOOK)).pagesStalled).toBe(true);
+
+    // Nothing left to do is not a stall, however old the pages are.
+    await pages([
+      { status: "complete", minutesAgo: 20 },
+      { status: "failed", attempts: 3, minutesAgo: 20 },
+    ]);
+    expect((await getQuestionsHeldBack(BOOK)).pagesStalled).toBe(false);
   });
 });

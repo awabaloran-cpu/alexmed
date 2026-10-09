@@ -2,6 +2,7 @@ import { getQuestionFileBookById } from "@/lib/db-question-files";
 import {
   getExtractedQuestionImages,
   getNextPendingExtractedQuestion,
+  getQuestionsHeldBack,
   markExtractedQuestionAiFailed,
   saveExtractedQuestionEnrichment,
 } from "@/lib/db-question-file-images";
@@ -26,11 +27,14 @@ import { NextResponse } from "next/server";
 // Self-chaining (per-book Flow Control key, parallelism 1) so a file with
 // hundreds of questions is never silently cut off partway through. Started
 // by stage 2 after each batch of pages: it only ever sees the questions
-// whose pages are settled, and ends when none is left for now. Needs no
+// whose pages are settled; when none is ready but some are still held back
+// by a page, it looks again shortly rather than ending. Needs no
 // access to the source PDF itself — an image-bearing question's screenshot
 // was already uploaded to object storage in stage 2, so this only ever
 // signs a GET url for that already-stored key.
 const QUESTIONS_PER_INVOCATION = 15;
+// How long to wait before looking again for questions a page holds back.
+const HELD_BACK_RECHECK_SECONDS = 120;
 
 export async function POST(request: Request) {
   const rawBody = await request.text();
@@ -165,6 +169,35 @@ export async function POST(request: Request) {
         }
       );
       return NextResponse.json({ bookId, status: "processing" });
+    }
+
+    // Nothing to explain right now is not the end while questions are
+    // still held back by a page: look again shortly, and if the page stage
+    // has gone quiet with pages left, start it again too.
+    const heldBack = await getQuestionsHeldBack(bookId);
+    if (heldBack.waiting > 0) {
+      if (heldBack.pagesStalled) {
+        await publishMessage(
+          { type: "extract_question_file_images", bookId },
+          {
+            flowControl: {
+              key: `question-file-images-${bookId}`,
+              parallelism: 1,
+            },
+          }
+        );
+      }
+      await publishMessage(
+        { type: "generate_question_file_content", bookId },
+        {
+          flowControl: {
+            key: `question-file-content-${bookId}`,
+            parallelism: 1,
+          },
+          delay: HELD_BACK_RECHECK_SECONDS,
+        }
+      );
+      return NextResponse.json({ bookId, status: "waiting_for_pages" });
     }
 
     return NextResponse.json({ bookId, status: "done" });

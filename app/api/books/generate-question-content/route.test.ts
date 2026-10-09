@@ -9,6 +9,7 @@ vi.mock("@/lib/db-question-files", () => ({
 vi.mock("@/lib/db-question-file-images", () => ({
   getExtractedQuestionImages: vi.fn(),
   getNextPendingExtractedQuestion: vi.fn(),
+  getQuestionsHeldBack: vi.fn(),
   markExtractedQuestionAiFailed: vi.fn(),
   saveExtractedQuestionEnrichment: vi.fn(),
 }));
@@ -27,6 +28,7 @@ import { getQuestionFileBookById } from "@/lib/db-question-files";
 import {
   getExtractedQuestionImages,
   getNextPendingExtractedQuestion,
+  getQuestionsHeldBack,
   markExtractedQuestionAiFailed,
   saveExtractedQuestionEnrichment,
 } from "@/lib/db-question-file-images";
@@ -45,6 +47,9 @@ const mockGetImages = getExtractedQuestionImages as unknown as ReturnType<
 >;
 const mockNextQuestion =
   getNextPendingExtractedQuestion as unknown as ReturnType<typeof vi.fn>;
+const mockHeldBack = getQuestionsHeldBack as unknown as ReturnType<
+  typeof vi.fn
+>;
 const mockMarkFailed = markExtractedQuestionAiFailed as unknown as ReturnType<
   typeof vi.fn
 >;
@@ -92,6 +97,9 @@ describe("POST /api/books/generate-question-content", () => {
       .mockResolvedValue({ id: "b1", fileKey: "books/b1.pdf" });
     mockGetImages.mockReset().mockResolvedValue([]);
     mockNextQuestion.mockReset();
+    mockHeldBack
+      .mockReset()
+      .mockResolvedValue({ waiting: 0, pagesStalled: false });
     mockMarkFailed.mockReset();
     mockSaveEnrichment.mockReset();
     mockSignedUrl.mockReset().mockResolvedValue("https://signed.example/img");
@@ -412,5 +420,39 @@ describe("POST /api/books/generate-question-content", () => {
 
     expect(body.status).toBe("done");
     expect(mockPublish).not.toHaveBeenCalled();
+  });
+
+  // A server restart killed the runs holding two pages of a real file: the
+  // explanations stopped at the first of them, half the file unexplained,
+  // and nothing started either stage again.
+  it("looks again later while questions are held back by a page, instead of ending", async () => {
+    mockNextQuestion.mockResolvedValue(null);
+    mockHeldBack.mockResolvedValue({ waiting: 78, pagesStalled: false });
+
+    const response = await POST(request({ bookId: "b1" }));
+
+    expect((await response.json()).status).toBe("waiting_for_pages");
+    // Only itself, delayed: the page stage is still at work.
+    expect(mockPublish).toHaveBeenCalledTimes(1);
+    expect(mockPublish).toHaveBeenCalledWith(
+      { type: "generate_question_file_content", bookId: "b1" },
+      {
+        flowControl: { key: "question-file-content-b1", parallelism: 1 },
+        delay: 120,
+      }
+    );
+  });
+
+  it("starts the page stage again when it has gone quiet with pages left", async () => {
+    mockNextQuestion.mockResolvedValue(null);
+    mockHeldBack.mockResolvedValue({ waiting: 78, pagesStalled: true });
+
+    await POST(request({ bookId: "b1" }));
+
+    expect(mockPublish).toHaveBeenCalledTimes(2);
+    expect(mockPublish).toHaveBeenCalledWith(
+      { type: "extract_question_file_images", bookId: "b1" },
+      { flowControl: { key: "question-file-images-b1", parallelism: 1 } }
+    );
   });
 });
