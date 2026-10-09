@@ -1909,6 +1909,7 @@ describe("Asking the bot for a PDF summary", () => {
       (
         [
           "revision",
+          "guide",
           "handout",
           "studio",
           "bloom",

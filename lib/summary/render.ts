@@ -1,7 +1,7 @@
 // 📝 A summary (lib/summary/types.ts) -> one HTML page, ready to print to
 // PDF (lib/summary/pdf.ts). Pure: no I/O.
 //
-// Five looks share one layout; a theme is a set of CSS variables, its own
+// The looks share one layout; a theme is a set of CSS variables, its own
 // faces and a few overrides. Every page carries the NiroLearn signature with a link to the
 // bot — a fixed element repeats on each printed page, and its link stays
 // clickable in the PDF.
@@ -151,6 +151,7 @@ export function pageRanges(pages: number[]) {
 // mixed line never changes face mid-sentence.
 const FONTS: Record<SummaryTheme, string[]> = {
   revision: ["Lato:wght@400;700;900", "IBM+Plex+Sans+Arabic:wght@400;600;700"],
+  guide: ["Noto+Sans:wght@400;700", "Noto+Sans+Arabic:wght@400;700"],
   handout: [
     "Libre+Baskerville:wght@400;700",
     "Amiri:wght@400;700",
@@ -541,6 +542,77 @@ code { font-family: "IBM Plex Mono", Consolas, monospace; font-size: .9em; backg
 .map .node li span { flex: 1; min-width: 0; white-space: nowrap; overflow-x: clip; overflow-y: visible; text-overflow: ellipsis; }
 .map .node .katex { font-size: 1em; }
 
+/* ── guide: a clinical study guide — navy headings, steel-blue sub-heads,
+   ruled tables with a navy head, pale blue note boxes. ── */
+[data-theme=guide] { --fd: "Noto Sans", "Noto Sans Arabic", sans-serif; --fb: "Noto Sans", "Noto Sans Arabic", sans-serif;
+  --bg: #fff; --ink: #1a1f27; --mute: #5b6573; --line: #d3dae3; --panel: #f3f5f8;
+  --a: #2a6d92; --ad: #16324f; --as: #e8f1f7; --hl: #fff1a8; --navy: #16324f;
+  --cover: #fff; --cink: #16324f; --clogo: #fff;
+  --sb: #f3f5f8; --sl: none; --sc: #2a6d92; --kb: none; --kc: #1a1f27; --kk: #2a6d92;
+  --gb: #fff; --gl: #d3dae3; --gc: #5b6573; }
+[data-theme=guide] body { font-size: 9.8pt; line-height: 1.5; }
+[data-theme=guide] [dir=rtl] { line-height: 1.8; }
+[data-theme=guide] table.page > tbody > tr > td { padding: 0 18mm; }
+[data-theme=guide] .brand, [data-theme=guide] .deco { display: none; }
+[data-theme=guide] .full { padding: 38mm 18mm 30mm; text-align: center; align-items: center; }
+[data-theme=guide] .full .ttl { margin-top: 0; display: flex; flex-direction: column; align-items: center; }
+[data-theme=guide] h1 { order: 1; font-size: 25pt; line-height: 1.3; font-weight: 700; text-transform: uppercase; margin: 0 0 4mm; }
+[data-theme=guide] .sub { order: 2; font-size: 11pt; line-height: 1.6; color: var(--mute); opacity: 1; max-width: none; }
+[data-theme=guide] .sub:after { content: ""; display: block; width: 110mm; height: 1.5px; background: var(--a); margin: 6mm auto 7mm; }
+[data-theme=guide] .chips { order: 3; justify-content: center; gap: 0; margin: 0; color: var(--mute); }
+[data-theme=guide] .chip { border: 0; padding: 0; font: 400 10.5pt/1.6 var(--fb); }
+[data-theme=guide] .chip + .chip:before { content: "•"; margin: 0 7px; }
+[data-theme=guide] .full .meta { margin-top: 12mm; align-self: stretch; text-align: start; padding: 8px 10px; border: 1px solid var(--a);
+  background: var(--as); color: var(--ink); opacity: 1; font-size: 9.4pt; }
+[data-theme=guide] .toc { display: none; }
+[data-theme=guide] section.sec { margin-top: 6mm; }
+[data-theme=guide] .sh { gap: 6px; align-items: baseline; margin-bottom: 3px; }
+[data-theme=guide] .sh .n { font-size: 17pt; font-weight: 700; color: var(--navy); line-height: 1.3; }
+[data-theme=guide] .sh .n:after { content: "."; }
+[data-theme=guide] .sh .st { flex: 1; display: flex; flex-direction: row-reverse; justify-content: space-between; align-items: baseline; gap: 12px; }
+[data-theme=guide] h2 { flex: 1; font-size: 17pt; line-height: 1.3; color: var(--navy); }
+[data-theme=guide] .eb { font-size: 7.4pt; white-space: nowrap; }
+[data-theme=guide] h3 { font-size: 12pt; color: var(--a); margin: 10px 0 3px; }
+[data-theme=guide] p { margin: 4px 0; }
+[data-theme=guide] ul, [data-theme=guide] ol { margin: 4px 0; padding-inline-start: 18px; }
+[data-theme=guide] li { margin: 2px 0; }
+[data-theme=guide] li::marker { color: var(--ink); font-weight: 400; }
+[data-theme=guide] ul.kv { border: 1px solid var(--line); padding: 0; }
+[data-theme=guide] ul.kv li { margin: 0; padding: 4px 8px; gap: 10px; grid-template-columns: minmax(90px, 24%) 1fr; }
+[data-theme=guide] ul.kv li:nth-child(even) { background: var(--panel); }
+[data-theme=guide] ul.kv li:last-child { border-bottom: 0; }
+[data-theme=guide] .callout { border-radius: 0; border: 1px solid var(--cl); padding: 7px 10px; margin: 8px 0; }
+[data-theme=guide] .callout > div { display: inline; }
+[data-theme=guide] .callout .ct { font-size: inherit; margin: 0; }
+[data-theme=guide] .callout .ct:after { content: ": "; }
+[data-theme=guide] .callout .ct i { display: none; }
+[data-theme=guide] .callout.key, [data-theme=guide] .callout.exam, [data-theme=guide] .callout.tip { --cb: var(--as); --cc: var(--navy); --cl: var(--a); }
+[data-theme=guide] .callout.warn { --cb: #fbeeec; --cc: #9c2b22; --cl: #c0564c; }
+[data-theme=guide] .formula { border-radius: 0; border: 1px solid var(--line); padding: 8px 12px; margin: 8px 0; }
+[data-theme=guide] .example { border-radius: 0; border-width: 1px; margin: 8px 0; }
+[data-theme=guide] .example .et { background: var(--navy); color: #fff; padding: 5px 10px; font-size: 9pt; }
+[data-theme=guide] .example .et > span { background: none; color: #cfe2ee; padding: 0; font-size: inherit; }
+[data-theme=guide] .example .et > span:after { content: ":"; }
+[data-theme=guide] .example .ans { margin: 0 10px 8px; padding: 5px 10px; border-radius: 0; background: var(--as); color: var(--navy); }
+[data-theme=guide] .tw { margin: 8px 0; }
+[data-theme=guide] .tw table { font-size: 8.4pt; line-height: 1.45; border-top: 1px solid var(--line); border-inline-start: 1px solid var(--line); }
+[data-theme=guide] .tw th, [data-theme=guide] .tw td { padding: 5px 7px; border-inline-end: 1px solid var(--line); }
+[data-theme=guide] .tw thead th { background: var(--navy); color: #fff; font-size: 8.4pt; }
+[data-theme=guide] .tw tbody th { color: var(--ink); font-weight: 400; }
+[data-theme=guide] .tw tbody tr:nth-child(even) > * { background: var(--panel); }
+[data-theme=guide] .flow, [data-theme=guide] .stages { margin: 8px 0; }
+[data-theme=guide] .flow .fs { border-radius: 0; border-width: 1px; }
+[data-theme=guide] .flow .fs:first-child { background: var(--navy); border-color: var(--navy); color: #fff; }
+[data-theme=guide] .stages { gap: 4px; }
+[data-theme=guide] .stages .sg { border-radius: 0; border: 1px solid var(--line); }
+[data-theme=guide] .simple { border-radius: 0; border: 1px solid var(--line); padding: 7px 10px; margin: 8px 0; }
+[data-theme=guide] .simple b { background: none; padding: 0; margin: 0; font-size: inherit; }
+[data-theme=guide] .check { padding: 0; border-radius: 0; margin-top: 7mm; }
+[data-theme=guide] .check h2 { font-size: 17pt; margin-bottom: 4px; }
+[data-theme=guide] .check li:before { border-width: 1.5px; border-radius: 0; }
+[data-theme=guide] .sig { left: 18mm; right: 18mm; border-radius: 0; border-width: 1px 0 0; padding: 0; }
+[data-theme=guide] .sig .logo, [data-theme=guide] .sig .cta { background: var(--navy); border-radius: 2px; }
+
 /* ── handout: a plain typed document. Serif headings, nothing else. ── */
 [data-theme=handout] { --fd: "Libre Baskerville", "Amiri", Georgia, serif; --fb: "Arimo", "IBM Plex Sans Arabic", Arial, sans-serif;
   --bg: #fff; --ink: #2b2b2b; --mute: #8a8a8a; --line: #e4e4e4; --panel: #f6f6f6;
@@ -591,6 +663,7 @@ code { font-family: "IBM Plex Mono", Consolas, monospace; font-size: .9em; backg
 // top, or just a title above the text.
 const COVER: Record<SummaryTheme, "full" | "band" | "inline"> = {
   revision: "inline",
+  guide: "full",
   handout: "inline",
   studio: "full",
   bloom: "band",
@@ -702,7 +775,9 @@ export function renderSummary(
       };
   // "1" in the looks that number like a document, "01" in the others.
   const number = (n: number) =>
-    COVER[theme] === "inline" ? String(n) : String(n).padStart(2, "0");
+    COVER[theme] === "inline" || theme === "guide"
+      ? String(n)
+      : String(n).padStart(2, "0");
   const sourcePages = (pages: number[], titleDir: string) => {
     const ranges = pageRanges(pages);
     if (!ranges) return "";
