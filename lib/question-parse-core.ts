@@ -346,7 +346,19 @@ export function parseQuestionStream(
     mode = "stem";
   }
 
-  for (const line of lines) {
+  // Whether the numbered line at `at` opens a block with its own options:
+  // two lettered lines before the next numbered line, within a few lines.
+  function hasOwnOptions(at: number) {
+    let options = 0;
+    for (let i = at + 1; i < lines.length && i <= at + 16; i++) {
+      const next = lines[i].text;
+      if (QUESTION_START.test(toAsciiDigits(next))) break;
+      if (OPTION_LINE.test(next) && ++options >= 2) return true;
+    }
+    return false;
+  }
+
+  for (const [position, line] of lines.entries()) {
     let text = line.text.trim();
     if (!text) continue;
     const current = draft as Draft | null;
@@ -437,12 +449,16 @@ export function parseQuestionStream(
         }
       }
       // Inside an explanation / notes, a numbered list item stays there
-      // unless it is the next question number.
+      // unless it is the next question number — or a later one with its
+      // own options: when one question's number is unreadable (a scan read
+      // "119." as "1-9"), every question after it would otherwise count
+      // as a list item of that note, to the end of the file.
       if (
         current &&
         (mode === "explanation" || mode === "notes") &&
         number !== current.number + 1 &&
-        number !== 1
+        number !== 1 &&
+        !(number > current.number && hasOwnOptions(position))
       ) {
         (mode === "notes" ? current.notes : current.explanationLines).push(
           text
