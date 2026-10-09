@@ -1814,7 +1814,7 @@ describe("Asking the bot for a PDF summary", () => {
     await press(CALLBACK.summaryStyle(upload.id, "exam"));
     expect(lastSent().text).toBe(TEXT.summaryAskTheme);
     expect(buttonsOf().map(b => b.callback_data)).toEqual(
-      (["niro", "mint", "violet", "classic"] as const).map(theme =>
+      (["studio", "bloom", "dusk", "paper", "classic"] as const).map(theme =>
         CALLBACK.summaryGo(upload.id, "exam", theme)
       )
     );
@@ -1828,10 +1828,10 @@ describe("Asking the bot for a PDF summary", () => {
       summary: { id: "99999999-9999-4999-8999-999999999999", sourcePages: 18 },
     });
     publishMessage.mockClear();
-    await press(CALLBACK.summaryGo(upload.id, "exam", "violet"));
+    await press(CALLBACK.summaryGo(upload.id, "exam", "dusk"));
 
     expect(summaries.requestSummary).toHaveBeenCalledWith(
-      expect.objectContaining({ bookId: upload.bookId, style: "exam", theme: "violet" })
+      expect.objectContaining({ bookId: upload.bookId, style: "exam", theme: "dusk" })
     );
     expect(lastSent().text).toBe(TEXT.summaryStarted(18));
     expect(summaries.setSummaryStatusMessage).toHaveBeenCalledWith(
@@ -1842,6 +1842,13 @@ describe("Asking the bot for a PDF summary", () => {
       type: "generate_file_summary",
       summaryId: "99999999-9999-4999-8999-999999999999",
     });
+
+    // A button of the first set of looks, still in an old chat, asks for
+    // the look that replaced it.
+    await press(`g:fv:${upload.id}`);
+    expect(summaries.requestSummary).toHaveBeenLastCalledWith(
+      expect.objectContaining({ style: "full", theme: "dusk" })
+    );
   });
 
   it("tells the student the limit that stopped them, with the way to more", async () => {
@@ -1856,7 +1863,7 @@ describe("Asking the bot for a PDF summary", () => {
       paid: false,
     });
     publishMessage.mockClear();
-    await press(CALLBACK.summaryGo(upload.id, "full", "niro"));
+    await press(CALLBACK.summaryGo(upload.id, "full", "studio"));
     expect(lastSent().text).toBe(TEXT.summaryTooLong(75, 40, false));
     expect(buttonsOf()[0].text).toBe(LABELS.upgrade);
     expect(publishMessage).not.toHaveBeenCalled();
@@ -1867,7 +1874,7 @@ describe("Asking the bot for a PDF summary", () => {
       limit: 1,
       paid: false,
     });
-    await press(CALLBACK.summaryGo(upload.id, "full", "niro"));
+    await press(CALLBACK.summaryGo(upload.id, "full", "studio"));
     expect(lastSent().text).toBe(TEXT.summaryDailyLimit(1, false));
   });
 

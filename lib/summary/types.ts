@@ -34,8 +34,26 @@ export type SummaryDoc = {
   checklist?: string[];
 };
 
-export const SUMMARY_THEMES = ["niro", "mint", "violet", "classic"] as const;
+export const SUMMARY_THEMES = [
+  "studio",
+  "bloom",
+  "dusk",
+  "paper",
+  "classic",
+] as const;
 export type SummaryTheme = (typeof SUMMARY_THEMES)[number];
+
+// The first set of looks (2026-10-09) was replaced; a job or a button that
+// still names one gets the look that took its place.
+const RETIRED_THEMES: Record<string, SummaryTheme> = {
+  niro: "studio",
+  mint: "bloom",
+  violet: "dusk",
+};
+export const toSummaryTheme = (value: unknown): SummaryTheme =>
+  isSummaryTheme(value)
+    ? value
+    : (RETIRED_THEMES[String(value)] ?? SUMMARY_THEMES[0]);
 
 export const SUMMARY_STYLES = ["full", "exam"] as const;
 export type SummaryStyle = (typeof SUMMARY_STYLES)[number];

@@ -301,16 +301,22 @@ export const CALLBACK = {
 };
 
 export const SUMMARY_THEME_LABELS: Record<SummaryTheme, string> = {
-  niro: "🔵 أزرق NiroLearn",
-  mint: "🟢 أخضر هادئ",
-  violet: "🟣 بنفسجي",
+  studio: "🔷 تقرير عصري",
+  bloom: "🌈 ألوان مرحة",
+  dusk: "🌙 ليلي",
+  paper: "📒 دفتر مذاكرة",
   classic: "📜 كلاسيكي",
 };
+// n / m / v: the buttons of the first set of looks, still in old chats.
 const THEME_BY_LETTER: Record<string, SummaryTheme> = {
-  n: "niro",
-  m: "mint",
-  v: "violet",
+  s: "studio",
+  b: "bloom",
+  d: "dusk",
+  p: "paper",
   c: "classic",
+  n: "studio",
+  m: "bloom",
+  v: "dusk",
 };
 
 const UUID =
@@ -356,7 +362,7 @@ export function parseCallback(
       style: style[1].toLowerCase() === "e" ? "exam" : "full",
     };
   }
-  const go = new RegExp(`^g:([ef])([nmvc]):(${UUID})$`, "i").exec(data);
+  const go = new RegExp(`^g:([ef])([sbdpcnmv]):(${UUID})$`, "i").exec(data);
   if (go) {
     return {
       action: "summaryGo",

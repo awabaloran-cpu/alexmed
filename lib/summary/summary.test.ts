@@ -8,8 +8,8 @@ import {
 } from "./compose";
 import { decideSummary } from "./jobs";
 import { parseSummaryMarkup } from "./markup";
-import { renderSummary } from "./render";
-import type { SummarySection } from "./types";
+import { pageRanges, renderSummary } from "./render";
+import { SUMMARY_THEMES, toSummaryTheme, type SummarySection } from "./types";
 
 const ANSWER = `# Urinary tract infection
 @pages 3, 4
@@ -247,11 +247,11 @@ describe("renderSummary", () => {
   });
   const html = renderSummary(doc, {
     link: "https://t.me/Nirolearnbot?start=inv_abc",
-    theme: "violet",
+    theme: "dusk",
   });
 
   it("signs the page with the student's link to the bot, and uses the chosen look", () => {
-    expect(html).toContain('data-theme="violet"');
+    expect(html).toContain('data-theme="dusk"');
     expect(
       html.match(/href="https:\/\/t\.me\/Nirolearnbot\?start=inv_abc"/g)
     ).toHaveLength(2);
@@ -274,5 +274,29 @@ describe("renderSummary", () => {
       { link: 'https://x.test/"><script>' }
     );
     expect(evil).not.toMatch(/<script/i);
+  });
+
+  it("says which source pages each section covers, as short ranges", () => {
+    expect(pageRanges([5, 3, 4, 9, 9])).toBe("3–5, 9");
+    expect(pageRanges([])).toBe("");
+    const withPages = renderSummary({
+      ...doc,
+      sections: [{ title: "Croup", pages: [2, 3, 4, 7], blocks: [] }],
+    });
+    expect(withPages).toContain('Source pages <bdi dir="ltr">2–4, 7</bdi>');
+  });
+
+  it("has every look, and gives a retired one the look that replaced it", () => {
+    for (const theme of SUMMARY_THEMES) {
+      const page = renderSummary(doc, { theme });
+      expect(page).toContain(`data-theme="${theme}"`);
+      // Each look styles itself.
+      expect(page).toContain(`[data-theme=${theme}] {`);
+    }
+    expect(toSummaryTheme("mint")).toBe("bloom");
+    expect(toSummaryTheme("niro")).toBe("studio");
+    expect(toSummaryTheme("violet")).toBe("dusk");
+    expect(toSummaryTheme("classic")).toBe("classic");
+    expect(toSummaryTheme(undefined)).toBe("studio");
   });
 });

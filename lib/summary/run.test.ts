@@ -109,7 +109,7 @@ const ask = (overrides: Partial<Parameters<typeof requestSummary>[0]> = {}) =>
     bookId: FILE,
     telegramAccountId: ACCOUNT,
     style: "full",
-    theme: "mint",
+    theme: "bloom",
     ...overrides,
   });
 
@@ -145,7 +145,7 @@ describe("requestSummary", () => {
       status: "queued",
       sourcePages: 12,
       style: "full",
-      theme: "mint",
+      theme: "bloom",
     });
   });
 
@@ -252,7 +252,7 @@ describe("runSummary", () => {
     expect(done.parts).toHaveLength(1);
 
     const html = htmlToPdf.mock.calls[0][0] as string;
-    expect(html).toContain('data-theme="mint"');
+    expect(html).toContain('data-theme="bloom"');
     expect(html).toContain("Fact 12 explained.");
     // Signed with the student's own invite link.
     expect(html).toMatch(

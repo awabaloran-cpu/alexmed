@@ -47,7 +47,7 @@ import {
 import { htmlToPdf } from "./pdf";
 import { renderSummary } from "./render";
 import { readPdfSource, readSummarySource } from "./source";
-import { isSummaryStyle, isSummaryTheme, type SummarySection } from "./types";
+import { isSummaryStyle, toSummaryTheme, type SummarySection } from "./types";
 
 const MAX_ATTEMPTS = 4;
 const PAGES_MAX_TOKENS = 6000;
@@ -108,7 +108,7 @@ export async function runSummary(
   const chat = await chatOf(summary);
 
   try {
-    if (!isSummaryStyle(summary.style) || !isSummaryTheme(summary.theme)) {
+    if (!isSummaryStyle(summary.style)) {
       throw new Unrecoverable("The summary's choices are not valid");
     }
     const book = summary.bookId ? await getBookById(summary.bookId) : null;
@@ -180,7 +180,7 @@ export async function runSummary(
           year: "numeric",
         }),
       }),
-      { link, theme: summary.theme }
+      { link, theme: toSummaryTheme(summary.theme) }
     );
     const pdf = await htmlToPdf(html);
     const { key } = await storagePut(
