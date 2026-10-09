@@ -50,6 +50,13 @@ vi.mock("pdf-parse", () => ({
   })),
 }));
 vi.mock("pdf-parse/worker", () => ({ CanvasFactory: {} }));
+// The repair of held-back questions has its own tests
+// (lib/question-repair.test.ts); here the page has none.
+vi.mock("@/lib/question-repair-run", () => ({
+  repairBrokenQuestionsOnPage: vi
+    .fn()
+    .mockResolvedValue({ repaired: 0, declined: 0 }),
+}));
 
 import { verifyQStashRequest } from "@/lib/queue/verify";
 import { claimQuestionFilePage } from "@/lib/queue/claim";

@@ -423,3 +423,111 @@ export async function countAnswerableQuestions(
     .where(eq(extractedQuestions.bookId, bookId));
   return Number(row?.answerable ?? 0);
 }
+
+// ── 🩹 Repairing held-back questions (lib/question-repair.ts) ───────────
+
+// The blocks held back from students that start on this page and have not
+// been through a repair yet. None for a doctor's protected set: there the
+// doctor reviews held-back blocks, and nothing an AI transcribed is shown
+// to students in the doctor's name.
+export async function listBrokenQuestionsOnPage(
+  bookId: string,
+  pageNumber: number,
+  limit = 4
+) {
+  const db = getDb();
+  if (!db) return [];
+  return db
+    .select({
+      id: extractedQuestions.id,
+      questionText: extractedQuestions.questionText,
+      options: extractedQuestions.options,
+      extractedAnswerText: extractedQuestions.extractedAnswerText,
+      explanationText: extractedQuestions.explanationText,
+    })
+    .from(extractedQuestions)
+    .where(
+      and(
+        eq(extractedQuestions.bookId, bookId),
+        eq(extractedQuestions.sourcePage, pageNumber),
+        eq(extractedQuestions.reviewStatus, "needs_review"),
+        sql`coalesce(${extractedQuestions.reviewReason}, '') not like '%repair_declined%'`,
+        sql`not exists (select 1 from "question_sets" s where s."bookId" = ${bookId})`
+      )
+    )
+    .orderBy(asc(extractedQuestions.orderIndex))
+    .limit(limit);
+}
+
+// Stores a repaired question and hands it to stage 3 for its explanation.
+// Refused (false) when the block is no longer held back, or when the file
+// already has a visible question with the same stem — the model read a
+// neighbour on the page instead of the one it was asked for.
+export async function saveRepairedQuestion(
+  bookId: string,
+  questionId: string,
+  repaired: {
+    questionText: string;
+    options: string[];
+    extractedAnswerIndex: number | null;
+    extractedAnswerText: string | null;
+    explanationText: string | null;
+  }
+): Promise<boolean> {
+  const db = getDb();
+  if (!db) throw new Error("Database not available");
+  const updated = await db
+    .update(extractedQuestions)
+    .set({
+      questionText: repaired.questionText,
+      options: repaired.options,
+      extractedAnswerIndex: repaired.extractedAnswerIndex,
+      extractedAnswerText: repaired.extractedAnswerText,
+      explanationText: repaired.explanationText,
+      // Whatever Arabic the parser split off belonged to the broken text.
+      questionTextAr: null,
+      optionsAr: null,
+      translationSource: null,
+      reviewStatus: null,
+      reviewReason: "repaired_from_page",
+      aiStatus: "pending",
+      aiAttemptCount: 0,
+      aiError: null,
+    })
+    .where(
+      and(
+        eq(extractedQuestions.id, questionId),
+        eq(extractedQuestions.bookId, bookId),
+        eq(extractedQuestions.reviewStatus, "needs_review"),
+        sql`not exists (
+          select 1 from "extracted_questions" o
+          where o."bookId" = ${bookId}
+            and o."id" <> ${questionId}
+            and o."reviewStatus" is distinct from 'needs_review'
+            and lower(o."questionText") = lower(${repaired.questionText})
+        )`
+      )
+    )
+    .returning({ id: extractedQuestions.id });
+  return updated.length > 0;
+}
+
+// The page did not give this question back whole: it stays held back, and
+// is not sent for repair again.
+export async function markQuestionRepairDeclined(
+  questionId: string
+): Promise<void> {
+  const db = getDb();
+  if (!db) throw new Error("Database not available");
+  await db
+    .update(extractedQuestions)
+    .set({
+      reviewReason: sql`concat_ws(',', nullif(${extractedQuestions.reviewReason}, ''), 'repair_declined')`,
+    })
+    .where(
+      and(
+        eq(extractedQuestions.id, questionId),
+        eq(extractedQuestions.reviewStatus, "needs_review")
+      )
+    );
+}

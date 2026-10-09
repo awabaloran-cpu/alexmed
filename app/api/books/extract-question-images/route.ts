@@ -18,6 +18,7 @@ import {
   questionFilePageImageResponseSchema,
 } from "@/lib/question-file-analysis";
 import { invokeLLM, DEFAULT_VISION_MODEL } from "@/lib/llm";
+import { repairBrokenQuestionsOnPage } from "@/lib/question-repair-run";
 import { transientAiRetryDelaySeconds } from "@/lib/ai/types";
 import { claimQuestionFilePage } from "@/lib/queue/claim";
 import { publishMessage } from "@/lib/queue/client";
@@ -124,6 +125,17 @@ export async function POST(request: Request) {
         if (!shot?.dataUrl) {
           throw new Error("Page screenshot generation failed");
         }
+
+        // 🩹 A question of this page the text parser could not put together
+        // is read again from the picture, so it reaches the student
+        // instead of staying held back (lib/question-repair.ts).
+        await repairBrokenQuestionsOnPage({
+          bookId,
+          pageNumber: candidate.pageNumber,
+          pageCount: book.pageCount,
+          parser,
+          pageImage: shot.dataUrl,
+        });
 
         const pageCandidates = pageQuestionCandidates(
           questions,
