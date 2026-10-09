@@ -34,6 +34,7 @@ import {
 } from "@/lib/db-question-file-images";
 import { storageGetSignedUrl } from "@/lib/storage";
 import { invokeLLM } from "@/lib/llm";
+import { AiUpstreamError } from "@/lib/ai/types";
 import { POST } from "./route";
 
 const mockVerify = verifyQStashRequest as unknown as ReturnType<typeof vi.fn>;
@@ -267,7 +268,76 @@ describe("POST /api/books/generate-question-content", () => {
       { type: "generate_question_file_content", bookId: "b1" },
       { flowControl: { key: "question-file-content-b1", parallelism: 1 } }
     );
-    expect(mockClaim).toHaveBeenCalledTimes(15);
+    expect(mockClaim).toHaveBeenCalledTimes(24);
+  });
+
+  it("explains several questions at once, each claimed by one worker only", async () => {
+    const ids = ["a", "b", "c", "d", "e", "f"];
+    let handedOut = 0;
+    mockNextQuestion.mockImplementation(async () =>
+      handedOut < ids.length
+        ? {
+            id: ids[handedOut++],
+            bookId: "b1",
+            questionText: "x",
+            options: null,
+            extractedAnswerText: null,
+            extractedAnswerIndex: null,
+          }
+        : null
+    );
+    mockClaim.mockImplementation(async (id: string) => ({
+      id,
+      bookId: "b1",
+      attemptCount: 1,
+    }));
+    let running = 0;
+    let most = 0;
+    mockInvoke.mockImplementation(async () => {
+      most = Math.max(most, ++running);
+      await new Promise(resolve => setTimeout(resolve, 15));
+      running--;
+      return enrichmentResponse(null);
+    });
+
+    await POST(request({ bookId: "b1" }));
+
+    // Side by side, up to the limit (4 by default) — never one at a time.
+    expect(most).toBe(4);
+    expect(mockClaim.mock.calls.map(call => call[0]).sort()).toEqual(ids);
+    expect(mockSaveEnrichment.mock.calls.map(call => call[0]).sort()).toEqual(
+      ids
+    );
+  });
+
+  it("stops taking questions when the AI service is down, and waits before the next run", async () => {
+    let handedOut = 0;
+    mockNextQuestion.mockImplementation(async () => ({
+      id: `q${handedOut++}`,
+      bookId: "b1",
+      questionText: "x",
+      options: null,
+      extractedAnswerText: null,
+      extractedAnswerIndex: null,
+    }));
+    mockClaim.mockImplementation(async (id: string) => ({
+      id,
+      bookId: "b1",
+      attemptCount: 1,
+    }));
+    mockInvoke.mockRejectedValue(new AiUpstreamError("all models down"));
+
+    await POST(request({ bookId: "b1" }));
+
+    // Only the questions already in hand were spent, not the whole batch.
+    expect(mockClaim.mock.calls.length).toBeLessThanOrEqual(4);
+    expect(mockPublish).toHaveBeenCalledWith(
+      { type: "generate_question_file_content", bookId: "b1" },
+      {
+        flowControl: { key: "question-file-content-b1", parallelism: 1 },
+        delay: 30,
+      }
+    );
   });
 
   function translatedResponse(questionAr: string, optionsAr: string[]) {

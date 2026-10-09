@@ -15,8 +15,10 @@ import {
 } from "@/lib/question-file-analysis";
 import { isArabicText } from "@/lib/question-extraction";
 import { invokeLLM, DEFAULT_VISION_MODEL } from "@/lib/llm";
+import { transientAiRetryDelaySeconds } from "@/lib/ai/types";
 import { claimExtractedQuestion } from "@/lib/queue/claim";
 import { publishMessage } from "@/lib/queue/client";
+import { getQuestionExplainConcurrency } from "@/lib/queue/types";
 import { storageGetSignedUrl } from "@/lib/storage";
 import { verifyQStashRequest } from "@/lib/queue/verify";
 import { NextResponse } from "next/server";
@@ -32,7 +34,11 @@ import { NextResponse } from "next/server";
 // access to the source PDF itself — an image-bearing question's screenshot
 // was already uploaded to object storage in stage 2, so this only ever
 // signs a GET url for that already-stored key.
-const QUESTIONS_PER_INVOCATION = 15;
+//
+// Several questions are explained at once (getQuestionExplainConcurrency):
+// one at a time, a 160-question file took about six minutes of two-second
+// AI calls.
+const QUESTIONS_PER_INVOCATION = 24;
 // How long to wait before looking again for questions a page holds back.
 const HELD_BACK_RECHECK_SECONDS = 120;
 
@@ -64,14 +70,35 @@ export async function POST(request: Request) {
     return NextResponse.json({ bookId, status: "skipped" });
   }
 
+  // Set when the AI service failed in a way that passes: no more questions
+  // are taken, and the next run waits (see extract-question-images).
+  let retryDelay: number | null = null;
   try {
-    for (let i = 0; i < QUESTIONS_PER_INVOCATION; i++) {
-      const candidate = await getNextPendingExtractedQuestion(bookId);
-      if (!candidate) break;
+    // Questions are taken one at a time, in file order (each pick reads the
+    // next one and claims it, so two workers never hold the same question);
+    // the AI calls, where the time goes, run side by side.
+    let taken = 0;
+    let picking: Promise<unknown> = Promise.resolve();
+    const pick = () => {
+      const turn = picking.then(async () => {
+        while (taken < QUESTIONS_PER_INVOCATION && retryDelay === null) {
+          const candidate = await getNextPendingExtractedQuestion(bookId);
+          if (!candidate) return null;
+          taken++;
+          const claimed = await claimExtractedQuestion(candidate.id);
+          // Lost the race to another delivery — take the next one.
+          if (claimed) return { candidate, claimed };
+        }
+        return null;
+      });
+      picking = turn.catch(() => null);
+      return turn;
+    };
 
-      const claimed = await claimExtractedQuestion(candidate.id);
-      if (!claimed) continue; // lost the race to another delivery — move on
-
+    const explain = async ({
+      candidate,
+      claimed,
+    }: NonNullable<Awaited<ReturnType<typeof pick>>>) => {
       try {
         const images = await getExtractedQuestionImages(candidate.id);
         // v1 associates at most one image per question (see
@@ -154,8 +181,21 @@ export async function POST(request: Request) {
           candidate.id,
           "تعذر توليد الشرح والكلمات المفتاحية لهذا السؤال."
         );
+        retryDelay ??= transientAiRetryDelaySeconds(
+          questionError,
+          claimed.attemptCount
+        );
       }
-    }
+    };
+
+    const worker = async () => {
+      for (let next = await pick(); next; next = await pick()) {
+        await explain(next);
+      }
+    };
+    await Promise.all(
+      Array.from({ length: getQuestionExplainConcurrency() }, worker)
+    );
 
     const remaining = await getNextPendingExtractedQuestion(bookId);
     if (remaining) {
@@ -166,6 +206,7 @@ export async function POST(request: Request) {
             key: `question-file-content-${bookId}`,
             parallelism: 1,
           },
+          ...(retryDelay !== null ? { delay: retryDelay } : {}),
         }
       );
       return NextResponse.json({ bookId, status: "processing" });

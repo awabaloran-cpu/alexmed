@@ -105,6 +105,15 @@ export function getBooksVisualQueueConcurrency(): number {
 // per-question enrichment) — same reasoning as getBooksVisualQueueConcurrency
 // above: a big question file's own background enrichment must never starve
 // other students' uploads of OmniRoute capacity.
+// How many of one file's questions are explained at once, inside a single
+// run of the explanation worker (app/api/books/generate-question-content).
+export function getQuestionExplainConcurrency(): number {
+  return Math.min(
+    8,
+    Math.max(1, readIntEnv("QUESTION_FILE_EXPLAIN_CONCURRENCY", 4))
+  );
+}
+
 export function getQuestionFilesEnrichmentQueueConcurrency(): number {
   return readIntEnv("QUESTION_FILES_ENRICHMENT_QUEUE_CONCURRENCY", 2);
 }
