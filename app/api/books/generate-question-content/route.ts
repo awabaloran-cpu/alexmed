@@ -98,6 +98,7 @@ export async function POST(request: Request) {
               questionText: candidate.questionText,
               options: candidate.options,
               extractedAnswerText: candidate.extractedAnswerText,
+              explanationText: candidate.explanationText,
             },
             imageUrl,
             { translate }

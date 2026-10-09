@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   associateImagesWithQuestions,
+  buildExtractedQuestionEnrichmentMessages,
   decideImageOwner,
   pageQuestionCandidates,
   questionPageRange,
@@ -196,6 +197,65 @@ describe("parseExtractedQuestionEnrichment", () => {
     expect(
       parseExtractedQuestionEnrichment(content).inferredAnswerIndex
     ).toBeNull();
+  });
+});
+
+describe("buildExtractedQuestionEnrichmentMessages — the file's own explanation", () => {
+  const question = {
+    questionText: "Which nerve supplies the deltoid?",
+    options: ["Radial", "Axillary"],
+    extractedAnswerText: "Axillary",
+  };
+  const text = (content: unknown) =>
+    typeof content === "string"
+      ? content
+      : (content as { type: string; text?: string }[])
+          .map(part => part.text ?? "")
+          .join("");
+
+  it("hands the explanation to the model with the question, and tells it to build on it", () => {
+    const [system, user] = buildExtractedQuestionEnrichmentMessages(
+      { ...question, explanationText: "  Axillary nerve (C5–C6).  " },
+      null
+    );
+    expect(text(user.content)).toContain(
+      "Source explanation:\nAxillary nerve (C5–C6)."
+    );
+    expect(text(system.content)).toContain("Build explanationAr on it");
+    // Text of the file stays out of the instructions.
+    expect(text(system.content)).not.toContain("C5–C6");
+  });
+
+  it("goes with the picture too", () => {
+    const [, user] = buildExtractedQuestionEnrichmentMessages(
+      { ...question, explanationText: "Axillary nerve (C5–C6)." },
+      "https://example.test/figure.png"
+    );
+    expect(text(user.content)).toContain("Source explanation:");
+    expect(user.content).toContainEqual(
+      expect.objectContaining({ type: "image_url" })
+    );
+  });
+
+  it("changes nothing for a question the file does not explain", () => {
+    for (const explanationText of [undefined, null, "   "]) {
+      const [system, user] = buildExtractedQuestionEnrichmentMessages(
+        { ...question, explanationText },
+        null
+      );
+      expect(user.content).toBe(
+        "Question: Which nerve supplies the deltoid?\nOptions:\nA. Radial\nB. Axillary"
+      );
+      expect(text(system.content)).not.toContain("Source explanation");
+    }
+  });
+
+  it("cuts a very long explanation", () => {
+    const [, user] = buildExtractedQuestionEnrichmentMessages(
+      { ...question, explanationText: "x".repeat(5000) },
+      null
+    );
+    expect(text(user.content).match(/x+/g)?.at(-1)).toHaveLength(2000);
   });
 });
 
