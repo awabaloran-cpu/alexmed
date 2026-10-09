@@ -3,7 +3,7 @@
 //   - a registered account only — a Telegram guest is asked to create one;
 //   - the free plan: one summary a day, from a file of at most 40 pages;
 //   - a paid plan: more a day, and longer files.
-import { and, eq, inArray, ne, sql } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, ne, sql } from "drizzle-orm";
 import { books, fileSummaries } from "../../drizzle/schema";
 import { getUserPlan } from "../billing/entitlement";
 import { billingTimeZone, periodKeys } from "../billing/periods";
@@ -136,9 +136,32 @@ export async function requestSummary(input: {
   });
   if (refusal) return { ok: false, ...refusal };
 
+  // A summary of this same source and kind that was fully written and then
+  // failed (the PDF could not be printed) is not written again: the new job
+  // starts from its pages and only has the finishing left.
+  const [written] = await db
+    .select({ parts: fileSummaries.parts, donePages: fileSummaries.donePages })
+    .from(fileSummaries)
+    .where(
+      and(
+        eq(fileSummaries.userId, input.userId),
+        eq(fileSummaries.status, "failed"),
+        eq(fileSummaries.style, input.style),
+        eq(fileSummaries.sourcePages, pages.length),
+        gte(fileSummaries.donePages, pages.length),
+        input.bookId
+          ? eq(fileSummaries.bookId, input.bookId)
+          : eq(fileSummaries.sourceKey, input.file?.key ?? "")
+      )
+    )
+    .orderBy(desc(fileSummaries.createdAt))
+    .limit(1);
+  const reuse = written && written.parts.length > 0 ? written : null;
+
   const [summary] = await db
     .insert(fileSummaries)
     .values({
+      ...(reuse ? { parts: reuse.parts, donePages: reuse.donePages } : {}),
       userId: input.userId,
       bookId: input.bookId ?? null,
       sourceKey: input.bookId ? null : (input.file?.key ?? null),

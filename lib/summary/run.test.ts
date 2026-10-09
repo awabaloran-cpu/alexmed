@@ -360,6 +360,34 @@ describe("runSummary", () => {
     expect(tg.sendDocument).toHaveBeenCalledTimes(1);
   });
 
+  it("does not write the pages again when only the printing had failed", async () => {
+    const first = await job();
+    await runSummary(first);
+    await runSummary(first);
+    htmlToPdf.mockRejectedValue(new Error("no browser"));
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    for (let i = 0; i < 4; i++) await runSummary(first);
+    logged.mockRestore();
+    expect((await getSummary(first))!.status).toBe("failed");
+
+    // The student asks again, in another look; the browser works now.
+    htmlToPdf.mockResolvedValue(new Uint8Array([37, 80, 68, 70]));
+    invokeLLM.mockClear();
+    const again = await ask({ theme: "classic" });
+    if (!again.ok) throw new Error("expected a job");
+    expect(again.summary.donePages).toBe(12);
+
+    expect(await runSummary(again.summary.id)).toBe("done");
+    const pageCalls = invokeLLM.mock.calls.filter(
+      call =>
+        (call[0].messages as { content: string }[])[0].content ===
+        PAGES_SYSTEM_PROMPT
+    );
+    expect(pageCalls).toHaveLength(0);
+    expect(tg.sendDocument).toHaveBeenCalledTimes(1);
+    expect(htmlToPdf.mock.calls.at(-1)![0]).toContain('data-theme="classic"');
+  });
+
   it("fails the job when the PDF cannot be printed, without losing the day", async () => {
     const id = await job();
     await runSummary(id);

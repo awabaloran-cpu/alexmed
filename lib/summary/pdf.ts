@@ -6,18 +6,37 @@
 // to run without system packages). CHROMIUM_PATH points at an installed
 // Chrome instead — for a developer's machine. One browser per call, closed
 // before returning: the page loads web fonts and nothing of the student's.
-//
-// NOT verified on Railway as of 2026-10-09 — see docs/telegram.
-import chromium from "@sparticuz/chromium";
 import puppeteer from "puppeteer-core";
 
 const RENDER_TIMEOUT_MS = 90_000;
 
+// @sparticuz/chromium carries the shared libraries Chromium needs (NSS,
+// NSPR, …) but only unpacks them, and only points LD_LIBRARY_PATH at them,
+// when it believes it runs on AWS Lambda — it reads these variables when it
+// is first imported. Railway's image has none of those libraries: the first
+// live summary (2026-10-09) failed with "libnspr4.so: cannot open shared
+// object file". So the package is imported lazily, with the variable it
+// looks for set for just that long; what it leaves behind (LD_LIBRARY_PATH,
+// FONTCONFIG_PATH) is read by the browser process it starts, not by this
+// one.
+async function bundledChromium() {
+  const had = process.env.AWS_LAMBDA_JS_RUNTIME;
+  process.env.AWS_LAMBDA_JS_RUNTIME ??= "nodejs22.x";
+  try {
+    const { default: chromium } = await import("@sparticuz/chromium");
+    return {
+      executablePath: await chromium.executablePath(),
+      args: chromium.args,
+    };
+  } finally {
+    if (had === undefined) delete process.env.AWS_LAMBDA_JS_RUNTIME;
+  }
+}
+
 export async function htmlToPdf(html: string): Promise<Uint8Array> {
   const local = process.env.CHROMIUM_PATH?.trim();
   const browser = await puppeteer.launch({
-    executablePath: local || (await chromium.executablePath()),
-    args: local ? [] : chromium.args,
+    ...(local ? { executablePath: local, args: [] } : await bundledChromium()),
     headless: true,
   });
   try {
