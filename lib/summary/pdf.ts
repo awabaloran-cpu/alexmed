@@ -3,34 +3,38 @@
 // the page design right.
 //
 // On the server the browser comes from @sparticuz/chromium (a Chromium built
-// to run without system packages). CHROMIUM_PATH points at an installed
-// Chrome instead — for a developer's machine. One browser per call, closed
-// before returning: the page loads web fonts and nothing of the student's.
+// to run with very few system packages), with the libraries it still needs
+// unpacked by lib/summary/chromium-libs.ts and handed to it explicitly.
+// CHROMIUM_PATH points at an installed Chrome instead — for a developer's
+// machine. One browser per call, closed before returning: the page loads
+// web fonts and nothing of the student's.
+import os from "node:os";
+import path from "node:path";
 import puppeteer from "puppeteer-core";
+import { unpackChromiumLibs } from "./chromium-libs";
 
 const RENDER_TIMEOUT_MS = 90_000;
 
-// @sparticuz/chromium carries the shared libraries Chromium needs (NSS,
-// NSPR, …) but only unpacks them, and only points LD_LIBRARY_PATH at them,
-// when it believes it runs on AWS Lambda — it reads these variables when it
-// is first imported. Railway's image has none of those libraries: the first
-// live summary (2026-10-09) failed with "libnspr4.so: cannot open shared
-// object file". So the package is imported lazily, with the variable it
-// looks for set for just that long; what it leaves behind (LD_LIBRARY_PATH,
-// FONTCONFIG_PATH) is read by the browser process it starts, not by this
-// one.
 async function bundledChromium() {
-  const had = process.env.AWS_LAMBDA_JS_RUNTIME;
-  process.env.AWS_LAMBDA_JS_RUNTIME ??= "nodejs22.x";
-  try {
-    const { default: chromium } = await import("@sparticuz/chromium");
-    return {
-      executablePath: await chromium.executablePath(),
-      args: chromium.args,
-    };
-  } finally {
-    if (had === undefined) delete process.env.AWS_LAMBDA_JS_RUNTIME;
-  }
+  const { default: chromium } = await import("@sparticuz/chromium");
+  const executablePath = await chromium.executablePath();
+  const libs = unpackChromiumLibs();
+  return {
+    executablePath,
+    args: chromium.args,
+    // What the browser process is started with — not this process's own
+    // environment, which stays as it was.
+    env: {
+      ...process.env,
+      LD_LIBRARY_PATH: [libs, process.env.LD_LIBRARY_PATH]
+        .filter(Boolean)
+        .join(":"),
+      // The package unpacks its fonts here.
+      FONTCONFIG_PATH:
+        process.env.FONTCONFIG_PATH ?? path.join(os.tmpdir(), "fonts"),
+      HOME: process.env.HOME ?? os.tmpdir(),
+    },
+  };
 }
 
 export async function htmlToPdf(html: string): Promise<Uint8Array> {
