@@ -14,6 +14,8 @@
 //   | a | b |             (a table; a |---| line after the head is optional)
 //   AR: two sentences of simple Arabic
 //   EXAMPLE: title        (then numbered steps, then "ANSWER: ...")
+//   FLOW: a -> b -> c     (one thing leading to the next)
+//   STAGE: name :: what happens   (consecutive lines: phases side by side)
 
 import type { SummaryBlock, SummaryCalloutKind, SummarySection } from "./types";
 
@@ -72,6 +74,24 @@ export function parseSummaryMarkup(text: string): SummarySection[] {
     } else if ((m = /^AR\s*:\s*(.+)$/.exec(line))) {
       close();
       blocks().push({ t: "ar", text: m[1] });
+    } else if ((m = /^FLOW\s*:\s*(.+)$/i.exec(line))) {
+      close();
+      const steps = m[1]
+        .split(/\s*(?:->|→|=>|⇒)\s*/)
+        .map(step => step.trim())
+        .filter(Boolean);
+      // A chain of two to six; anything else reads better as a sentence.
+      if (steps.length >= 2 && steps.length <= 6) {
+        blocks().push({ t: "flow", steps });
+      } else {
+        blocks().push({ t: "p", text: m[1] });
+      }
+    } else if ((m = /^STAGE\s*:\s*(.{1,60}?)\s+::\s+(.+)$/i.exec(line))) {
+      if (list?.t !== "stages") {
+        list = { t: "stages", items: [] };
+        blocks().push(list);
+      }
+      list.items.push([m[1], m[2]]);
     } else if ((m = /^EXAMPLE\s*:\s*(.+)$/i.exec(line))) {
       close();
       list = { t: "example", title: m[1], steps: [] };
@@ -104,6 +124,11 @@ export function parseSummaryMarkup(text: string): SummarySection[] {
         }
         list.items.push(m[2]);
       }
+    } else if ((m = /^[-*•]\s+(.+)$/.exec(line)) && list?.t === "stages") {
+      // Bullets under a stage are what happens in it (models write the
+      // detail of each phase this way), so the phases stay in one row.
+      const stage = list.items[list.items.length - 1];
+      stage[1] = `${stage[1].replace(/[.;]\s*$/, "")}; ${m[1]}`;
     } else if ((m = /^[-*•]\s+(.+)$/.exec(line))) {
       if (!(list?.t === "list" && !list.ordered)) {
         list = { t: "list", ordered: false, items: [] };
@@ -128,6 +153,10 @@ export function parseSummaryMarkup(text: string): SummarySection[] {
       b =>
         !(b.t === "table" && !b.rows.length) &&
         !(b.t === "example" && !b.steps.length)
+    );
+    // One stage is not a sequence of phases: it reads as a term.
+    s.blocks = s.blocks.map(b =>
+      b.t === "stages" && b.items.length < 2 ? { t: "kv", items: b.items } : b
     );
   }
   return sections.filter(s => s.title && s.blocks.length);

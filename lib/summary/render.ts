@@ -112,6 +112,21 @@ function block(b: SummaryBlock) {
     }
     case "ar":
       return `<div class="simple" dir="rtl"><b>بالعربي المبسّط</b><span>${inline(b.text)}</span></div>`;
+    case "flow": {
+      const d = dirOf(b.steps.join(" "));
+      return `<div class="flow" dir="${d}">${b.steps
+        .map(step => `<div class="fs">${inline(step)}</div>`)
+        .join('<i class="fa"></i>')}</div>`;
+    }
+    case "stages": {
+      const d = dirOf(b.items.map(i => i[1]).join(" "));
+      return `<div class="stages" dir="${d}" style="--n:${Math.min(b.items.length, 4)}">${b.items
+        .map(
+          ([name, what], i) =>
+            `<div class="sg"><b><i>${i + 1}</i>${inline(name)}</b><span>${inline(what)}</span></div>`
+        )
+        .join("")}</div>`;
+    }
     default:
       return "";
   }
@@ -263,6 +278,18 @@ code { font-family: "IBM Plex Mono", Consolas, monospace; font-size: .9em; backg
 .tw tbody th { font-weight: 700; color: var(--ad); }
 
 .simple { margin: 10px 0; padding: 9px 14px; border-radius: 12px; background: var(--sb); display: grid; grid-template-columns: auto 1fr; gap: 12px; break-inside: avoid; }
+.flow { margin: 11px 0; display: flex; align-items: stretch; break-inside: avoid; }
+.flow .fs { flex: 1 1 0; min-width: 0; display: flex; align-items: center; justify-content: center; text-align: center; padding: 6px 9px;
+  border: 1.5px solid var(--a); border-radius: 8px; background: var(--bg); font-size: .93em; line-height: 1.4; }
+.flow .fs:first-child { background: var(--a); color: var(--on-a, #fff); font-weight: 700; }
+.flow .fa { flex: none; width: 7mm; display: grid; place-items: center; font-style: normal; color: var(--a); font-size: 12pt; line-height: 1; }
+.flow .fa:before { content: "→"; }
+.flow[dir=rtl] .fa:before { content: "←"; }
+.stages { margin: 11px 0; display: grid; grid-template-columns: repeat(var(--n), 1fr); gap: 6px; break-inside: avoid; }
+.stages .sg { padding: 7px 10px; border-radius: 8px; background: var(--panel); font-size: .93em; line-height: 1.45; }
+.stages .sg:nth-child(even) { background: var(--as); }
+.stages .sg b { display: block; color: var(--ad); font-family: var(--fd); }
+.stages .sg b i { font-style: normal; color: var(--a); margin-inline-end: 6px; }
 .simple b { font-size: 8.2pt; font-weight: 700; background: var(--sl); color: var(--sc); padding: 1px 10px; border-radius: 999px; height: fit-content; margin-top: 4px; white-space: nowrap; }
 
 .check { margin-top: 10mm; padding: 16px 20px; border-radius: 16px; background: var(--kb); color: var(--kc); break-inside: avoid; }
@@ -485,6 +512,13 @@ code { font-family: "IBM Plex Mono", Consolas, monospace; font-size: .9em; backg
 [data-theme=revision] .tw tbody th { color: var(--navy); font-weight: 900; }
 [data-theme=revision] .tw tbody tr:nth-child(even) > * { background: var(--panel); }
 [data-theme=revision] .tw tbody tr:last-child > * { border-bottom: 0; }
+[data-theme=revision] .flow, [data-theme=revision] .stages { margin: 7px 0; }
+[data-theme=revision] .flow .fs { border-radius: 5px; border-width: 1px; padding: 5px 8px; }
+[data-theme=revision] .flow .fs:first-child { background: var(--navy); border-color: var(--navy); color: #fff; }
+[data-theme=revision] .flow .fs:last-child { border-color: var(--red); background: #fbe9e7; }
+[data-theme=revision] .stages { gap: 3px; }
+[data-theme=revision] .stages .sg { border-radius: 0; padding: 5px 9px; }
+[data-theme=revision] .stages .sg b { color: var(--navy); }
 [data-theme=revision] .simple { border-radius: 0; border-inline-start: 3.5px solid var(--a); padding: 6px 12px; margin: 7px 0; }
 [data-theme=revision] .simple b { border-radius: 3px; }
 [data-theme=revision] .check { border-radius: 6px; padding: 10px 14px; margin-top: 6mm; border-inline-start: 3.5px solid var(--navy); }
@@ -580,6 +614,7 @@ export function sectionLandmarks(blocks: SummaryBlock[], max: number) {
   const found = [
     ...of(b => (b.t === "h" ? [b.text] : [])),
     ...of(b => (b.t === "kv" ? b.items.map(i => i[0]) : [])),
+    ...of(b => (b.t === "stages" ? b.items.map(i => i[0]) : [])),
     ...of(b => (b.t === "table" ? b.rows.map(r => r[0] ?? "") : [])),
     ...of(b => (b.t === "list" ? b.items : [])),
     // A section of formulas and worked examples has none of the above.

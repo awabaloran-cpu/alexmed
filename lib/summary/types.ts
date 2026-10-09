@@ -13,7 +13,11 @@ export type SummaryBlock =
   | { t: "example"; title: string; steps: string[]; answer?: string }
   | { t: "table"; head: string[]; rows: string[][] }
   // Two sentences of simple Arabic under material in another language.
-  | { t: "ar"; text: string };
+  | { t: "ar"; text: string }
+  // One thing leading to the next: boxes joined by arrows.
+  | { t: "flow"; steps: string[] }
+  // Phases side by side: a name and what happens in it.
+  | { t: "stages"; items: [string, string][] };
 
 export type SummaryCalloutKind = "key" | "exam" | "warn" | "tip";
 

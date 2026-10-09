@@ -348,3 +348,85 @@ describe("renderSummary", () => {
     expect(toSummaryTheme(undefined)).toBe("revision");
   });
 });
+
+describe("flows and stages", () => {
+  const [section] = parseSummaryMarkup(
+    [
+      "# Pneumonia",
+      "@pages 4",
+      "FLOW: Pneumonia -> Small sterile effusion → **Empyema** => Chest drain",
+      "STAGE: Catarrhal :: coryza-like symptoms, about a week",
+      "STAGE: Paroxysmal :: spasms of cough, then a whoop",
+      "STAGE: Convalescent :: gradual improvement",
+      "A paragraph after them.",
+      "FLOW: only one thing",
+    ].join("\n")
+  );
+
+  it("reads a chain of steps and a row of phases", () => {
+    expect(section.blocks.map(b => b.t)).toEqual(["flow", "stages", "p", "p"]);
+    expect(section.blocks[0]).toEqual({
+      t: "flow",
+      steps: [
+        "Pneumonia",
+        "Small sterile effusion",
+        "**Empyema**",
+        "Chest drain",
+      ],
+    });
+    expect(section.blocks[1]).toMatchObject({
+      items: [
+        ["Catarrhal", "coryza-like symptoms, about a week"],
+        ["Paroxysmal", "spasms of cough, then a whoop"],
+        ["Convalescent", "gradual improvement"],
+      ],
+    });
+    // Not a chain: kept as the sentence it is.
+    expect(section.blocks[3]).toEqual({ t: "p", text: "only one thing" });
+  });
+
+  it("keeps the bullets written under a stage inside that stage", () => {
+    const [steps] = parseSummaryMarkup(
+      [
+        "# Asthma",
+        "STAGE: Step 1 :: Infrequent short-lived wheeze",
+        "- **SABA** as needed",
+        "- Consider very-low-dose ICS.",
+        "STAGE: Step 2 :: Regular preventer therapy.",
+        "- Very-low-dose ICS",
+        "",
+        "- A bullet after a blank line is a list of its own",
+      ].join("\n")
+    );
+    expect(steps.blocks.map(b => b.t)).toEqual(["stages", "list"]);
+    expect(steps.blocks[0]).toMatchObject({
+      items: [
+        [
+          "Step 1",
+          "Infrequent short-lived wheeze; **SABA** as needed; Consider very-low-dose ICS.",
+        ],
+        ["Step 2", "Regular preventer therapy; Very-low-dose ICS"],
+      ],
+    });
+  });
+
+  it("a single stage is a term, not a row of phases", () => {
+    const [alone] = parseSummaryMarkup("# T\nSTAGE: Latent :: no symptoms");
+    expect(alone.blocks).toEqual([
+      { t: "kv", items: [["Latent", "no symptoms"]] },
+    ]);
+  });
+
+  it("draws them: boxes joined by arrows, and numbered phases side by side", () => {
+    const html = renderSummary({
+      lang: "en",
+      title: "T",
+      sections: [section],
+    });
+    expect(html.match(/class="fs"/g)).toHaveLength(4);
+    expect(html.match(/class="fa"/g)).toHaveLength(3);
+    expect(html).toContain("<strong>Empyema</strong>");
+    expect(html).toContain('class="stages" dir="ltr" style="--n:3"');
+    expect(html).toContain("<b><i>2</i>Paroxysmal</b>");
+  });
+});
