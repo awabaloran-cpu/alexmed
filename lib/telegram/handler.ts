@@ -18,13 +18,18 @@ import {
 } from "./accounts";
 import {
   answerCallback,
+  answerInlineQuery,
+  editMessage,
   isChatGone,
   sendMessage,
   type InlineButton,
+  type ReplyMarkup,
 } from "./api";
 import {
   guestFreeUploads,
+  inlineShareEnabled,
   telegramAccountBurstLimit,
+  telegramBotUsername,
   telegramDailyUploadCap,
   telegramMaxFileBytes,
   webUrl,
@@ -32,7 +37,9 @@ import {
 import { isDocumentKind, type DocumentKind } from "./detect";
 import { retryTelegramUpload, summaryStyleRows } from "./intake";
 import { parsePhone } from "../phone";
+import { countAnswerableQuestions } from "../db-question-file-images";
 import {
+  describeShareLink,
   getOrCreateShareLink,
   isJoinMilestone,
   joinByShareLink,
@@ -40,6 +47,7 @@ import {
   parseShareCode,
   shareLinkOwnerId,
   shareLinkUrl,
+  SHARE_PREFIX,
 } from "../share-links";
 import {
   findInviterId,
@@ -47,6 +55,7 @@ import {
   SHARE_SOURCE,
   inviteStats,
   parseStartOrigin,
+  REFERRAL_PREFIX,
   refundBonusUpload,
   shareUrl,
   spendBonusUpload,
@@ -62,6 +71,8 @@ import {
   LABELS,
   mainKeyboard,
   parseCallback,
+  pressedButton,
+  primary,
   TEXT,
   urlButton,
   CALLBACK,
@@ -114,6 +125,8 @@ export type TelegramUpdate = {
     data?: string;
     message?: { message_id: number; chat: TelegramChat };
   };
+  // "@bot <query>" typed in another chat (inline mode).
+  inline_query?: { id: string; from: TelegramUser; query: string };
 };
 
 const LINK_PREFIX = "link_";
@@ -124,7 +137,46 @@ async function openSiteButton(
   label: string,
   path: string
 ) {
-  return { inline_keyboard: [[await openButton(context.user, label, path)]] };
+  return {
+    inline_keyboard: [[primary(await openButton(context.user, label, path))]],
+  };
+}
+
+// "Send it to classmates". With inline mode on, the chat picker: the chosen
+// chat gets a card with a button (handleInlineQuery). Otherwise Telegram's
+// share sheet with the bare link. `payload` is the link's start parameter.
+function sendOnButton(
+  label: string,
+  link: string,
+  text: string,
+  payload: string
+): InlineButton {
+  return inlineShareEnabled()
+    ? { text: label, switch_inline_query: payload }
+    : { text: label, url: shareUrl(link, text) };
+}
+
+const startPayload = (link: string) => link.split("start=")[1] ?? "";
+
+// Answers a button by rewriting the message it sits under, so a choice
+// leaves one message behind instead of a new one per press. Falls back to
+// a new message when that one can no longer be edited.
+async function answerInPlace(
+  chatId: number,
+  messageId: number | undefined,
+  text: string,
+  markup?: { inline_keyboard: InlineButton[][] }
+): Promise<number> {
+  if (messageId) {
+    const edited = await editMessage(chatId, messageId, text, markup).catch(
+      error => {
+        console.error("[Telegram] Could not rewrite the message", error);
+        return false;
+      }
+    );
+    if (edited) return messageId;
+  }
+  return sendMessage(chatId, text, markup);
 }
 
 function isPdf(document: TelegramDocument): boolean {
@@ -222,9 +274,18 @@ async function handleDocument(
       const invite = await inviteLink(account.id);
       await sendMessage(chatId, TEXT.guestLimit, {
         inline_keyboard: [
-          [{ text: LABELS.connectAccount, url: await connectLink(user) }],
+          [primary({ text: LABELS.connectAccount, url: await connectLink(user) })],
           ...(invite
-            ? [[{ text: LABELS.inviteFriend, url: shareUrl(invite, TEXT.inviteShare) }]]
+            ? [
+                [
+                  sendOnButton(
+                    LABELS.inviteFriend,
+                    invite,
+                    TEXT.inviteShare,
+                    startPayload(invite)
+                  ),
+                ],
+              ]
             : []),
         ],
       });
@@ -255,7 +316,8 @@ async function handleDocument(
 
   const statusMessageId = await sendMessage(
     chatId,
-    bonusSpent ? `${TEXT.bonusUsed}\n\n${TEXT.received}` : TEXT.received
+    (bonusSpent ? `${TEXT.bonusUsed}\n\n` : "") +
+      TEXT.uploadProgress(upload.fileName, 0)
   );
   await setUploadStatusMessage(upload.id, statusMessageId);
 
@@ -319,7 +381,16 @@ async function tellOwnerAboutJoin(
       TEXT.shareJoined(title, joinCount),
       {
         inline_keyboard: [
-          [{ text: LABELS.sendToFriends, url: shareUrl(url, TEXT.fileShare) }],
+          [
+            primary(
+              sendOnButton(
+                LABELS.sendToFriends,
+                url,
+                TEXT.fileShare,
+                SHARE_PREFIX + code
+              )
+            ),
+          ],
         ],
       }
     );
@@ -346,20 +417,35 @@ async function handleSharedFile(
   if (joined.role === "joined" && joined.joinCount) {
     await tellOwnerAboutJoin(joined.ownerId, joined.title, code, joined.joinCount);
   }
+  // The card: how many study from it and, for questions, how many there
+  // are. Both only decorate it — the file opens without them.
+  const [described, questions] =
+    joined.role === "own"
+      ? [null, 0]
+      : await Promise.all([
+          describeShareLink(code).catch(() => null),
+          isBook ? 0 : countAnswerableQuestions(joined.bookId).catch(() => 0),
+        ]);
   await sendMessage(
     chatId,
     joined.role === "own"
       ? TEXT.sharedOwn
-      : isBook
-        ? TEXT.sharedBook(joined.title, joined.ownerName)
-        : TEXT.sharedQuestions(joined.title, joined.ownerName),
+      : TEXT.sharedFile({
+          kind: joined.kind,
+          title: joined.title,
+          owner: joined.ownerName,
+          studying: described?.studying ?? 0,
+          questions,
+        }),
     {
       inline_keyboard: [
         [
-          await openButton(
-            context.user,
-            isBook ? LABELS.openBook : LABELS.startQuestions,
-            filePath(joined.kind, joined.bookId)
+          primary(
+            await openButton(
+              context.user,
+              isBook ? LABELS.openBook : LABELS.startQuestions,
+              filePath(joined.kind, joined.bookId)
+            )
           ),
         ],
       ],
@@ -383,7 +469,16 @@ async function handleShareRequest(
     `${TEXT.shareLinkReady(title, link.joinCount)}\n\n🔗 ${url}`,
     {
       inline_keyboard: [
-        [{ text: LABELS.sendToFriends, url: shareUrl(url, TEXT.fileShare) }],
+        [
+          primary(
+            sendOnButton(
+              LABELS.sendToFriends,
+              url,
+              TEXT.fileShare,
+              SHARE_PREFIX + link.code
+            )
+          ),
+        ],
       ],
     }
   );
@@ -401,7 +496,16 @@ async function handleInvite(context: AccountContext, chatId: number) {
   const stats = await inviteStats(context.account.id);
   await sendMessage(chatId, `${TEXT.invite(stats)}\n\n🔗 ${link}`, {
     inline_keyboard: [
-      [{ text: LABELS.shareInvite, url: shareUrl(link, TEXT.inviteShare) }],
+      [
+        primary(
+          sendOnButton(
+            LABELS.shareInvite,
+            link,
+            TEXT.inviteShare,
+            startPayload(link)
+          )
+        ),
+      ],
     ],
   });
 }
@@ -537,6 +641,7 @@ async function handleMessage(updateId: number, message: TelegramMessage) {
     return;
   }
 
+  const button = pressedButton(text);
   if (start) {
     await sendMessage(chatId, TEXT.welcome, mainKeyboard());
     // A guest is shown, once per /start, how to keep their files.
@@ -547,13 +652,15 @@ async function handleMessage(updateId: number, message: TelegramMessage) {
         urlButton(LABELS.connectAccount, await connectLink(context.user))
       );
     }
-  } else if (text === BUTTONS.uploadQuestions) {
+  } else if (button === "uploadQuestions") {
     await setPendingKind(context.account.id, "question_file");
-    await sendMessage(chatId, TEXT.askForFile("question_file"));
-  } else if (text === BUTTONS.uploadBook) {
+    // With the current keyboard: a chat still showing the first one gets
+    // the new one on its next press.
+    await sendMessage(chatId, TEXT.askForFile("question_file"), mainKeyboard());
+  } else if (button === "uploadBook") {
     await setPendingKind(context.account.id, "book");
-    await sendMessage(chatId, TEXT.askForFile("book"));
-  } else if (text === BUTTONS.summaryOnly || /^\/summary\b/i.test(text)) {
+    await sendMessage(chatId, TEXT.askForFile("book"), mainKeyboard());
+  } else if (button === "summaryOnly" || /^\/summary\b/i.test(text)) {
     if (context.user.isGuest) {
       await sendMessage(
         chatId,
@@ -562,15 +669,15 @@ async function handleMessage(updateId: number, message: TelegramMessage) {
       );
     } else {
       await setPendingKind(context.account.id, "summary");
-      await sendMessage(chatId, TEXT.summaryAskFile);
+      await sendMessage(chatId, TEXT.summaryAskFile, mainKeyboard());
     }
-  } else if (text === BUTTONS.invite || /^\/invite\b/i.test(text)) {
+  } else if (button === "invite" || /^\/invite\b/i.test(text)) {
     await handleInvite(context, chatId);
-  } else if (text === BUTTONS.myFiles || /^\/files\b/i.test(text)) {
+  } else if (button === "myFiles" || /^\/files\b/i.test(text)) {
     await handleFilesList(context, chatId);
-  } else if (text === BUTTONS.howItWorks || /^\/help\b/i.test(text)) {
+  } else if (button === "howItWorks" || /^\/help\b/i.test(text)) {
     await sendMessage(chatId, TEXT.howItWorks, mainKeyboard());
-  } else if (text === BUTTONS.openSite) {
+  } else if (button === "openSite") {
     await sendMessage(
       chatId,
       TEXT.openSite,
@@ -586,10 +693,15 @@ async function handleMessage(updateId: number, message: TelegramMessage) {
 async function startSummary(
   context: AccountContext,
   chatId: number,
+  // The message of the last choice: it becomes the answer, and then the
+  // progress of the job.
+  messageId: number | undefined,
   source: { bookId: string } | { file: { key: string; name: string } },
   style: SummaryStyle,
   theme: SummaryTheme
 ) {
+  const answer = (text: string, markup?: { inline_keyboard: InlineButton[][] }) =>
+    answerInPlace(chatId, messageId, text, markup);
   const asked = await requestSummary({
     userId: context.user.id,
     ...source,
@@ -598,45 +710,45 @@ async function startSummary(
     theme,
   });
   if (!asked.ok) {
-    const upgrade = { inline_keyboard: [[{ text: LABELS.upgrade, url: webUrl("/pricing") }]] };
+    const upgrade = {
+      inline_keyboard: [
+        [primary({ text: LABELS.upgrade, url: webUrl("/pricing") })],
+      ],
+    };
     switch (asked.reason) {
       case "guest":
-        await sendMessage(
-          chatId,
+        await answer(
           TEXT.summaryNeedsAccount,
           urlButton(LABELS.connectAccount, await connectLink(context.user))
         );
         return;
       case "too_long":
-        await sendMessage(
-          chatId,
+        await answer(
           TEXT.summaryTooLong(asked.pages, asked.limit, asked.paid),
           asked.paid ? undefined : upgrade
         );
         return;
       case "daily_limit":
-        await sendMessage(
-          chatId,
+        await answer(
           TEXT.summaryDailyLimit(asked.limit, asked.paid),
           asked.paid ? undefined : upgrade
         );
         return;
       case "in_progress":
-        await sendMessage(chatId, TEXT.summaryInProgress);
+        await answer(TEXT.summaryInProgress);
         return;
       case "empty":
-        await sendMessage(chatId, TEXT.summaryEmpty);
+        await answer(TEXT.summaryEmpty);
         return;
       default:
-        await sendMessage(chatId, TEXT.summaryNotReady);
+        await answer(TEXT.summaryNotReady);
         return;
     }
   }
-  const messageId = await sendMessage(
-    chatId,
-    TEXT.summaryStarted(asked.summary.sourcePages)
+  const statusMessageId = await answer(
+    TEXT.summaryProgress({ style, theme }, 0, asked.summary.sourcePages)
   );
-  await setSummaryStatusMessage(asked.summary.id, messageId);
+  await setSummaryStatusMessage(asked.summary.id, statusMessageId);
   await publishMessage({
     type: "generate_file_summary",
     summaryId: asked.summary.id,
@@ -664,9 +776,18 @@ async function handleCallback(
     return;
   }
 
+  // The message the button sits under: a choice rewrites it, and the work
+  // it starts reports there too.
+  const pressedId = query.message?.message_id;
+  const takeOver = async (text: string) => {
+    const messageId = await answerInPlace(chat.id, pressedId, text);
+    await setUploadStatusMessage(upload.id, messageId);
+  };
+
   if (parsed.action === "kind") {
     // Only the first press moves the upload on; a second finds nothing.
     if (await resolveUploadKind(upload.id, parsed.kind)) {
+      await takeOver(TEXT.kindChosen(parsed.kind));
       await publishMessage({ type: "telegram_intake", uploadId: upload.id });
     }
     await answerCallback(query.id);
@@ -677,11 +798,12 @@ async function handleCallback(
     // Only the first press moves the upload on; a second finds nothing.
     const reopened = await reopenUploadAsBook(upload.id);
     if (reopened) {
+      await takeOver(TEXT.converting);
       await publishMessage({ type: "telegram_intake", uploadId: upload.id });
     }
     await answerCallback(
       query.id,
-      reopened ? TEXT.convertStarted : TEXT.retryUnavailable
+      reopened ? undefined : TEXT.retryUnavailable
     );
     return;
   }
@@ -719,17 +841,30 @@ async function handleCallback(
       return;
     }
     if (parsed.action === "summaryStyle") {
-      await sendMessage(chat.id, TEXT.summaryAskTheme, {
-        inline_keyboard: SUMMARY_THEMES.map(theme => [
-          {
-            text: SUMMARY_THEME_LABELS[theme],
-            callback_data: CALLBACK.summaryGo(upload.id, parsed.style, theme),
-          },
-        ]),
-      });
+      await answerInPlace(
+        chat.id,
+        pressedId,
+        TEXT.summaryAskTheme(parsed.style),
+        {
+          inline_keyboard: SUMMARY_THEMES.map((theme, i) => {
+            const button = {
+              text: SUMMARY_THEME_LABELS[theme],
+              callback_data: CALLBACK.summaryGo(upload.id, parsed.style, theme),
+            };
+            return [i === 0 ? primary(button) : button];
+          }),
+        }
+      );
       return;
     }
-    await startSummary(context, chat.id, source, parsed.style, parsed.theme);
+    await startSummary(
+      context,
+      chat.id,
+      pressedId,
+      source,
+      parsed.style,
+      parsed.theme
+    );
     return;
   }
 
@@ -747,10 +882,53 @@ async function handleCallback(
   }
 
   const retried = await retryTelegramUpload(upload.id);
-  await answerCallback(
-    query.id,
-    retried ? TEXT.retryStarted : TEXT.retryUnavailable
-  );
+  if (retried) await takeOver(TEXT.retrying);
+  await answerCallback(query.id, retried ? undefined : TEXT.retryUnavailable);
+}
+
+// "@bot sh_<code>" / "@bot ref_<code>" typed in another chat by the chat
+// picker of a "send to classmates" button: one card, with a button that
+// opens the bot on that file or invitation. Anything else gets nothing.
+async function handleInlineQuery(
+  query: NonNullable<TelegramUpdate["inline_query"]>
+) {
+  const bot = telegramBotUsername();
+  const payload = query.query.trim();
+  const shareCode = parseShareCode(payload);
+  const file = shareCode ? await describeShareLink(shareCode) : null;
+  const url = shareCode ? shareLinkUrl(shareCode) : null;
+  if (shareCode && file && url) {
+    await answerInlineQuery(query.id, [
+      {
+        id: SHARE_PREFIX + shareCode,
+        title: file.title,
+        description: TEXT.fileShare,
+        text: TEXT.sharedFileCard(file.title, file.kind, file.studying - 1),
+        button: {
+          text: file.kind === "book" ? LABELS.openBook : LABELS.startQuestions,
+          url,
+        },
+      },
+    ]);
+    return;
+  }
+  const referral = parseStartOrigin(payload).referralCode;
+  if (bot && referral && (await findInviterId(referral))) {
+    await answerInlineQuery(query.id, [
+      {
+        id: REFERRAL_PREFIX + referral,
+        title: LABELS.tryBot,
+        description: TEXT.inviteShare,
+        text: TEXT.inviteShare,
+        button: {
+          text: LABELS.tryBot,
+          url: "https://t.me/" + bot + "?start=" + REFERRAL_PREFIX + referral,
+        },
+      },
+    ]);
+    return;
+  }
+  await answerInlineQuery(query.id, []);
 }
 
 export async function handleTelegramUpdate(
@@ -760,5 +938,7 @@ export async function handleTelegramUpdate(
     await handleMessage(update.update_id, update.message);
   } else if (update.callback_query) {
     await handleCallback(update.callback_query);
+  } else if (update.inline_query && !update.inline_query.from.is_bot) {
+    await handleInlineQuery(update.inline_query);
   }
 }

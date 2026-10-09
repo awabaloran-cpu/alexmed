@@ -14,11 +14,21 @@ export class TelegramApiError extends Error {
   }
 }
 
-export type InlineButton =
-  | { text: string; url: string }
+// The colour of a button (Bot API 9.4): blue, green, red. One per message
+// at most, on the button the student is meant to press. Older Telegram
+// apps draw the button in the usual colour.
+export type ButtonStyle = "primary" | "success" | "danger";
+
+export type InlineButton = { text: string; style?: ButtonStyle } & (
+  | { url: string }
   // Opens the page inside Telegram as a Mini App (private chats only).
-  | { text: string; web_app: { url: string } }
-  | { text: string; callback_data: string };
+  | { web_app: { url: string } }
+  | { callback_data: string }
+  // Opens the chat picker; the chosen chat gets "@bot <query>" typed in,
+  // which the bot answers with a card (handler.ts, inline queries). Only
+  // valid once inline mode is switched on for the bot.
+  | { switch_inline_query: string }
+);
 
 export type ReplyMarkup =
   | { inline_keyboard: InlineButton[][] }
@@ -27,6 +37,7 @@ export type ReplyMarkup =
       // the page inside Telegram instead.
       keyboard: {
         text: string;
+        style?: ButtonStyle;
         web_app?: { url: string };
         // Sends the user's own phone number to the bot when pressed.
         request_contact?: boolean;
@@ -109,6 +120,54 @@ export async function editMessage(
     }
     throw error;
   }
+}
+
+// Removes one of the bot's own messages (a progress line whose result is
+// about to arrive as a new message). Never worth failing anything for.
+export async function deleteMessage(
+  chatId: number,
+  messageId: number
+): Promise<boolean> {
+  try {
+    await call("deleteMessage", { chat_id: chatId, message_id: messageId });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export type InlineArticle = {
+  id: string;
+  title: string;
+  description: string;
+  text: string;
+  button: InlineButton;
+};
+
+// The cards offered when a student types "@bot <query>" in another chat.
+export async function answerInlineQuery(
+  inlineQueryId: string,
+  articles: InlineArticle[]
+): Promise<void> {
+  await call("answerInlineQuery", {
+    inline_query_id: inlineQueryId,
+    // Short: a file's join count is part of the card.
+    cache_time: 30,
+    is_personal: true,
+    results: articles.map(article => ({
+      type: "article",
+      id: article.id,
+      title: article.title,
+      description: article.description,
+      input_message_content: {
+        message_text: article.text,
+        link_preview_options: { is_disabled: true },
+      },
+      reply_markup: { inline_keyboard: [[article.button]] },
+    })),
+  }).catch(error => {
+    console.error("[Telegram] answerInlineQuery failed", error);
+  });
 }
 
 // Sends a file made here (a summary PDF) as a document. Multipart, unlike

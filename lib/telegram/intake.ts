@@ -34,6 +34,7 @@ import {
   markAccountBlocked,
 } from "./accounts";
 import {
+  deleteMessage,
   editMessage,
   getFileDownloadUrl,
   isChatGone,
@@ -50,7 +51,7 @@ import {
 } from "./detect";
 import { refundBonusUpload, rewardInviterOf, spendBonusUpload } from "./growth";
 import { openButton as linkButton } from "./links";
-import { CALLBACK, filePath, LABELS, TEXT } from "./messages";
+import { CALLBACK, filePath, LABELS, primary, TEXT } from "./messages";
 import { readLeadingPages } from "./pdf-sample";
 import {
   bumpWatchCount,
@@ -64,6 +65,7 @@ import {
   markUploadRejected,
   recordUploadStage,
   releaseUploadClaim,
+  setUploadStatusMessage,
   reopenUploadForRetry,
 } from "./uploads";
 
@@ -128,7 +130,7 @@ async function openButton(
   label: string,
   path: string
 ): Promise<InlineButton[][]> {
-  return [[await linkButton(await userFor(context), label, path)]];
+  return [[primary(await linkButton(await userFor(context), label, path))]];
 }
 
 // "📤 شارك الملف مع زملائك" under a ready file (handled in handler.ts).
@@ -140,10 +142,10 @@ const shareRow = (uploadId: string): InlineButton[] => [
 // second and starts the job).
 export const summaryStyleRows = (uploadId: string): InlineButton[][] => [
   [
-    {
+    primary({
       text: LABELS.summaryFull,
       callback_data: CALLBACK.summaryStyle(uploadId, "full"),
-    },
+    }),
   ],
   [
     {
@@ -159,9 +161,13 @@ const summaryRow = (uploadId: string): InlineButton[] => [
 ];
 
 // "📚 حوّله إلى كتاب" under a question file that is not one (handler.ts).
-const convertRow = (uploadId: string): InlineButton[] => [
-  { text: LABELS.convertToBook, callback_data: CALLBACK.convert(uploadId) },
-];
+const convertRow = (uploadId: string, main = false): InlineButton[] => {
+  const button = {
+    text: LABELS.convertToBook,
+    callback_data: CALLBACK.convert(uploadId),
+  };
+  return [main ? primary(button) : button];
+};
 
 // ── Intake ──────────────────────────────────────────────────────────────
 
@@ -427,7 +433,7 @@ export async function runTelegramIntake(
       );
     }
     await recordUploadStage(uploadId, "reading");
-    await progress(context, TEXT.reading);
+    await progress(context, TEXT.uploadProgress(upload.fileName, 1));
     await thankInviter(context.accountId);
     await publishMessage({ type: "telegram_watch", uploadId }, { delay: 6 });
     return "done";
@@ -473,11 +479,25 @@ async function finish(
   text: string,
   buttons?: InlineButton[][]
 ) {
-  await markUploadComplete(context.upload.id);
-  // The progress line is closed, and the result arrives as a NEW message —
-  // an edit would not notify the student.
-  await progress(context, TEXT.finished);
-  await say(context, text, buttons);
+  const { upload } = context;
+  await markUploadComplete(upload.id);
+  // The result takes the progress message's place as a NEW message — an
+  // edit would not notify the student — so one message is left, not two.
+  try {
+    if (upload.statusMessageId) {
+      await deleteMessage(context.chatId, upload.statusMessageId);
+    }
+    const messageId = await sendMessage(
+      context.chatId,
+      text,
+      buttons ? { inline_keyboard: buttons } : undefined
+    );
+    // What a later press on it ("convert") rewrites.
+    await setUploadStatusMessage(upload.id, messageId);
+  } catch (error) {
+    if (isChatGone(error)) return void (await markAccountBlocked(context.accountId));
+    console.error("[Telegram] Could not announce the result", error);
+  }
 }
 
 export async function runTelegramWatch(
@@ -502,9 +522,20 @@ export async function runTelegramWatch(
         : "تعذّر استخراج الأسئلة من هذا الملف.");
     await markUploadFailed(uploadId, reason);
     await progress(context, TEXT.failed(reason), [
-      [{ text: LABELS.retry, callback_data: CALLBACK.retry(uploadId) }],
+      [
+        primary({
+          text: LABELS.retry,
+          callback_data: CALLBACK.retry(uploadId),
+        }),
+      ],
       ...(kind === "question_file" ? [convertRow(uploadId)] : []),
-      ...(await openButton(context, LABELS.openSite, filePath(kind, book.id))),
+      [
+        await linkButton(
+          await userFor(context),
+          LABELS.openSite,
+          filePath(kind, book.id)
+        ),
+      ],
     ]);
     return "done";
   }
@@ -516,7 +547,7 @@ export async function runTelegramWatch(
     if (kind === "book") {
       await finish(
         context,
-        TEXT.bookReady(book.pageCount),
+        TEXT.bookReady(book.pageCount, upload.fileName),
         [
           ...(await openButton(
             context,
@@ -532,7 +563,7 @@ export async function runTelegramWatch(
 
     const coverage = await getQuestionFileCoverage(book.id);
     if (coverage.questionsTotal === 0) {
-      await finish(context, TEXT.noQuestions, [convertRow(uploadId)]);
+      await finish(context, TEXT.noQuestions, [convertRow(uploadId, true)]);
       return "done";
     }
     // Notes, a summary or an OSCE file read as "questions": say so and
@@ -546,12 +577,14 @@ export async function runTelegramWatch(
       })
     ) {
       await finish(context, TEXT.looksLikeNotes(answerable, book.pageCount), [
-        convertRow(uploadId),
-        ...(await openButton(
-          context,
-          LABELS.openAnyway,
-          filePath(kind, book.id)
-        )),
+        convertRow(uploadId, true),
+        [
+          await linkButton(
+            await userFor(context),
+            LABELS.openAnyway,
+            filePath(kind, book.id)
+          ),
+        ],
       ]);
       return "done";
     }
@@ -561,9 +594,11 @@ export async function runTelegramWatch(
     // question) and the question page already fills them in as they arrive.
     await finish(
       context,
-      coverage.done
-        ? TEXT.questionsReady(coverage.questionsTotal)
-        : TEXT.questionsReadyPartial(coverage.questionsTotal),
+      TEXT.questionsReady(coverage.questionsTotal, {
+        fileName: upload.fileName,
+        pages: book.pageCount,
+        partial: !coverage.done,
+      }),
       [
         ...(await openButton(
           context,
@@ -579,7 +614,7 @@ export async function runTelegramWatch(
     await say(context, TEXT.stillWorking);
     return "done";
   } else if (await recordUploadStage(uploadId, "reading")) {
-    await progress(context, TEXT.reading);
+    await progress(context, TEXT.uploadProgress(upload.fileName, 1));
   }
 
   await publishMessage(

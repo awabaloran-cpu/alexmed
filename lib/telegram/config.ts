@@ -94,6 +94,13 @@ export function miniAppEnabled(): boolean {
   return process.env.TELEGRAM_MINI_APP !== "false";
 }
 
+// "Send to classmates" opens Telegram's chat picker and posts a card with a
+// button, instead of a bare link. Off by default: Telegram refuses such a
+// button until inline mode is switched on for the bot in BotFather.
+export function inlineShareEnabled(): boolean {
+  return process.env.TELEGRAM_INLINE_SHARE === "true";
+}
+
 export function webUrl(path: string): string {
   return `${SITE_URL}${path.startsWith("/") ? path : `/${path}`}`;
 }

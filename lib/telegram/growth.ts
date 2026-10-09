@@ -30,7 +30,7 @@ export const INVITE_SOURCE = "invite";
 export const SHARE_SOURCE = "share";
 
 const SOURCE_PREFIX = "src_";
-const REFERRAL_PREFIX = "ref_";
+export const REFERRAL_PREFIX = "ref_";
 // Unambiguous when read aloud or retyped: no 0/O, 1/I/L.
 const CODE_ALPHABET = "23456789ABCDEFGHJKMNPQRSTUVWXYZ";
 const CODE_LENGTH = 8;

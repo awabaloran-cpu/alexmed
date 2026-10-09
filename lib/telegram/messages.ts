@@ -5,29 +5,48 @@ import { miniAppEnabled, webUrl } from "./config";
 import type { DocumentKind } from "./detect";
 import type { SummaryStyle, SummaryTheme } from "../summary/types";
 
+// Named after what the student gets, not after what they send.
 export const BUTTONS = {
-  uploadQuestions: "📄 رفع أسئلة",
-  uploadBook: "📚 رفع كتاب",
+  uploadQuestions: "🎯 اختبار من ملف أسئلة",
+  uploadBook: "📚 بطاقات من كتاب",
   summaryOnly: "📝 ملخّص PDF",
   myFiles: "📊 ملفاتي",
-  howItWorks: "❓ كيف يعمل؟",
-  openSite: "🌐 فتح NiroLearn",
+  openSite: "🌐 NiroLearn",
   invite: "🎁 ادعُ زميلًا",
 } as const;
 
-// The keyboard under the message box. The command menu (/start, /files,
-// /help) stays on Telegram's own "menu" button, so the way into the app is
-// this keyboard's last button: with the Mini App on it opens NiroLearn
-// inside Telegram; otherwise it sends its text and the bot answers with a
-// link.
+export type ButtonKey = keyof typeof BUTTONS | "howItWorks";
+
+// A keyboard stays in a chat until the bot sends the next one, so the
+// labels of the first keyboard (2026-10-08) are still pressed.
+const OLD_BUTTONS: Record<string, ButtonKey> = {
+  "📄 رفع أسئلة": "uploadQuestions",
+  "📚 رفع كتاب": "uploadBook",
+  "🌐 فتح NiroLearn": "openSite",
+  "❓ كيف يعمل؟": "howItWorks",
+};
+
+// Which keyboard button a message's text is, if any.
+export function pressedButton(text: string): ButtonKey | null {
+  const current = (Object.keys(BUTTONS) as (keyof typeof BUTTONS)[]).find(
+    key => BUTTONS[key] === text
+  );
+  return current ?? OLD_BUTTONS[text] ?? null;
+}
+
+// The keyboard under the message box: the main service first and full
+// width, the two other ways in, then the three small ones. "How it works"
+// is the /help command of Telegram's own "menu" button. The last button is
+// the way into the app: with the Mini App on it opens NiroLearn inside
+// Telegram; otherwise it sends its text and the bot answers with a link.
 export function mainKeyboard(): ReplyMarkup {
   return {
     keyboard: [
-      [{ text: BUTTONS.uploadQuestions }, { text: BUTTONS.uploadBook }],
-      [{ text: BUTTONS.summaryOnly }],
-      [{ text: BUTTONS.myFiles }, { text: BUTTONS.invite }],
+      [{ text: BUTTONS.uploadQuestions, style: "primary" }],
+      [{ text: BUTTONS.summaryOnly }, { text: BUTTONS.uploadBook }],
       [
-        { text: BUTTONS.howItWorks },
+        { text: BUTTONS.myFiles },
+        { text: BUTTONS.invite },
         miniAppEnabled()
           ? {
               text: BUTTONS.openSite,
@@ -41,6 +60,12 @@ export function mainKeyboard(): ReplyMarkup {
   };
 }
 
+// The button the student is meant to press: one per message.
+export const primary = <T extends InlineButton>(button: T): T => ({
+  ...button,
+  style: "primary",
+});
+
 export function urlButton(text: string, url: string): {
   inline_keyboard: InlineButton[][];
 } {
@@ -51,27 +76,71 @@ function megabytes(bytes: number): string {
   return String(Math.floor(bytes / (1024 * 1024)));
 }
 
+// A file's name as a message shows it: without ".pdf", and short.
+export function shortFileName(name: string, max = 40): string {
+  const clean = name
+    .replace(/\.pdf$/i, "")
+    .replace(/[_\s]+/g, " ")
+    .trim();
+  return clean.length > max ? `${clean.slice(0, max - 1).trim()}…` : clean;
+}
+
+const RULE = "━━━━━━━━━━━━";
+
+// The steps of one file, in the single message that follows it from
+// "received" to its result: done, the one running now, still to come.
+function steps(labels: string[], current: number): string {
+  return labels
+    .map(
+      (label, i) =>
+        `${i < current ? "✅" : i === current ? "⏳" : "▫️"} ${label}${i === current ? "…" : ""}`
+    )
+    .join("\n");
+}
+
+function progressBar(done: number, total: number): string {
+  const share = total > 0 ? Math.min(1, Math.max(0, done / total)) : 0;
+  const filled = Math.round(share * 10);
+  return `${"▰".repeat(filled)}${"▱".repeat(10 - filled)} ${Math.round(share * 100)}%`;
+}
+
+function minutes(ms: number): string {
+  const seconds = Math.max(1, Math.round(ms / 1000));
+  return seconds < 60 ? `${seconds} ث` : `${Math.round(seconds / 60)} د`;
+}
+
+const UPLOAD_STEPS = ["استلام الملف", "قراءة الصفحات", "تجهيز النتيجة"];
+
 export const TEXT = {
   welcome:
-    "مرحبًا بك في NiroLearn 👋\n\n" +
-    "أرسل ملف PDF ونحوّله إلى ما تذاكر منه:\n\n" +
-    "📄 رفع أسئلة ← اختبار تفاعلي مع شرح بالعربي\n" +
-    "📚 رفع كتاب ← بطاقات، أسئلة وخريطة ذهنية\n" +
-    "📝 ملخّص PDF ← ملف ملخّص مرتّب\n\n" +
-    "اختر من الأزرار بالأسفل 👇",
+    "👋 أهلًا بك في NiroLearn\n\n" +
+    "أرسل لي ملف PDF وأحوّله لشيء تذاكر منه:\n\n" +
+    "🎯 ملف أسئلة ← اختبار تفاعلي مع شرح بالعربي\n" +
+    "📝 أي ملف ← ملخّص PDF مرتّب\n" +
+    "📚 كتاب أو محاضرة ← بطاقات وأسئلة وخريطة ذهنية\n\n" +
+    "👇 اختر من الأزرار، أو أرسل ملفك مباشرة.",
 
   howItWorks:
     "❓ كيف يعمل؟\n" +
-    "━━━━━━━━━━━━\n" +
-    "1️⃣ اختر نوع ملفك من الأزرار بالأسفل.\n" +
+    `${RULE}\n` +
+    "1️⃣ اختر ما تريده من الأزرار بالأسفل.\n" +
     "2️⃣ أرسل الملف بصيغة PDF.\n" +
-    "3️⃣ نجهّزه ونرسل لك رسالة عند الانتهاء.\n\n" +
-    "📄 رفع أسئلة\n" +
+    "3️⃣ نجهّزه وتصلك النتيجة هنا.\n\n" +
+    `${BUTTONS.uploadQuestions}\n` +
     "لملف فيه أسئلة جاهزة ← اختبار تفاعلي مع شرح بالعربي.\n\n" +
-    "📚 رفع كتاب\n" +
+    `${BUTTONS.summaryOnly}\n` +
+    "لأي ملف ← ملف PDF فيه ملخّص مرتّب.\n\n" +
+    `${BUTTONS.uploadBook}\n` +
     "لكتاب أو محاضرة ← بطاقات، أسئلة وخريطة ذهنية.\n\n" +
-    "📝 ملخّص PDF\n" +
-    "لأي ملف ← ملف PDF فيه ملخّص مرتّب.",
+    "الأوامر: /files ملفاتك · /summary ملخّص · /invite دعوة زميل",
+
+  // The one message that follows a file: 0 receiving, 1 reading, 2 result.
+  uploadProgress: (fileName: string, step: 0 | 1 | 2) =>
+    `📄 ${shortFileName(fileName)}\n${RULE}\n${steps(UPLOAD_STEPS, step)}`,
+  kindChosen: (kind: DocumentKind) =>
+    `✅ ${kind === "question_file" ? "ملف أسئلة" : "كتاب"}\n\n⏳ جاري تجهيزه…`,
+  converting: "📚 جاري تحويله إلى كتاب…",
+  retrying: "🔄 جاري إعادة المحاولة…",
 
   // Each of the three ways in says what to send and what comes back, so a
   // student never sends a lecture as a question file (or the other way).
@@ -137,15 +206,29 @@ export const TEXT = {
   // A scanned file has no text to summarise without the book reader's OCR.
   summaryNoText:
     "⚠️ هذا الملف مصوَّر ولا نص فيه يمكن تلخيصه مباشرة.\n\n" +
-    "أرسله بعد اختيار «رفع كتاب» ليُقرأ أولًا، ثم اطلب الملخّص من تحته.",
+    `أرسله بعد اختيار «${BUTTONS.uploadBook}» ليُقرأ أولًا، ثم اطلب الملخّص من تحته.`,
   summaryAskStyle: "📝 أي ملخّص تريد؟",
-  summaryAskTheme: "🎨 اختر شكل الملخّص:",
-  summaryStarted: (pages: number) =>
-    `✍️ بدأنا كتابة ملخّصك (${pages} صفحة). يصلك ملف PDF هنا عند الانتهاء.`,
-  summaryProgress: (done: number, total: number) =>
-    `✍️ جاري كتابة الملخّص… ${done} من ${total} صفحة`,
-  summaryReady: (title: string) =>
-    `📝 ملخّصك جاهز\n\n«${title}»\n\nراجِعه مع مصدرك، وأرسله لزملائك 👇`,
+  // The same message, after the first choice: it shows what was chosen.
+  summaryAskTheme: (style: SummaryStyle) =>
+    `اخترت: ${summaryStyleName(style)}\n\n🎨 اختر شكل الملخّص:`,
+  // The one message that follows a summary from the last choice to the PDF.
+  summaryProgress: (choice: SummaryChoice, done: number, total: number) =>
+    `${summaryHeader(choice)}\n` +
+    `✍️ جاري كتابة الملخّص… ${done} من ${total} صفحة\n` +
+    `${progressBar(done, total)}\n\n` +
+    "يصلك ملف PDF هنا عند الانتهاء.",
+  summaryPrinting: (choice: SummaryChoice) =>
+    `${summaryHeader(choice)}\n` +
+    steps(["كتابة الصفحات", "ترتيب الفصول وتجهيز ملف PDF"], 1),
+  summaryReady: (
+    title: string,
+    made?: { pages: number; sections: number; ms: number }
+  ) =>
+    `📝 ملخّصك جاهز\n\n«${title}»` +
+    (made
+      ? `\n\n📑 ${made.pages} صفحة من المصدر · 🧩 ${made.sections} أقسام · ⏱ ${minutes(made.ms)}`
+      : "") +
+    "\n\nراجِعه مع مصدرك، وأرسله لزملائك 👇",
   summaryShare:
     "📝 اعمل ملخّص PDF مرتّب من أي ملف أسئلة أو محاضرة — جرّب بوت NiroLearn 👇",
   summaryFailed:
@@ -178,10 +261,31 @@ export const TEXT = {
     "أرسله لزملائك: يفتحون الملف نفسه ويدرسون منه، ولكلٍّ تقدّمه الخاص. يمكنك إيقاف الرابط من صفحة الملف في أي وقت.\n\n" +
     `👥 انضم حتى الآن: ${joined}`,
   shareUnavailable: "لا يمكن مشاركة هذا الملف الآن.",
-  sharedQuestions: (title: string, owner: string | null) =>
-    `📄 ${owner ?? "زميلك"} شارك معك ملف أسئلة\n\n«${title}»\n\nافتحه وابدأ الحل — تقدّمك خاص بك.`,
-  sharedBook: (title: string, owner: string | null) =>
-    `📖 ${owner ?? "زميلك"} شارك معك كتابًا\n\n«${title}»\n\nافتحه وادرس من ملخصاته وبطاقاته.`,
+  // The card a classmate's link opens: whose file, what it is, how many
+  // study from it, and (for questions) how many there are.
+  sharedFile: (file: {
+    kind: DocumentKind;
+    title: string;
+    owner: string | null;
+    studying: number;
+    questions?: number;
+  }) =>
+    `${file.kind === "book" ? "📖 كتاب" : "🎯 ملف أسئلة"} من ${file.owner ?? "زميلك"}\n` +
+    `${RULE}\n` +
+    `«${shortFileName(file.title, 60)}»\n\n` +
+    (file.questions ? `❓ ${file.questions} سؤالًا\n` : "") +
+    (file.studying > 1 ? `👥 يدرس منه ${file.studying} من زملائك\n` : "") +
+    (file.kind === "book"
+      ? "\nادرس من ملخصاته وبطاقاته — تقدّمك خاص بك."
+      : "\nابدأ الحل الآن — إجاباتك وتقدّمك خاصان بك."),
+  // What the chat picker sends for a file or an invitation (inline mode).
+  sharedFileCard: (title: string, kind: DocumentKind, studying: number) =>
+    `${kind === "book" ? "📖" : "🎯"} «${shortFileName(title, 60)}»\n\n` +
+    (kind === "book"
+      ? "كتاب جاهز للمذاكرة على NiroLearn: ملخصات وبطاقات وأسئلة."
+      : "ملف أسئلة جاهز كاختبار تفاعلي مع الشرح بالعربي على NiroLearn.") +
+    (studying > 0 ? `\n👥 يدرس منه ${studying} من زملائنا` : "") +
+    "\n\nافتحه وادرس منه مباشرة داخل Telegram 👇",
   sharedOwn: "هذا ملفك أنت 🙂 افتحه من هنا:",
   // To the owner, at a milestone (lib/share-links.ts isJoinMilestone).
   shareJoined: (title: string, joined: number) =>
@@ -220,24 +324,23 @@ export const TEXT = {
   duplicateProcessing: "⏳ هذا الملف قيد المعالجة بالفعل — ستصلك رسالة عند الانتهاء.",
   duplicateReady: "هذا الملف مجهّز عندك من قبل 👇",
 
-  received: "⏳ جاري استلام الملف…",
-  reading: "🔍 جاري قراءة الملف…",
-  finished: "☑ تم الانتهاء!",
-
   askKind:
     "🤔 لم أستطع تحديد نوع هذا الملف بثقة.\n\nكيف تريد أن أجهّزه؟",
 
-  questionsReady: (count: number) =>
-    "🎉 تم تجهيز ملف الأسئلة بنجاح\n\n" +
-    `عدد الأسئلة: ${count}\n` +
-    "يمكنك الآن بدء الدراسة من NiroLearn.",
+  // `partial`: sent as soon as the questions are extracted, while their
+  // explanations are still being written.
+  questionsReady: (
+    count: number,
+    file?: { fileName: string; pages: number; partial?: boolean }
+  ) =>
+    "🎉 اختبارك جاهز\n\n" +
+    (file ? `📄 ${shortFileName(file.fileName)}\n` : "") +
+    `❓ ${count} سؤالًا` +
+    (file && file.pages > 0 ? ` · 📑 ${file.pages} صفحة` : "") +
+    (file?.partial
+      ? "\n\n🧠 الشرح والكلمات المفتاحية تُضاف الآن وتظهر تباعًا وأنت تحل."
+      : "\n\n🧠 مع شرح بالعربي لكل سؤال."),
 
-  // Sent as soon as the questions are extracted, while their explanations
-  // are still being written.
-  questionsReadyPartial: (count: number) =>
-    "🎉 أسئلتك جاهزة — ابدأ الآن\n\n" +
-    `عدد الأسئلة: ${count}\n` +
-    "🧠 الشرح والكلمات المفتاحية تُضاف الآن وتظهر تباعًا وأنت تحل.",
 
   noQuestions:
     "⚠️ قرأنا الملف لكن لم نعثر فيه على أسئلة اختيار من متعدد.\n\n" +
@@ -249,17 +352,17 @@ export const TEXT = {
     "🤔 هذا الملف يبدو شرحًا أو ملاحظات، وليس ملف أسئلة اختيار من متعدد.\n\n" +
     `وجدنا ${answerable} سؤالًا بخيارات فقط${pages > 0 ? ` في ${pages} صفحة` : ""}.\n\n` +
     "الأفضل تحويله إلى كتاب: تحصل منه على ملخص وفلاش كارد وأسئلة من محتواه.",
-  convertStarted: "جاري تحويله إلى كتاب…",
-
   // Nothing is generated for a book until the student presses the button
   // on its page (booksRouter.startChapterAnalysis), so the message names
   // that step and the button as the page words it. Live, 2026-10-08: 10 of
   // 12 students who sent a book never pressed it.
-  bookReady: (pages: number) =>
-    "📚 وصل كتابك" +
-    (pages > 0 ? ` (${pages} صفحة)` : "") +
-    "\n\n" +
+  bookReady: (pages: number, fileName?: string) =>
+    "📚 وصل كتابك\n\n" +
+    (fileName ? `📄 ${shortFileName(fileName)}\n` : "") +
+    (pages > 0 ? `📑 ${pages} صفحة\n` : "") +
+    "\n" +
     "بقيت خطوة واحدة: افتح الكتاب واضغط «جهّز أدوات الدراسة»، فيُجهَّز لك الملخص والفلاش كارد والأسئلة والخريطة الذهنية.",
+
 
   stillWorking:
     "⏳ ما زال الملف قيد المعالجة — الملفات الكبيرة أو الممسوحة ضوئيًا تأخذ وقتًا أطول.\n\n" +
@@ -273,7 +376,6 @@ export const TEXT = {
   downloadFailed:
     "⚠️ تعذّر استلام الملف من Telegram. أرسله مرة ثانية من فضلك.",
 
-  retryStarted: "🔄 جاري إعادة المحاولة…",
   retryUnavailable: "لا يمكن إعادة المحاولة لهذا الملف. أرسله مرة ثانية.",
 
   noFiles: "لا توجد ملفات بعد. أرسل ملف PDF لتبدأ.",
@@ -326,7 +428,17 @@ export const LABELS = {
   summaryExam: "⚡ مراجعة ليلة الامتحان",
   upgrade: "⭐ باقات NiroLearn",
   sendToFriends: "📨 أرسله لزملائك",
+  tryBot: "🚀 جرّب NiroLearn",
 } as const;
+
+export type SummaryChoice = { style: SummaryStyle; theme: SummaryTheme };
+
+const summaryStyleName = (style: SummaryStyle) =>
+  style === "exam" ? LABELS.summaryExam : LABELS.summaryFull;
+
+function summaryHeader(choice: SummaryChoice): string {
+  return `${summaryStyleName(choice.style)} · ${SUMMARY_THEME_LABELS[choice.theme]}\n${RULE}`;
+}
 
 // callback_data is limited to 64 bytes: a short tag + the upload's uuid.
 export const CALLBACK = {

@@ -96,6 +96,33 @@ button to `/tg?to=<path>` (`lib/telegram/links.ts`, `openButton`):
 - **Verified:** the signature check and the session route by tests. **Not
   verified from here:** the real launch on a phone.
 
+## How the bot talks (2026-10-09)
+
+- **One message per file.** The message sent when a file arrives is edited
+  through its steps (`TEXT.uploadProgress`). The result is sent as a new
+  message — an edit would not notify the student — and the progress message
+  is deleted first (`finish`, `lib/telegram/intake.ts`), so one message is
+  left. A summary works the same way (`lib/summary/run.ts`): the PDF takes
+  the progress message's place.
+- **A choice rewrites its own message** (`answerInPlace`, `handler.ts`):
+  kind of summary → look → progress are one message; so are "which kind?",
+  "convert to a book" and "retry".
+- Edits are one per pipeline step or worker run (seconds apart at least),
+  so nothing here throttles them.
+- **Button colours**: `style` (Bot API 9.4) on the one button a message is
+  about (`primary()`, `messages.ts`). Older apps draw it uncoloured.
+- **Keyboard**: the main service first and full width, six buttons. "How it
+  works" is `/help`. The labels of the first keyboard are still accepted
+  (`pressedButton`), and any press hands the chat the current keyboard.
+- **Inline share card** — off unless `TELEGRAM_INLINE_SHARE=true`. "Send to
+  classmates" then opens Telegram's chat picker (`switch_inline_query`) and
+  the bot answers `@bot sh_<code>` / `@bot ref_<code>` with a card and a
+  button (`handleInlineQuery`). Needs, on the bot itself: inline mode on in
+  BotFather (`/setinline`), and `inline_query` among the webhook's
+  `allowed_updates` if that list was ever restricted. **Not verified on the
+  live bot.** With the flag off the button is the plain share sheet.
+- **Not verified from here:** every item above on a real phone.
+
 ## Growth: campaign links, invites, the share card
 
 Added 2026-10-08 (`lib/telegram/growth.ts`, migration `0044_telegram_growth`:

@@ -15,13 +15,15 @@ import { publishMessage } from "../queue/client";
 import { storagePut } from "../storage";
 import { findTelegramAccountById } from "../telegram/accounts";
 import {
+  deleteMessage,
   editMessage,
   isChatGone,
   sendDocument,
   sendMessage,
 } from "../telegram/api";
 import { inviteLink, shareUrl, sourceLink } from "../telegram/growth";
-import { LABELS, TEXT } from "../telegram/messages";
+import { openButton } from "../telegram/links";
+import { filePath, LABELS, primary, TEXT } from "../telegram/messages";
 import {
   buildSummaryDoc,
   CALLS_PER_RUN,
@@ -69,13 +71,21 @@ async function ask(system: string, user: string, maxTokens: number) {
   return text;
 }
 
-type Chat = { chatId: number; accountId: string } | null;
+type Chat = {
+  chatId: number;
+  accountId: string;
+  user: Parameters<typeof openButton>[0];
+} | null;
 
 async function chatOf(summary: SummaryRow): Promise<Chat> {
   if (!summary.telegramAccountId) return null;
   const found = await findTelegramAccountById(summary.telegramAccountId);
   if (!found || found.account.blockedAt) return null;
-  return { chatId: Number(found.account.chatId), accountId: found.account.id };
+  return {
+    chatId: Number(found.account.chatId),
+    accountId: found.account.id,
+    user: found.user,
+  };
 }
 
 // Telling the student must never fail the job.
@@ -121,6 +131,10 @@ export async function runSummary(
       : await readPdfSource(summary.sourceKey!);
     if (!pages.length) throw new Unrecoverable("The file has no text");
     const parts = (summary.parts ?? []) as SummarySection[];
+    const choice = {
+      style: summary.style,
+      theme: toSummaryTheme(summary.theme),
+    };
 
     // ── more pages to write
     if (summary.donePages < pages.length) {
@@ -139,7 +153,9 @@ export async function runSummary(
       await progress(
         summary,
         chat,
-        TEXT.summaryProgress(Math.min(done, pages.length), pages.length)
+        done < pages.length
+          ? TEXT.summaryProgress(choice, done, pages.length)
+          : TEXT.summaryPrinting(choice)
       );
       await publishMessage({ type: "generate_file_summary", summaryId: id });
       return "requeued";
@@ -196,20 +212,38 @@ export async function runSummary(
 
     if (chat) {
       await tell(async () => {
+        // The PDF takes the progress message's place.
         if (summary.statusMessageId) {
-          await editMessage(
-            chat.chatId,
-            summary.statusMessageId,
-            TEXT.finished
-          );
+          await deleteMessage(chat.chatId, summary.statusMessageId);
         }
+        const kind = book?.sourceType === "question_file" ? "question_file" : "book";
         await sendDocument(
           chat.chatId,
           pdf,
-          `${safeFileName(head.title)} - NiroLearn.pdf`,
-          TEXT.summaryReady(head.title),
+          `${safeFileName(head.title)}.pdf`,
+          TEXT.summaryReady(head.title, {
+            pages: pages.length,
+            sections: sections.length,
+            ms: Date.now() - summary.createdAt.getTime(),
+          }),
           {
             inline_keyboard: [
+              // The file it was made from, when that is one to study from.
+              ...(book
+                ? [
+                    [
+                      primary(
+                        await openButton(
+                          chat.user,
+                          kind === "book"
+                            ? LABELS.openBook
+                            : LABELS.startQuestions,
+                          filePath(kind, book.id)
+                        )
+                      ),
+                    ],
+                  ]
+                : []),
               [
                 {
                   text: LABELS.sendToFriends,

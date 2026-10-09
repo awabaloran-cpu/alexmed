@@ -45,6 +45,7 @@ vi.mock("@/lib/queue/client", () => ({ publishMessage }));
 const tg = vi.hoisted(() => ({
   sendMessage: vi.fn(),
   editMessage: vi.fn(),
+  deleteMessage: vi.fn(),
   sendDocument: vi.fn(),
 }));
 vi.mock("@/lib/telegram/api", async importOriginal => ({
@@ -262,8 +263,16 @@ describe("runSummary", () => {
     const [chatId, bytes, fileName, caption] = tg.sendDocument.mock.calls[0];
     expect(chatId).toBe(777);
     expect(bytes).toBeInstanceOf(Uint8Array);
-    expect(fileName).toBe("Facts Review - NiroLearn.pdf");
+    expect(fileName).toBe("Facts Review.pdf");
     expect(caption).toContain("Facts Review");
+    // What was read and made, and how long it took.
+    expect(caption).toMatch(/12 صفحة من المصدر · 🧩 \d+ أقسام · ⏱ \d+ (ث|د)/);
+    // The PDF takes the place of the progress message, and the file it was
+    // made from is one press away.
+    expect(tg.deleteMessage).toHaveBeenCalledWith(777, 400);
+    const markup = JSON.stringify(tg.sendDocument.mock.calls[0][4]);
+    expect(markup).toContain('"style":"primary"');
+    expect(markup).toContain(encodeURIComponent("/books/"));
   });
 
   it("gives the AI the questions with their answers, never asking twice for the same pages", async () => {

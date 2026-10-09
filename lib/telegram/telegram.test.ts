@@ -28,6 +28,8 @@ vi.mock("@/lib/db", () => ({
 const tg = vi.hoisted(() => ({
   sendMessage: vi.fn(),
   editMessage: vi.fn(),
+  deleteMessage: vi.fn(),
+  answerInlineQuery: vi.fn(),
   answerCallback: vi.fn(),
   getFileDownloadUrl: vi.fn(),
 }));
@@ -222,6 +224,8 @@ beforeEach(async () => {
   delete process.env.TELEGRAM_ACCOUNT_BURST_LIMIT;
   delete process.env.TELEGRAM_GUEST_FREE_UPLOADS;
   delete process.env.TELEGRAM_MINI_APP;
+  delete process.env.TELEGRAM_INLINE_SHARE;
+  tg.deleteMessage.mockResolvedValue(true);
   let messageId = 100;
   tg.sendMessage.mockImplementation(async () => messageId++);
   tg.editMessage.mockResolvedValue(true);
@@ -381,11 +385,37 @@ describe("The bot receiving a file", () => {
     expect(JSON.stringify(hint[2])).toMatch(/https:\/\/nirolearn\.com\/connect\/[A-Za-z0-9_-]{43}/);
   });
 
+  it("the keyboard leads with the main service, and the first keyboard's buttons still work", async () => {
+    await handleTelegramUpdate(textUpdate("/start"));
+    const { keyboard } = tg.sendMessage.mock.calls[0][2] as {
+      keyboard: { text: string; style?: string }[][];
+    };
+    expect(keyboard[0]).toEqual([
+      { text: BUTTONS.uploadQuestions, style: "primary" },
+    ]);
+    expect(keyboard.flat()).toHaveLength(6);
+    expect(JSON.stringify(keyboard)).not.toContain("كيف يعمل");
+
+    // A chat that still shows the keyboard of 2026-10-08.
+    for (const [label, answer] of [
+      ["📄 رفع أسئلة", TEXT.askForFile("question_file")],
+      ["📚 رفع كتاب", TEXT.askForFile("book")],
+      ["❓ كيف يعمل؟", TEXT.howItWorks],
+      ["/help", TEXT.howItWorks],
+      [BUTTONS.uploadQuestions, TEXT.askForFile("question_file")],
+    ]) {
+      await handleTelegramUpdate(textUpdate(label));
+      expect(lastSent().text).toBe(answer);
+      // …and is given the current keyboard with the answer.
+      expect(JSON.stringify(lastSent().markup)).toContain(BUTTONS.uploadBook);
+    }
+  });
+
   it("records a PDF once and queues its intake", async () => {
     await handleTelegramUpdate(documentUpdate());
     const upload = await onlyUpload();
     expect(upload.status).toBe("received");
-    expect(lastSent().text).toBe(TEXT.received);
+    expect(lastSent().text).toBe(TEXT.uploadProgress("Pediatrics_MCQs.pdf", 0));
     expect(publishMessage).toHaveBeenCalledWith({ type: "telegram_intake", uploadId: upload.id });
   });
 
@@ -419,7 +449,7 @@ describe("The bot receiving a file", () => {
     publishMessage.mockClear();
 
     await handleTelegramUpdate(documentUpdate({ unique: "stuck" }));
-    expect(lastSent().text).toBe(TEXT.received);
+    expect(lastSent().text).toBe(TEXT.uploadProgress("Pediatrics_MCQs.pdf", 0));
     expect(await rows(`SELECT id FROM telegram_uploads`)).toHaveLength(2);
     expect(publishMessage).toHaveBeenCalledTimes(1);
   });
@@ -725,11 +755,19 @@ describe("Watch: reporting the pipeline's status in the chat", () => {
 
     expect(await runTelegramWatch(upload.id)).toBe("done");
     const { text, markup } = lastSent();
-    expect(text).toBe(TEXT.questionsReady(80));
+    expect(text).toContain("Pediatrics MCQs");
+    expect(text).toContain("80 سؤالًا");
+    // The result took the progress message's place: that one is removed,
+    // and a later press on the result rewrites the result.
+    expect(tg.deleteMessage).toHaveBeenCalledTimes(1);
+    expect((await onlyUpload()).status).toBe("complete");
     const button = (markup as { inline_keyboard: Record<string, unknown>[][] }).inline_keyboard[0][0];
     // A Mini App button: no token and no storage key in it — the student is
-    // identified by Telegram's own signed launch data.
+    // identified by Telegram's own signed launch data. It is the one
+    // coloured button of the message.
+    expect(JSON.stringify(markup).match(/"style"/g)).toHaveLength(1);
     expect(button).toEqual({
+      style: "primary",
       text: LABELS.startQuestions,
       web_app: {
         url: `https://nirolearn.com/tg?to=${encodeURIComponent(`/books/question-files/${upload.bookId}`)}`,
@@ -746,7 +784,7 @@ describe("Watch: reporting the pipeline's status in the chat", () => {
     expect(await runTelegramWatch(upload.id)).toBe("done");
     expect((await onlyUpload()).status).toBe("complete");
     const { text, markup } = lastSent();
-    expect(text).toBe(TEXT.questionsReady(80));
+    expect(text).toContain("80 سؤالًا");
     const url = (markup as { inline_keyboard: { url: string }[][] }).inline_keyboard[0][0].url;
     expect(url).toMatch(/^https:\/\/nirolearn\.com\/t\/[A-Za-z0-9_-]{43}$/);
     expect(url).not.toContain(upload.bookId!);
@@ -770,7 +808,14 @@ describe("Watch: reporting the pipeline's status in the chat", () => {
 
     expect(await runTelegramWatch(upload.id)).toBe("done");
     expect((await onlyUpload()).status).toBe("complete");
-    expect(lastSent().text).toBe(TEXT.questionsReadyPartial(80));
+    expect(lastSent().text).toBe(
+      TEXT.questionsReady(80, {
+        fileName: "Pediatrics_MCQs.pdf",
+        pages: 0,
+        partial: true,
+      })
+    );
+    expect(lastSent().text).toContain("تظهر تباعًا");
     expect(JSON.stringify(lastSent().markup)).toContain(LABELS.startQuestions);
     // No more polling for this file.
     expect(publishMessage).not.toHaveBeenCalled();
@@ -780,7 +825,7 @@ describe("Watch: reporting the pipeline's status in the chat", () => {
     const upload = await uploadAndIntake({ kind: "book" });
     await test.client.query(`UPDATE books SET status = 'pending', "pageCount" = 120 WHERE id = $1`, [upload.bookId]);
     await runTelegramWatch(upload.id);
-    expect(lastSent().text).toBe(TEXT.bookReady(120));
+    expect(lastSent().text).toBe(TEXT.bookReady(120, "Pediatrics_MCQs.pdf"));
     // The student is told the step that is still theirs, in the page's words.
     expect(lastSent().text).toContain("جهّز أدوات الدراسة");
   });
@@ -1527,8 +1572,11 @@ describe("Sharing a file by link through the bot", () => {
     const { code, bookId } = await ownerSharesFile();
     await handleTelegramUpdate(textUpdate(`/start sh_${code}`, FRIEND_TG));
 
-    expect(lastSent().text).toContain("Pediatrics_MCQs.pdf");
+    // A card: whose file, what it is, and how many study from it.
+    expect(lastSent().text).toContain("Pediatrics MCQs");
+    expect(lastSent().text).toContain("يدرس منه 2 من زملائك");
     expect(JSON.stringify(lastSent().markup)).toContain(LABELS.startQuestions);
+    expect(JSON.stringify(lastSent().markup)).toContain('"style":"primary"');
     const friend = (await userIdOf(FRIEND_TG))!;
     expect(
       await rows(
@@ -1561,6 +1609,35 @@ describe("Sharing a file by link through the bot", () => {
     ).toHaveLength(0);
   });
 
+  it("with inline mode on, sending on opens the chat picker, and the bot answers it with a card", async () => {
+    process.env.TELEGRAM_INLINE_SHARE = "true";
+    const { code } = await ownerSharesFile();
+    expect(JSON.stringify(lastSent().markup)).toContain(
+      `"switch_inline_query":"sh_${code}"`
+    );
+
+    const ask = (query: string) =>
+      handleTelegramUpdate({
+        update_id: nextUpdateId++,
+        inline_query: { id: "iq", from: { id: OWNER_TG }, query },
+      });
+    await ask(`sh_${code}`);
+    const [, cards] = tg.answerInlineQuery.mock.calls.at(-1)!;
+    expect(cards).toHaveLength(1);
+    expect(cards[0].text).toContain("Pediatrics MCQs");
+    expect(cards[0].button).toEqual({
+      text: LABELS.startQuestions,
+      url: `https://t.me/Nirolearnbot?start=sh_${code}`,
+    });
+
+    // A stopped link, and anything that is not a link of ours: no card.
+    await test.client.exec(`UPDATE file_share_links SET "revokedAt" = now(), "revokedBy" = 'owner'`);
+    await ask(`sh_${code}`);
+    expect(tg.answerInlineQuery.mock.calls.at(-1)![1]).toEqual([]);
+    await ask("anything else");
+    expect(tg.answerInlineQuery.mock.calls.at(-1)![1]).toEqual([]);
+  });
+
   it("the owner is told when classmates join — at milestones, with the link to send on, never per classmate", async () => {
     const { code } = await ownerSharesFile();
     const toOwner = () => tg.sendMessage.mock.calls.filter(call => call[0] === OWNER_TG);
@@ -1587,7 +1664,7 @@ describe("Sharing a file by link through the bot", () => {
       return 1;
     });
     await handleTelegramUpdate(textUpdate(`/start sh_${code}`, FRIEND_TG));
-    expect(lastSent().text).toContain("Pediatrics_MCQs.pdf");
+    expect(lastSent().text).toContain("Pediatrics MCQs");
     expect(await rows(`SELECT id FROM book_shares WHERE "bookId" = $1`, [bookId])).toHaveLength(1);
   });
 
@@ -1811,9 +1888,24 @@ describe("Asking the bot for a PDF summary", () => {
       CALLBACK.summaryStyle(upload.id, "exam"),
     ]);
 
+    // The choice rewrites the message it was pressed on (message 1 here)
+    // instead of adding a new one.
+    const sent = tg.sendMessage.mock.calls.length;
+    const lastEdit = () => tg.editMessage.mock.calls.at(-1)!;
+    const editedButtons = () =>
+      (
+        lastEdit()[3] as {
+          inline_keyboard: { text: string; callback_data?: string }[][];
+        }
+      ).inline_keyboard.flat();
     await press(CALLBACK.summaryStyle(upload.id, "exam"));
-    expect(lastSent().text).toBe(TEXT.summaryAskTheme);
-    expect(buttonsOf().map(b => b.callback_data)).toEqual(
+    expect(lastEdit().slice(0, 3)).toEqual([
+      STUDENT_TG,
+      1,
+      TEXT.summaryAskTheme("exam"),
+    ]);
+    expect(lastEdit()[2]).toContain(LABELS.summaryExam);
+    expect(editedButtons().map(b => b.callback_data)).toEqual(
       (
         [
           "revision",
@@ -1829,7 +1921,7 @@ describe("Asking the bot for a PDF summary", () => {
       )
     );
     // Telegram refuses callback data over 64 bytes.
-    for (const button of buttonsOf()) {
+    for (const button of editedButtons()) {
       expect(Buffer.byteLength(button.callback_data!)).toBeLessThanOrEqual(64);
     }
 
@@ -1843,10 +1935,18 @@ describe("Asking the bot for a PDF summary", () => {
     expect(summaries.requestSummary).toHaveBeenCalledWith(
       expect.objectContaining({ bookId: upload.bookId, style: "exam", theme: "dusk" })
     );
-    expect(lastSent().text).toBe(TEXT.summaryStarted(18));
+    // The same message again: now the job's progress, and what the worker
+    // goes on rewriting.
+    expect(lastEdit().slice(0, 3)).toEqual([
+      STUDENT_TG,
+      1,
+      TEXT.summaryProgress({ style: "exam", theme: "dusk" }, 0, 18),
+    ]);
+    expect(lastEdit()[3]).toBeUndefined();
+    expect(tg.sendMessage.mock.calls).toHaveLength(sent);
     expect(summaries.setSummaryStatusMessage).toHaveBeenCalledWith(
       "99999999-9999-4999-8999-999999999999",
-      expect.any(Number)
+      1
     );
     expect(publishMessage).toHaveBeenCalledWith({
       type: "generate_file_summary",
@@ -1873,9 +1973,10 @@ describe("Asking the bot for a PDF summary", () => {
       paid: false,
     });
     publishMessage.mockClear();
+    const lastEdit = () => tg.editMessage.mock.calls.at(-1)!;
     await press(CALLBACK.summaryGo(upload.id, "full", "studio"));
-    expect(lastSent().text).toBe(TEXT.summaryTooLong(75, 40, false));
-    expect(buttonsOf()[0].text).toBe(LABELS.upgrade);
+    expect(lastEdit()[2]).toBe(TEXT.summaryTooLong(75, 40, false));
+    expect(JSON.stringify(lastEdit()[3])).toContain(LABELS.upgrade);
     expect(publishMessage).not.toHaveBeenCalled();
 
     summaries.requestSummary.mockResolvedValue({
@@ -1884,6 +1985,11 @@ describe("Asking the bot for a PDF summary", () => {
       limit: 1,
       paid: false,
     });
+    await press(CALLBACK.summaryGo(upload.id, "full", "studio"));
+    expect(lastEdit()[2]).toBe(TEXT.summaryDailyLimit(1, false));
+
+    // A message that can no longer be rewritten: the answer is sent instead.
+    tg.editMessage.mockResolvedValue(false);
     await press(CALLBACK.summaryGo(upload.id, "full", "studio"));
     expect(lastSent().text).toBe(TEXT.summaryDailyLimit(1, false));
   });

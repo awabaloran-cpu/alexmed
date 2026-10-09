@@ -471,6 +471,44 @@ export async function shareLinkOwnerId(code: string): Promise<string | null> {
   return link?.ownerId ?? null;
 }
 
+// What a live link leads to, without joining it: the card the bot shows
+// for it. `studying` counts the owner too. Null for anything a join would
+// refuse as invalid.
+export async function describeShareLink(code: string) {
+  if (!CODE_PATTERN.test(code)) return null;
+  const [link] = await requireDb()
+    .select({
+      bookId: books.id,
+      title: books.fileName,
+      status: books.status,
+      sourceType: books.sourceType,
+      joinCount: fileShareLinks.joinCount,
+      ownerSuspended: users.suspendedAt,
+      protectedSet: sql<boolean>`exists (
+        select 1 from ${questionSets} where ${questionSets.bookId} = ${books.id}
+      )`,
+    })
+    .from(fileShareLinks)
+    .innerJoin(books, eq(books.id, fileShareLinks.bookId))
+    .innerJoin(users, eq(users.id, books.userId))
+    .where(and(eq(fileShareLinks.code, code), isNull(fileShareLinks.revokedAt)))
+    .limit(1);
+  if (
+    !link ||
+    link.ownerSuspended ||
+    link.protectedSet ||
+    link.status === "failed"
+  ) {
+    return null;
+  }
+  return {
+    bookId: link.bookId,
+    title: link.title,
+    kind: kindOf(link.sourceType),
+    studying: link.joinCount + 1,
+  };
+}
+
 // Files shared with this student that they can open now, newest first —
 // for the bot's "ملفاتي".
 export async function listSharedFilesForUser(userId: string, limit = 6) {
