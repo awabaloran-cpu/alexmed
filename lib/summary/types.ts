@@ -35,6 +35,8 @@ export type SummaryDoc = {
 };
 
 export const SUMMARY_THEMES = [
+  "revision",
+  "handout",
   "studio",
   "bloom",
   "dusk",

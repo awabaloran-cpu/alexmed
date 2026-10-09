@@ -1814,7 +1814,17 @@ describe("Asking the bot for a PDF summary", () => {
     await press(CALLBACK.summaryStyle(upload.id, "exam"));
     expect(lastSent().text).toBe(TEXT.summaryAskTheme);
     expect(buttonsOf().map(b => b.callback_data)).toEqual(
-      (["studio", "bloom", "dusk", "paper", "classic"] as const).map(theme =>
+      (
+        [
+          "revision",
+          "handout",
+          "studio",
+          "bloom",
+          "dusk",
+          "paper",
+          "classic",
+        ] as const
+      ).map(theme =>
         CALLBACK.summaryGo(upload.id, "exam", theme)
       )
     );

@@ -135,6 +135,13 @@ export function pageRanges(pages: number[]) {
 // The faces each look prints in. One family covers Arabic and Latin, so a
 // mixed line never changes face mid-sentence.
 const FONTS: Record<SummaryTheme, string[]> = {
+  revision: ["Lato:wght@400;700;900", "IBM+Plex+Sans+Arabic:wght@400;600;700"],
+  handout: [
+    "Libre+Baskerville:wght@400;700",
+    "Amiri:wght@400;700",
+    "Arimo:wght@400;700",
+    "IBM+Plex+Sans+Arabic:wght@400;700",
+  ],
   studio: [
     "Alexandria:wght@300;500;700;800",
     "IBM+Plex+Sans+Arabic:wght@400;600;700",
@@ -420,16 +427,224 @@ code { font-family: "IBM Plex Mono", Consolas, monospace; font-size: .9em; backg
 [data-theme=classic] .check { border: 1.2px solid var(--ink); }
 [data-theme=classic] .sig { border-radius: 2px; }
 [data-theme=classic] .sig .cta, [data-theme=classic] .sig .logo { border-radius: 2px; }
+
+/* inline cover (revision, handout): a title at the top of page one */
+.inline { background: none; overflow: visible; padding: 0; }
+.inline .brand, .inline .deco { display: none; }
+.run { display: none; }
+
+/* ── revision: a dense clinical revision sheet — navy bars, teal marks,
+   a map of the whole file on page one. ── */
+[data-theme=revision] { --fd: "Lato", "IBM Plex Sans Arabic", sans-serif; --fb: "Lato", "IBM Plex Sans Arabic", sans-serif;
+  --bg: #fff; --ink: #1c2333; --mute: #5d6678; --line: #cfd6e2; --panel: #f1f4f9;
+  --a: #1a8a87; --ad: #17305c; --as: #e6f1f1; --hl: #fff1a8; --navy: #17305c; --red: #b8322c;
+  --cover: none; --cink: #17305c; --clogo: #fff;
+  --sb: #e6f1f1; --sl: #1a8a87; --sc: #fff; --kb: #f1f4f9; --kc: #1c2333; --kk: #1a8a87;
+  --gb: #fff; --gl: #cfd6e2; --gc: #5d6678; }
+[data-theme=revision] body { font-size: 8.9pt; line-height: 1.5; }
+[data-theme=revision] [dir=rtl] { line-height: 1.8; }
+[data-theme=revision] table.page > thead td { height: 12mm; vertical-align: bottom; padding: 0 13mm; }
+[data-theme=revision] table.page > tbody > tr > td { padding: 0 13mm; }
+[data-theme=revision] .run { display: block; font-size: 7.4pt; color: var(--mute); padding-bottom: 3px; margin-bottom: 4mm;
+  border-bottom: 1px solid var(--line); position: relative; }
+[data-theme=revision] .run:after { content: ""; position: absolute; inset-inline-start: 0; bottom: -1px; width: 16mm; height: 2px; background: var(--a); }
+[data-theme=revision] .chips, [data-theme=revision] .meta { display: none; }
+[data-theme=revision] h1 { font-size: 21pt; line-height: 1.2; margin: 0; color: var(--navy); font-weight: 900; }
+[data-theme=revision] .sub { font-size: 9.6pt; color: var(--a); max-width: none; opacity: 1; line-height: 1.5; }
+[data-theme=revision] .toc { display: none; }
+[data-theme=revision] .toc.only { display: block; margin-top: 4mm; }
+[data-theme=revision] section.sec { margin-top: 4mm; }
+[data-theme=revision] .sh { background: var(--navy); color: #fff; border-radius: 6px; padding: 5px 12px; gap: 9px; margin-bottom: 5px; }
+[data-theme=revision] .sh .n { font-size: 12.5pt; font-weight: 900; color: #7fd6d2; }
+[data-theme=revision] .sh .st { flex: 1; display: flex; flex-direction: row-reverse; justify-content: space-between; align-items: center; gap: 12px; }
+[data-theme=revision] h2 { font-size: 12.5pt; font-weight: 900; }
+[data-theme=revision] .eb { color: #dfe7f5; font-size: 7.4pt; font-weight: 700; white-space: nowrap; }
+[data-theme=revision] h3 { font-size: 10.4pt; color: var(--a); font-weight: 900; margin: 9px 0 2px; }
+[data-theme=revision] p { margin: 3px 0; }
+[data-theme=revision] ul, [data-theme=revision] ol { margin: 3px 0; padding-inline-start: 16px; }
+[data-theme=revision] li { margin: 1px 0; }
+[data-theme=revision] ul.kv { border: 1px solid var(--line); padding: 0; }
+[data-theme=revision] ul.kv li { margin: 0; padding: 4px 8px; gap: 10px; grid-template-columns: minmax(90px, 22%) 1fr; }
+[data-theme=revision] ul.kv li:nth-child(even) { background: var(--panel); }
+[data-theme=revision] ul.kv li:last-child { border-bottom: 0; }
+[data-theme=revision] .callout { border-radius: 0; border-inline-start: 3.5px solid var(--cc); padding: 6px 12px 7px; margin: 7px 0; }
+[data-theme=revision] .callout .ct { font-size: 8.9pt; font-weight: 900; text-transform: uppercase; }
+[data-theme=revision] .callout .ct i { display: none; }
+[data-theme=revision] .callout.key { --cb: var(--as); --cc: var(--a); }
+[data-theme=revision] .callout.exam { --cb: #fff6dc; --cc: #b07a00; }
+[data-theme=revision] .callout.warn { --cb: #fbe9e7; --cc: var(--red); }
+[data-theme=revision] .callout.tip { --cb: var(--as); --cc: var(--a); }
+[data-theme=revision] .formula { border-radius: 4px; padding: 8px 12px; margin: 7px 0; border: 1px solid var(--line); }
+[data-theme=revision] .example { border-radius: 4px; border-width: 1px; margin: 7px 0; }
+[data-theme=revision] .example .et { background: var(--navy); color: #fff; padding: 4px 10px; font-size: 9pt; }
+[data-theme=revision] .example .ans { margin: 0 10px 8px; padding: 4px 10px; border-radius: 4px; }
+[data-theme=revision] .tw { margin: 7px 0; }
+[data-theme=revision] .tw table { font-size: 8.3pt; line-height: 1.4; border: 1px solid var(--line); }
+[data-theme=revision] .tw th, [data-theme=revision] .tw td { padding: 4px 7px; }
+[data-theme=revision] .tw thead th { background: var(--navy); color: #fff; font-size: 8.1pt; font-weight: 900; border-bottom: 0; }
+[data-theme=revision] .tw tbody th { color: var(--navy); font-weight: 900; }
+[data-theme=revision] .tw tbody tr:nth-child(even) > * { background: var(--panel); }
+[data-theme=revision] .tw tbody tr:last-child > * { border-bottom: 0; }
+[data-theme=revision] .simple { border-radius: 0; border-inline-start: 3.5px solid var(--a); padding: 6px 12px; margin: 7px 0; }
+[data-theme=revision] .simple b { border-radius: 3px; }
+[data-theme=revision] .check { border-radius: 6px; padding: 10px 14px; margin-top: 6mm; border-inline-start: 3.5px solid var(--navy); }
+[data-theme=revision] .check h2 { font-size: 11pt; color: var(--navy); }
+[data-theme=revision] .sig { left: 13mm; right: 13mm; border-radius: 6px; }
+[data-theme=revision] .sig .logo, [data-theme=revision] .sig .cta { background: var(--navy); border-radius: 4px; }
+
+/* the map of the file: section boxes around a centre, joined by curves */
+.map { position: relative; margin: 5mm 0 2mm; direction: ltr; break-inside: avoid; }
+.map svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+.map path { fill: none; stroke: var(--a); stroke-width: .55; }
+.map .hub { position: absolute; left: 67mm; width: 50mm; height: 15mm; margin-top: -7.5mm; border-radius: 50%; background: var(--navy); color: #fff;
+  display: grid; place-items: center; text-align: center; font: 900 9.4pt/1.2 var(--fd); padding: 0 6mm; }
+.map .hub span { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.map .node { position: absolute; width: 54mm; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); overflow: hidden; }
+.map .node b { display: block; background: var(--navy); color: #fff; font: 900 8.4pt/1.3 var(--fd); padding: 3px 8px 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.map .node ul { margin: 0; padding: 4px 8px 0 8px; list-style: none; font-size: 8pt; line-height: 1.35; }
+.map .node li { margin: 0 0 2.2px; display: flex; gap: 6px; align-items: baseline; }
+.map .node li i { flex: none; width: 3.5px; height: 3.5px; border-radius: 50%; background: var(--a); transform: translateY(-2px); }
+.map .node li span { flex: 1; min-width: 0; white-space: nowrap; overflow-x: clip; overflow-y: visible; text-overflow: ellipsis; }
+.map .node .katex { font-size: 1em; }
+
+/* ── handout: a plain typed document. Serif headings, nothing else. ── */
+[data-theme=handout] { --fd: "Libre Baskerville", "Amiri", Georgia, serif; --fb: "Arimo", "IBM Plex Sans Arabic", Arial, sans-serif;
+  --bg: #fff; --ink: #2b2b2b; --mute: #8a8a8a; --line: #e4e4e4; --panel: #f6f6f6;
+  --a: #2b2b2b; --ad: #2b2b2b; --as: #f6f6f6; --hl: #fff3b0;
+  --cover: none; --cink: #2b2b2b; --clogo: #fff;
+  --sb: none; --sl: none; --sc: #2b2b2b; --kb: #fff; --kc: #2b2b2b; --kk: #2b2b2b;
+  --gb: #fff; --gl: #e4e4e4; --gc: #6f6f6f; }
+[data-theme=handout] body { font-size: 10.2pt; line-height: 1.6; }
+[data-theme=handout] table.page > thead td { height: 20mm; }
+[data-theme=handout] table.page > tbody > tr > td { padding: 0 19mm; }
+[data-theme=handout] .chips { display: none; }
+[data-theme=handout] h1 { font-size: 22pt; line-height: 1.3; margin: 0 0 6px; font-weight: 700; }
+[data-theme=handout] .sub { max-width: none; opacity: 1; font-size: 10.2pt; line-height: 1.6; font-weight: 700; }
+[data-theme=handout] .meta { margin-top: 4px; color: var(--mute); opacity: 1; }
+[data-theme=handout] .toc { display: none; }
+[data-theme=handout] section.sec { margin-top: 8mm; padding-top: 7mm; border-top: 1px solid var(--line); }
+[data-theme=handout] .inline + .toc + section.sec { border-top: 0; padding-top: 0; }
+[data-theme=handout] .sh { gap: 5px; align-items: baseline; margin-bottom: 4px; }
+[data-theme=handout] .sh .n { font-size: 14.5pt; font-weight: 700; }
+[data-theme=handout] .sh .n:after { content: "."; }
+[data-theme=handout] h2 { font-size: 14.5pt; }
+[data-theme=handout] .eb { display: none; }
+[data-theme=handout] h3 { font-size: 11.4pt; margin: 16px 0 4px; }
+[data-theme=handout] li { margin: 5px 0; }
+[data-theme=handout] li::marker { color: var(--ink); font-weight: 400; }
+[data-theme=handout] ul.kv li { display: block; border: 0; padding: 0; margin: 5px 0; }
+[data-theme=handout] ul.kv { list-style: disc; padding-inline-start: 20px; }
+[data-theme=handout] ul.kv li > strong:after { content: ": "; }
+[data-theme=handout] .callout { background: none; border-radius: 0; border-inline-start: 3px solid #c9c9c9; padding: 2px 12px; color: var(--mute); }
+[data-theme=handout] .callout .ct { color: #6f6f6f; }
+[data-theme=handout] .callout .ct i { display: none; }
+[data-theme=handout] .formula { background: none; padding: 6px 0; }
+[data-theme=handout] .example { border-radius: 0; border-width: 1px; }
+[data-theme=handout] .example .et > span { background: none; color: var(--ink); padding: 0; font-size: inherit; font-weight: 700; }
+[data-theme=handout] .example .et > span:after { content: ":"; }
+[data-theme=handout] .example .ans { background: none; color: var(--ink); padding: 0; }
+[data-theme=handout] .tw thead th { border-bottom: 1.5px solid var(--ink); }
+[data-theme=handout] .tw tbody th { color: var(--ink); }
+[data-theme=handout] .simple { display: block; padding: 0; border-radius: 0; }
+[data-theme=handout] .simple b { font-size: inherit; padding: 0; border-radius: 0; margin: 0; font-family: var(--fb); }
+[data-theme=handout] .simple b:after { content: ": "; }
+[data-theme=handout] .check { border-radius: 0; padding: 7mm 0 0; border-top: 1px solid var(--line); }
+[data-theme=handout] .sig { font-family: var(--fb); border-radius: 0; border-width: 1px 0 0; left: 19mm; right: 19mm; padding: 0; }
+[data-theme=handout] .sig .logo, [data-theme=handout] .sig .cta { border-radius: 2px; }
 `;
 
-// Which looks open with a cover that fills the first page.
-const FULL_COVER: Record<SummaryTheme, boolean> = {
-  studio: true,
-  bloom: false,
-  dusk: true,
-  paper: false,
-  classic: true,
+// How each look opens: a cover that fills the first page, a band at its
+// top, or just a title above the text.
+const COVER: Record<SummaryTheme, "full" | "band" | "inline"> = {
+  revision: "inline",
+  handout: "inline",
+  studio: "full",
+  bloom: "band",
+  dusk: "full",
+  paper: "band",
+  classic: "full",
 };
+
+// Plain words of a marked-up line, for a label that must stay on one line.
+const plain = (text: string) =>
+  text
+    .replace(/\$[^$\n]*\$/g, " ")
+    .replace(/\*\*|==|`/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+// A section's own landmarks, for its box on the map: its sub-headings
+// first, then the terms it defines, then its list items.
+export function sectionLandmarks(blocks: SummaryBlock[], max: number) {
+  const of = (pick: (b: SummaryBlock) => string[]) => blocks.flatMap(pick);
+  const found = [
+    ...of(b => (b.t === "h" ? [b.text] : [])),
+    ...of(b => (b.t === "kv" ? b.items.map(i => i[0]) : [])),
+    ...of(b => (b.t === "table" ? b.rows.map(r => r[0] ?? "") : [])),
+    ...of(b => (b.t === "list" ? b.items : [])),
+    // A section of formulas and worked examples has none of the above.
+    ...of(b => (b.t === "example" ? [b.title] : [])),
+    ...of(b => (b.t === "table" ? [b.head.join(" · ")] : [])),
+    ...of(b => (b.t === "callout" ? [b.title ?? b.text] : [])),
+    ...of(b => (b.t === "p" ? [b.text] : [])),
+  ]
+    // Marks and maths stay: the box draws them as the text does.
+    .map(s =>
+      s
+        .replace(/\s+/g, " ")
+        .trim()
+        .replace(/[:：.،,;]+$/, "")
+    )
+    .filter(Boolean)
+    // Plain words read best in a one-line label; maths fills what is left.
+    .sort((a, b) => Number(a.includes("$")) - Number(b.includes("$")));
+  return [...new Set(found)].slice(0, max);
+}
+
+// The map on page one of the "revision" look: every section as a box around
+// the title, joined to it by a curve. Laid out here in millimetres (the page
+// runs no script). Past twelve sections there is no room, and the caller
+// shows the contents list instead.
+const MAP_MAX = 12;
+function sectionMap(doc: SummaryDoc, rtl: boolean) {
+  const count = doc.sections.length;
+  if (count < 2 || count > MAP_MAX) return "";
+  const lines = count <= 8 ? 4 : 2;
+  const boxHeight = 8 + lines * 4.6;
+  const gap = 4.5;
+  const width = 184;
+  const boxWidth = 54;
+  const first = doc.sections.slice(0, Math.ceil(count / 2));
+  const second = doc.sections.slice(Math.ceil(count / 2));
+  const height = first.length * (boxHeight + gap) - gap;
+  const middle = height / 2;
+  // The first half sits where reading starts: left, or right in Arabic.
+  const sides = rtl ? [second, first] : [first, second];
+  const nodes: string[] = [];
+  const paths: string[] = [];
+  sides.forEach((side, sideIndex) => {
+    const left = sideIndex === 0;
+    side.forEach((section, i) => {
+      const y = ((i + 0.5) * height) / side.length;
+      const boxEdge = left ? boxWidth : width - boxWidth;
+      const hubEdge = left ? 67 : 117;
+      const bend = left ? 6 : -6;
+      paths.push(
+        `<path d="M${boxEdge},${y.toFixed(1)} C${boxEdge + bend},${y.toFixed(1)} ${hubEdge - bend},${middle.toFixed(1)} ${hubEdge},${middle.toFixed(1)}"/>`
+      );
+      const d = dirOf(section.title);
+      nodes.push(
+        `<div class="node" dir="${d}" style="${left ? "left" : "right"}:0;top:${(y - boxHeight / 2).toFixed(1)}mm;height:${boxHeight.toFixed(1)}mm"><b>${esc(plain(section.title))}</b><ul>${sectionLandmarks(
+          section.blocks,
+          lines
+        )
+          .map(item => `<li><i></i><span>${inline(item)}</span></li>`)
+          .join("")}</ul></div>`
+      );
+    });
+  });
+  return `<div class="map" style="height:${height.toFixed(1)}mm"><svg viewBox="0 0 ${width} ${height.toFixed(1)}" preserveAspectRatio="none">${paths.join("")}</svg><div class="hub" dir="${dirOf(doc.title)}" style="top:${middle.toFixed(1)}mm"><span>${esc(plain(doc.title))}</span></div>${nodes.join("")}</div>`;
+}
 
 export function renderSummary(
   doc: SummaryDoc,
@@ -450,7 +665,9 @@ export function renderSummary(
         check: "Check yourself",
         note: "A study summary. Check it against your source.",
       };
-  const two = (n: number) => String(n).padStart(2, "0");
+  // "1" in the looks that number like a document, "01" in the others.
+  const number = (n: number) =>
+    COVER[theme] === "inline" ? String(n) : String(n).padStart(2, "0");
   const sourcePages = (pages: number[], titleDir: string) => {
     const ranges = pageRanges(pages);
     if (!ranges) return "";
@@ -460,7 +677,7 @@ export function renderSummary(
     .map((s, i) => {
       const d = dirOf(s.title);
       const from = sourcePages(s.pages ?? [], d);
-      return `<section class="sec c${i % 5}"><header class="sh" dir="${d}"><span class="n">${two(i + 1)}</span><div class="st">${
+      return `<section class="sec c${i % 5}"><header class="sh" dir="${d}"><span class="n">${number(i + 1)}</span><div class="st">${
         from ? `<span class="eb">${from}</span>` : ""
       }<h2>${inline(s.title)}</h2></div></header>${s.blocks
         .map(b => block(b))
@@ -470,7 +687,7 @@ export function renderSummary(
   const toc = doc.sections
     .map((s, i) => {
       const ranges = pageRanges(s.pages ?? []);
-      return `<li dir="${dirOf(s.title)}"><b>${two(i + 1)}</b><span>${inline(s.title)}</span>${
+      return `<li dir="${dirOf(s.title)}"><b>${number(i + 1)}</b><span>${inline(s.title)}</span>${
         ranges ? `<em><bdi dir="ltr">${ranges}</bdi></em>` : ""
       }</li>`;
     })
@@ -484,6 +701,17 @@ export function renderSummary(
     .split(" · ")
     .map(m => `<bdi>${esc(m)}</bdi>`)
     .join(" · ");
+  const map = theme === "revision" ? sectionMap(doc, rtl) : "";
+  const cover = `<header class="cover ${COVER[theme]}" dir="${dirOf(doc.title)}"><div class="deco"><i></i><i></i><i></i></div>
+<div class="brand"><span class="logo">N</span><span>NiroLearn</span></div>
+<div class="ttl"><div class="chips">${(doc.chips ?? []).map(c => `<span class="chip">${esc(c)}</span>`).join("")}</div>
+<h1>${inline(doc.title)}</h1><p class="sub">${inline(doc.subtitle ?? "")}</p></div>
+<div class="meta">${meta}</div></header>`;
+  const inlineCover = COVER[theme] === "inline";
+  // The line that runs along the top of every page of the "revision" look.
+  const running = (doc.chips ?? [])
+    .map(c => `<bdi>${esc(c)}</bdi>`)
+    .join(" · ");
   return `<!doctype html><html lang="${lang}" dir="${rtl ? "rtl" : "ltr"}" data-theme="${theme}"><head><meta charset="utf-8">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.25/dist/katex.min.css">
 <link href="${fontsHref(theme)}" rel="stylesheet">
@@ -491,13 +719,9 @@ export function renderSummary(
 <div class="sig"><a href="${esc(link)}"><span class="logo">N</span><span class="nm">NiroLearn</span></a>
 <span class="mid">صُنع هذا الملخص بـ NiroLearn من ملف الطالب</span>
 <a href="${esc(link)}"><span class="cta" dir="rtl">اصنع ملخصك مجانًا ← ‎@Nirolearnbot</span></a></div>
-<header class="cover ${FULL_COVER[theme] ? "full" : "band"}" dir="${dirOf(doc.title)}"><div class="deco"><i></i><i></i><i></i></div>
-<div class="brand"><span class="logo">N</span><span>NiroLearn</span></div>
-<div class="ttl"><div class="chips">${(doc.chips ?? []).map(c => `<span class="chip">${esc(c)}</span>`).join("")}</div>
-<h1>${inline(doc.title)}</h1><p class="sub">${inline(doc.subtitle ?? "")}</p></div>
-<div class="meta">${meta}</div></header>
-<table class="page"><thead><tr><td></td></tr></thead><tfoot><tr><td></td></tr></tfoot><tbody><tr><td>
-<nav class="toc" dir="${rtl ? "rtl" : "ltr"}"><div class="tt">${t.contents}</div><ol>${toc}</ol></nav>
+${inlineCover ? "" : cover}
+<table class="page"><thead><tr><td><div class="run" dir="${rtl ? "rtl" : "ltr"}">${running}</div></td></tr></thead><tfoot><tr><td></td></tr></tfoot><tbody><tr><td>
+${inlineCover ? cover : ""}${map}<nav class="toc${theme === "revision" && !map ? " only" : ""}" dir="${rtl ? "rtl" : "ltr"}"><div class="tt">${t.contents}</div><ol>${toc}</ol></nav>
 ${sections}${check}<p class="note" dir="${rtl ? "rtl" : "ltr"}">${t.note}</p>
 </td></tr></tbody></table></body></html>`;
 }

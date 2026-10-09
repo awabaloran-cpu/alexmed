@@ -301,6 +301,8 @@ export const CALLBACK = {
 };
 
 export const SUMMARY_THEME_LABELS: Record<SummaryTheme, string> = {
+  revision: "🩺 مراجعة سريعة (خريطة وجداول)",
+  handout: "📄 مستند بسيط",
   studio: "🔷 تقرير عصري",
   bloom: "🌈 ألوان مرحة",
   dusk: "🌙 ليلي",
@@ -309,6 +311,8 @@ export const SUMMARY_THEME_LABELS: Record<SummaryTheme, string> = {
 };
 // n / m / v: the buttons of the first set of looks, still in old chats.
 const THEME_BY_LETTER: Record<string, SummaryTheme> = {
+  r: "revision",
+  h: "handout",
   s: "studio",
   b: "bloom",
   d: "dusk",
@@ -362,7 +366,7 @@ export function parseCallback(
       style: style[1].toLowerCase() === "e" ? "exam" : "full",
     };
   }
-  const go = new RegExp(`^g:([ef])([sbdpcnmv]):(${UUID})$`, "i").exec(data);
+  const go = new RegExp(`^g:([ef])([rhsbdpcnmv]):(${UUID})$`, "i").exec(data);
   if (go) {
     return {
       action: "summaryGo",

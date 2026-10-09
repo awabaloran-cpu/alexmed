@@ -8,7 +8,7 @@ import {
 } from "./compose";
 import { decideSummary } from "./jobs";
 import { parseSummaryMarkup } from "./markup";
-import { pageRanges, renderSummary } from "./render";
+import { pageRanges, renderSummary, sectionLandmarks } from "./render";
 import { SUMMARY_THEMES, toSummaryTheme, type SummarySection } from "./types";
 
 const ANSWER = `# Urinary tract infection
@@ -286,6 +286,54 @@ describe("renderSummary", () => {
     expect(withPages).toContain('Source pages <bdi dir="ltr">2–4, 7</bdi>');
   });
 
+  it("opens the revision look with a map of the file's sections", () => {
+    const section = (title: string): SummarySection => ({
+      title,
+      pages: [1],
+      blocks: [
+        { t: "p", text: "A paragraph." },
+        { t: "list", ordered: false, items: ["**Cough** at night:"] },
+        { t: "h", text: "Treatment" },
+        { t: "kv", items: [["Croup", "steroids"]] },
+      ],
+    });
+    // Sub-headings first, then defined terms, then list items; no repeats.
+    expect(sectionLandmarks(section("x").blocks, 3)).toEqual([
+      "Treatment",
+      "Croup",
+      "**Cough** at night",
+    ]);
+
+    const few = renderSummary(
+      { ...doc, sections: ["Asthma", "Croup", "Cough"].map(section) },
+      { theme: "revision" }
+    );
+    expect(few.match(/class="node"/g)).toHaveLength(3);
+    expect(few.match(/<path /g)).toHaveLength(3);
+    expect(few).toContain("<b>Croup</b>");
+    expect(few).toContain("<strong>Cough</strong> at night");
+    expect(few).not.toContain('class="toc only"');
+
+    // Too many sections for a map: the contents list takes its place.
+    const many = renderSummary(
+      {
+        ...doc,
+        sections: Array.from({ length: 13 }, (_, i) => section(`S${i}`)),
+      },
+      { theme: "revision" }
+    );
+    expect(many).not.toContain('class="node"');
+    expect(many).toContain('class="toc only"');
+
+    // Only this look has it.
+    expect(
+      renderSummary(
+        { ...doc, sections: ["Asthma", "Croup"].map(section) },
+        { theme: "studio" }
+      )
+    ).not.toContain('class="node"');
+  });
+
   it("has every look, and gives a retired one the look that replaced it", () => {
     for (const theme of SUMMARY_THEMES) {
       const page = renderSummary(doc, { theme });
@@ -297,6 +345,6 @@ describe("renderSummary", () => {
     expect(toSummaryTheme("niro")).toBe("studio");
     expect(toSummaryTheme("violet")).toBe("dusk");
     expect(toSummaryTheme("classic")).toBe("classic");
-    expect(toSummaryTheme(undefined)).toBe("studio");
+    expect(toSummaryTheme(undefined)).toBe("revision");
   });
 });
