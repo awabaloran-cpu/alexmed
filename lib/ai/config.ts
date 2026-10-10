@@ -63,7 +63,29 @@ export const omniRouteConfig = {
   get fastTextModel() {
     return process.env.OMNIROUTE_FAST_TEXT_MODEL?.trim() || undefined;
   },
+  // How much hidden "thinking" a Google model reached directly ("gemini/…")
+  // may do before it answers. The thinking is billed and counted inside
+  // max_tokens: measured 2026-10-10 on gemini-3.1-flash-lite, a question's
+  // explanation spent 1,533 of its 1,600 tokens thinking and came back as
+  // 156 characters of cut-off JSON — every question of a file failed.
+  // "none" answers the same question whole in ~300 tokens. Set
+  // OMNIROUTE_GEMINI_REASONING_EFFORT to low/medium/high for a model that
+  // cannot switch thinking off, or to "default" to send nothing.
+  get geminiReasoningEffort() {
+    const value = process.env.OMNIROUTE_GEMINI_REASONING_EFFORT?.trim();
+    if (!value) return "none";
+    return value.toLowerCase() === "default" ? undefined : value.toLowerCase();
+  },
 };
+
+// The reasoning effort to send with a call to this model, if any. Only the
+// models Google serves directly take it; every other provider behind the
+// gateway is sent exactly what it was sent before.
+export function reasoningEffortFor(model: string): string | undefined {
+  return /^gemini\//i.test(model)
+    ? omniRouteConfig.geminiReasoningEffort
+    : undefined;
+}
 
 function parseModelList(value: string | undefined): string[] {
   return (value ?? "")

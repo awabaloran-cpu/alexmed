@@ -133,6 +133,46 @@ describe("OmniRoute vision model chain", () => {
     });
     expect(requestedModels[0]).toBe("gemini/explicit");
   });
+
+  // What each model was sent as reasoning_effort (undefined = not sent).
+  async function effortSentTo(model: string) {
+    const sent: Record<string, unknown> = {};
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string, init: RequestInit) => {
+        const body = JSON.parse(String(init.body));
+        sent[body.model] = body.reasoning_effort;
+        return okResponse(body.model);
+      })
+    );
+    await omnirouteProvider.generateText({ model, messages: textMessages });
+    return sent[model];
+  }
+
+  it("a Google model is asked not to spend the answer's tokens thinking", async () => {
+    const saved = process.env.OMNIROUTE_GEMINI_REASONING_EFFORT;
+    try {
+      delete process.env.OMNIROUTE_GEMINI_REASONING_EFFORT;
+      expect(await effortSentTo("gemini/gemini-3.1-flash-lite")).toBe("none");
+      process.env.OMNIROUTE_GEMINI_REASONING_EFFORT = " Low ";
+      expect(await effortSentTo("gemini/gemini-3.1-flash-lite")).toBe("low");
+      process.env.OMNIROUTE_GEMINI_REASONING_EFFORT = "default";
+      expect(
+        await effortSentTo("gemini/gemini-3.1-flash-lite")
+      ).toBeUndefined();
+    } finally {
+      if (saved === undefined)
+        delete process.env.OMNIROUTE_GEMINI_REASONING_EFFORT;
+      else process.env.OMNIROUTE_GEMINI_REASONING_EFFORT = saved;
+    }
+  });
+
+  it("every other provider is sent what it was sent before", async () => {
+    expect(await effortSentTo("nvidia/text-main")).toBeUndefined();
+    expect(
+      await effortSentTo("openrouter/google/gemini-2.5-flash-lite")
+    ).toBeUndefined();
+  });
 });
 
 // generateText streams internally: OmniRoute cancels a non-streamed request

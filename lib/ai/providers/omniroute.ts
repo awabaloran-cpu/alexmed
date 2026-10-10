@@ -5,7 +5,7 @@
 // behavior deliberately conservative (network failures / 5xx only, never on
 // 429 — retrying a rate-limit against a gateway that already handles rate-
 // limit routing itself would just duplicate requests for no benefit).
-import { omniRouteConfig } from "../config";
+import { omniRouteConfig, reasoningEffortFor } from "../config";
 import { logAiEvent } from "../context";
 import { noteGatewayBusy, withAiSlot } from "../gate";
 import {
@@ -367,6 +367,8 @@ function buildPayload(model: string, params: GenerateParams, stream: boolean) {
   } else if (params.responseFormat?.type === "json_object") {
     payload.response_format = { type: "json_object" };
   }
+  const reasoningEffort = reasoningEffortFor(model);
+  if (reasoningEffort) payload.reasoning_effort = reasoningEffort;
   if (stream) payload.stream = true;
   return payload;
 }
