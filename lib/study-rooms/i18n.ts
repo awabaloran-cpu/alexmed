@@ -202,6 +202,15 @@ const ar = {
   "error.rate_limited": "محاولات كثيرة. انتظر قليلًا ثم حاول.",
   "error.already_reported": "أرسلت بلاغًا عن هذا من قبل.",
   "error.cannot_act_on_member": "لا يمكن تنفيذ هذا على هذا العضو.",
+  "error.no_file": "لا يوجد ملف مفتوح في الغرفة.",
+  "error.bad_page": "هذه الصفحة غير موجودة في الملف.",
+  "error.limit_reached": "وصلت للحدّ المسموح هنا.",
+  "error.message_empty": "اكتب رسالة أولًا.",
+  "error.quiz_running": "يوجد اختبار جارٍ في الغرفة.",
+  "error.quiz_too_few": "هذا الملف لا يحوي أسئلة كافية بإجابات معروفة.",
+  "error.quiz_not_active": "لا يوجد اختبار جارٍ.",
+  "error.quiz_closed": "انتهى وقت هذا السؤال.",
+  "error.already_answered": "أجبت عن هذا السؤال.",
   "error.unknown": "حدث خطأ. حاول مرة أخرى.",
 } as const;
 
@@ -397,6 +406,16 @@ const en: Record<RoomsKey, string> = {
   "error.rate_limited": "Too many attempts. Wait a little and try again.",
   "error.already_reported": "You already reported this.",
   "error.cannot_act_on_member": "That can't be done to this member.",
+  "error.no_file": "No file is open in the room.",
+  "error.bad_page": "That page isn't in the file.",
+  "error.limit_reached": "You've reached the limit here.",
+  "error.message_empty": "Write a message first.",
+  "error.quiz_running": "A quiz is already running in the room.",
+  "error.quiz_too_few":
+    "This file doesn't have enough questions with known answers.",
+  "error.quiz_not_active": "No quiz is running.",
+  "error.quiz_closed": "Time is up for this question.",
+  "error.already_answered": "You already answered this question.",
   "error.unknown": "Something went wrong. Try again.",
 };
 
@@ -449,4 +468,13 @@ export const REASON_KEYS: Record<RoomErrorReason, RoomsKey> = {
   rate_limited: "error.rate_limited",
   already_reported: "error.already_reported",
   cannot_act_on_member: "error.cannot_act_on_member",
+  no_file: "error.no_file",
+  bad_page: "error.bad_page",
+  limit_reached: "error.limit_reached",
+  message_empty: "error.message_empty",
+  quiz_running: "error.quiz_running",
+  quiz_too_few: "error.quiz_too_few",
+  quiz_not_active: "error.quiz_not_active",
+  quiz_closed: "error.quiz_closed",
+  already_answered: "error.already_answered",
 };

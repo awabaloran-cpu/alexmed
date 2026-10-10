@@ -3568,6 +3568,142 @@ export const studyRoomEvents = pgTable(
   })
 );
 
+// What members write to each other. Plain text only; `page` is a page of
+// the shared file the message points at. `clientId` makes a resend after a
+// dropped connection the same message, not a second one.
+export const studyRoomMessages = pgTable(
+  "study_room_messages",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    roomId: uuid("roomId")
+      .notNull()
+      .references(() => studyRooms.id, { onDelete: "cascade" }),
+    userId: uuid("userId").references(() => users.id, { onDelete: "set null" }),
+    body: text("body").notNull(),
+    page: integer("page"),
+    clientId: varchar("clientId", { length: 40 }).notNull(),
+    seq: bigint("seq", { mode: "number" }).notNull(),
+    deletedAt: timestamp("deletedAt", { withTimezone: true }),
+    createdAt: timestamp("createdAt", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  table => ({
+    roomSeqIdx: index("study_room_messages_room_seq_idx").on(
+      table.roomId,
+      table.seq
+    ),
+    clientUnique: uniqueIndex("study_room_messages_client_idx").on(
+      table.roomId,
+      table.userId,
+      table.clientId
+    ),
+  })
+);
+
+export type StudyMarkRect = { x: number; y: number; w: number; h: number };
+
+// A highlight everyone in the room sees. Rectangles are fractions (0–1) of
+// the page, so they sit right on any screen; the PDF itself is never
+// changed. A student's PRIVATE highlights stay in book_page_marks.
+export const studyRoomMarks = pgTable(
+  "study_room_marks",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    roomId: uuid("roomId")
+      .notNull()
+      .references(() => studyRooms.id, { onDelete: "cascade" }),
+    userId: uuid("userId").references(() => users.id, { onDelete: "set null" }),
+    bookId: uuid("bookId")
+      .notNull()
+      .references(() => books.id, { onDelete: "cascade" }),
+    pageNumber: integer("pageNumber").notNull(),
+    // "yellow" | "green" | "pink" | "blue"
+    color: varchar("color", { length: 8 }).notNull(),
+    rects: jsonb("rects").$type<StudyMarkRect[]>().notNull(),
+    text: text("text"),
+    clientId: varchar("clientId", { length: 40 }).notNull(),
+    deletedAt: timestamp("deletedAt", { withTimezone: true }),
+    createdAt: timestamp("createdAt", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  table => ({
+    roomPageIdx: index("study_room_marks_room_page_idx").on(
+      table.roomId,
+      table.pageNumber
+    ),
+    clientUnique: uniqueIndex("study_room_marks_client_idx").on(
+      table.roomId,
+      table.userId,
+      table.clientId
+    ),
+  })
+);
+
+// A group quiz: the room answers the questions of a question file together.
+// The clock is the row itself (`questionStartedAt` + `secondsPerQuestion`)
+// — no timer runs on the server, so it holds across replicas and restarts.
+export const studyRoomQuizzes = pgTable(
+  "study_room_quizzes",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    roomId: uuid("roomId")
+      .notNull()
+      .references(() => studyRooms.id, { onDelete: "cascade" }),
+    bookId: uuid("bookId").references(() => books.id, { onDelete: "set null" }),
+    startedById: uuid("startedById").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    // The questions, fixed when the quiz starts.
+    questionIds: jsonb("questionIds").$type<string[]>().notNull(),
+    secondsPerQuestion: integer("secondsPerQuestion").notNull(),
+    // "question" | "reveal" | "finished" | "cancelled"
+    state: varchar("state", { length: 10 }).default("question").notNull(),
+    currentIndex: integer("currentIndex").default(0).notNull(),
+    questionStartedAt: timestamp("questionStartedAt", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    createdAt: timestamp("createdAt", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    finishedAt: timestamp("finishedAt", { withTimezone: true }),
+  },
+  table => ({
+    roomIdx: index("study_room_quizzes_room_idx").on(table.roomId, table.state),
+    // One quiz running in a room at a time.
+    oneRunning: uniqueIndex("study_room_quizzes_running_idx")
+      .on(table.roomId)
+      .where(sql`${table.state} in ('question', 'reveal')`),
+  })
+);
+
+export const studyRoomQuizAnswers = pgTable(
+  "study_room_quiz_answers",
+  {
+    quizId: uuid("quizId")
+      .notNull()
+      .references(() => studyRoomQuizzes.id, { onDelete: "cascade" }),
+    questionId: uuid("questionId").notNull(),
+    userId: uuid("userId")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    selectedIndex: integer("selectedIndex").notNull(),
+    isCorrect: boolean("isCorrect"),
+    answerMs: integer("answerMs").notNull(),
+    points: integer("points").default(0).notNull(),
+    createdAt: timestamp("createdAt", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  table => ({
+    // One answer per question, never changed.
+    pk: primaryKey({
+      columns: [table.quizId, table.questionId, table.userId],
+    }),
+  })
+);
+
 export type StudySection = typeof studySections.$inferSelect;
 export type StudySubject = typeof studySubjects.$inferSelect;
 export type StudyRoomProfile = typeof studyRoomProfiles.$inferSelect;

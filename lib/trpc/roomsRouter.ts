@@ -16,6 +16,32 @@ import {
 } from "../study-rooms/config";
 import { RoomError } from "../study-rooms/errors";
 import {
+  addMark,
+  deleteMark,
+  deleteMessage,
+  listMarks,
+  listMessages,
+  MARK_COLORS,
+  MARK_MAX_RECTS,
+  MARK_TEXT_MAX,
+  MESSAGE_MAX,
+  roomFile,
+  sendMessage,
+  setSharedPage,
+} from "../study-rooms/live";
+import {
+  advanceQuiz,
+  answerQuiz,
+  cancelQuiz,
+  QUIZ_COUNT_MAX,
+  QUIZ_COUNT_MIN,
+  QUIZ_SECONDS_MAX,
+  QUIZ_SECONDS_MIN,
+  quizCurrent,
+  quizResults,
+  startQuiz,
+} from "../study-rooms/quiz";
+import {
   banFromRooms,
   listReports,
   reportRoom,
@@ -304,6 +330,158 @@ export const roomsRouter = router({
     )
     .mutation(({ ctx, input }) =>
       guard(async () => reportRoom(await getViewer(ctx.user.id), input))
+    ),
+
+  // ── The shared file, highlights and chat ──
+  file: roomsProcedure
+    .input(z.object({ roomId: uuid }))
+    .query(({ ctx, input }) =>
+      guard(async () => roomFile(await getViewer(ctx.user.id), input.roomId))
+    ),
+
+  setPage: roomsProcedure
+    .input(
+      z.object({ roomId: uuid, page: z.number().int().min(1).max(100_000) })
+    )
+    .mutation(({ ctx, input }) =>
+      guard(async () =>
+        setSharedPage(await getViewer(ctx.user.id), input.roomId, input.page)
+      )
+    ),
+
+  messages: roomsProcedure
+    .input(
+      z.object({ roomId: uuid, afterSeq: z.number().int().min(0).optional() })
+    )
+    .query(({ ctx, input }) =>
+      guard(async () =>
+        listMessages(
+          await getViewer(ctx.user.id),
+          input.roomId,
+          input.afterSeq ?? 0
+        )
+      )
+    ),
+
+  sendMessage: roomsProcedure
+    .input(
+      z.object({
+        roomId: uuid,
+        body: z
+          .string()
+          .min(1)
+          .max(MESSAGE_MAX * 2),
+        page: z.number().int().min(1).max(100_000).nullish(),
+        clientId: z.string().regex(/^[\w-]{8,40}$/),
+      })
+    )
+    .mutation(({ ctx, input: { roomId, ...message } }) =>
+      guard(async () =>
+        sendMessage(await getViewer(ctx.user.id), roomId, message)
+      )
+    ),
+
+  deleteMessage: roomsProcedure
+    .input(z.object({ roomId: uuid, messageId: uuid }))
+    .mutation(({ ctx, input }) =>
+      guard(async () =>
+        deleteMessage(
+          await getViewer(ctx.user.id),
+          input.roomId,
+          input.messageId
+        )
+      )
+    ),
+
+  marks: roomsProcedure
+    .input(z.object({ roomId: uuid, page: z.number().int().min(1).optional() }))
+    .query(({ ctx, input }) =>
+      guard(async () =>
+        listMarks(await getViewer(ctx.user.id), input.roomId, input.page)
+      )
+    ),
+
+  addMark: roomsProcedure
+    .input(
+      z.object({
+        roomId: uuid,
+        page: z.number().int().min(1).max(100_000),
+        color: z.enum(MARK_COLORS),
+        rects: z
+          .array(
+            z.object({
+              x: z.number(),
+              y: z.number(),
+              w: z.number(),
+              h: z.number(),
+            })
+          )
+          .min(1)
+          .max(MARK_MAX_RECTS),
+        text: shortText(MARK_TEXT_MAX).nullish(),
+        clientId: z.string().regex(/^[\w-]{8,40}$/),
+      })
+    )
+    .mutation(({ ctx, input: { roomId, ...mark } }) =>
+      guard(async () => addMark(await getViewer(ctx.user.id), roomId, mark))
+    ),
+
+  deleteMark: roomsProcedure
+    .input(z.object({ roomId: uuid, markId: uuid }))
+    .mutation(({ ctx, input }) =>
+      guard(async () =>
+        deleteMark(await getViewer(ctx.user.id), input.roomId, input.markId)
+      )
+    ),
+
+  // ── The group quiz ──
+  quizStart: roomsProcedure
+    .input(
+      z.object({
+        roomId: uuid,
+        bookId: uuid,
+        count: z.number().int().min(QUIZ_COUNT_MIN).max(QUIZ_COUNT_MAX),
+        seconds: z.number().int().min(QUIZ_SECONDS_MIN).max(QUIZ_SECONDS_MAX),
+      })
+    )
+    .mutation(({ ctx, input: { roomId, ...quiz } }) =>
+      guard(async () => startQuiz(await getViewer(ctx.user.id), roomId, quiz))
+    ),
+
+  quizCurrent: roomsProcedure
+    .input(z.object({ roomId: uuid }))
+    .query(({ ctx, input }) =>
+      guard(async () => quizCurrent(await getViewer(ctx.user.id), input.roomId))
+    ),
+
+  quizAnswer: roomsProcedure
+    .input(
+      z.object({
+        quizId: uuid,
+        questionId: uuid,
+        selectedIndex: z.number().int().min(0).max(25),
+      })
+    )
+    .mutation(({ ctx, input }) =>
+      guard(async () => answerQuiz(await getViewer(ctx.user.id), input))
+    ),
+
+  quizAdvance: roomsProcedure
+    .input(z.object({ quizId: uuid }))
+    .mutation(({ ctx, input }) =>
+      guard(async () => advanceQuiz(await getViewer(ctx.user.id), input.quizId))
+    ),
+
+  quizCancel: roomsProcedure
+    .input(z.object({ quizId: uuid }))
+    .mutation(({ ctx, input }) =>
+      guard(async () => cancelQuiz(await getViewer(ctx.user.id), input.quizId))
+    ),
+
+  quizResults: roomsProcedure
+    .input(z.object({ quizId: uuid }))
+    .query(({ ctx, input }) =>
+      guard(async () => quizResults(await getViewer(ctx.user.id), input.quizId))
     ),
 
   // ── Admin ──

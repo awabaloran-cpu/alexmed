@@ -8,6 +8,7 @@ import {
 } from "../drizzle/schema";
 import { getBookAccess } from "./book-access";
 import { getDb } from "./db";
+import { isRoomFileKey } from "./study-rooms/live";
 
 // Authorization for app/api/files/[...key]/route.ts — the one generic
 // "serve me a signed URL for this storage key" endpoint. A raw storage key
@@ -50,6 +51,10 @@ export async function isFileKeyAccessibleToUser(
     )
     .limit(1);
   if (sharedBook) return true;
+
+  // 👥 The file of a study room the user is IN right now (reading only;
+  // lib/study-rooms/live.ts). Asked only while the feature is on.
+  if (await isRoomFileKey(userId, fileKey)) return true;
 
   const [ownedDeck] = await db
     .select({ id: decks.id })

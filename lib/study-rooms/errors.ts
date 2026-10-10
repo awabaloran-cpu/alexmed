@@ -33,7 +33,16 @@ export type RoomErrorReason =
   | "invalid_birth_date"
   | "rate_limited"
   | "already_reported"
-  | "cannot_act_on_member";
+  | "cannot_act_on_member"
+  | "no_file"
+  | "bad_page"
+  | "limit_reached"
+  | "message_empty"
+  | "quiz_running"
+  | "quiz_too_few"
+  | "quiz_not_active"
+  | "quiz_closed"
+  | "already_answered";
 
 const CODES: Record<RoomErrorReason, RoomErrorCode> = {
   not_available: "NOT_FOUND",
@@ -58,6 +67,15 @@ const CODES: Record<RoomErrorReason, RoomErrorCode> = {
   rate_limited: "TOO_MANY_REQUESTS",
   already_reported: "CONFLICT",
   cannot_act_on_member: "FORBIDDEN",
+  no_file: "BAD_REQUEST",
+  bad_page: "BAD_REQUEST",
+  limit_reached: "CONFLICT",
+  message_empty: "BAD_REQUEST",
+  quiz_running: "CONFLICT",
+  quiz_too_few: "BAD_REQUEST",
+  quiz_not_active: "PRECONDITION_FAILED",
+  quiz_closed: "PRECONDITION_FAILED",
+  already_answered: "CONFLICT",
 };
 
 export class RoomError extends Error {
