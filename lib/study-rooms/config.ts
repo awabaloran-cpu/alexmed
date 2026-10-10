@@ -1,8 +1,12 @@
 // 👥 Study Rooms (docs/study-rooms). Off unless the server sets
 // STUDY_ROOMS_ENABLED=true: every rooms.* procedure answers NOT_FOUND while
 // it is off and no page links to the feature, so nothing else changes.
+// The value is trimmed: a dashboard paste left "true " on the live server
+// (2026-10-10) and the whole feature stayed off with nothing saying why.
 export function studyRoomsEnabled(): boolean {
-  return process.env.STUDY_ROOMS_ENABLED === "true";
+  return (
+    (process.env.STUDY_ROOMS_ENABLED ?? "").trim().toLowerCase() === "true"
+  );
 }
 
 export const ROOM_CAPACITY_MIN = 2;

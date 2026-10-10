@@ -190,6 +190,17 @@ describe("the feature switch", () => {
     );
   });
 
+  it("a stray space or capital in the switch does not keep it off", async () => {
+    for (const value of ["true ", " true", "TRUE", "True\n"]) {
+      process.env.STUDY_ROOMS_ENABLED = value;
+      expect(await as(AHMED).enabled()).toEqual({ enabled: true });
+    }
+    for (const value of ["", "1", "yes", "truee"]) {
+      process.env.STUDY_ROOMS_ENABLED = value;
+      expect(await as(AHMED).enabled()).toEqual({ enabled: false });
+    }
+  });
+
   it("a signed-out caller gets nothing", async () => {
     const anonymous = roomsRouter.createCaller({ user: null } as never);
     await expect(anonymous.sections()).rejects.toMatchObject({
