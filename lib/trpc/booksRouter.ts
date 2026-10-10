@@ -422,9 +422,20 @@ export const booksRouter = router({
 
   // خطة الدراسة (PR7) — 7-day forecast of bookCards' real FSRS-computed
   // dueAt values.
-  upcomingForecast: protectedProcedure.query(async ({ ctx }) => {
-    return getUpcomingReviewForecastForUser(ctx.user.id);
-  }),
+  // `tzOffsetMinutes` is optional: without it the days are UTC's, as before.
+  upcomingForecast: protectedProcedure
+    .input(
+      z
+        .object({ tzOffsetMinutes: z.number().int().min(-840).max(840) })
+        .optional()
+    )
+    .query(async ({ ctx, input }) => {
+      return getUpcomingReviewForecastForUser(
+        ctx.user.id,
+        7,
+        input?.tzOffsetMinutes
+      );
+    }),
 
   // Student-initiated retry for a chapter that exhausted its automatic
   // QStash retry budget — resets it to "pending" with a fresh attempt count

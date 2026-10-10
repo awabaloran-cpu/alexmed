@@ -28,6 +28,10 @@ function daysLabel(days: number) {
   return `بعد ${days} ${days <= 10 ? "أيام" : "يومًا"}`;
 }
 
+// About ten minutes at three cards a minute: what one sitting is described
+// as when far more than that is due.
+const SITTING_CARDS = 30;
+
 type BookRow = {
   id: string;
   fileName: string;
@@ -77,7 +81,10 @@ export function useStudyNext() {
         dueCount === 1
           ? "بطاقة واحدة جاهزة للمراجعة"
           : `${dueCount} بطاقة جاهزة للمراجعة`,
-      detail: `حوالي ${Math.max(1, Math.round(dueCount / 3))} دقيقة، والمراجعة في وقتها تثبّت المعلومة.`,
+      detail:
+        dueCount > SITTING_CARDS
+          ? `ابدأ بـ${SITTING_CARDS} بطاقة (حوالي ${Math.round(SITTING_CARDS / 3)} دقائق) وتوقّف متى شئت؛ كل بطاقة تراجعها تُحسب.`
+          : `حوالي ${Math.max(1, Math.round(dueCount / 3))} دقيقة، والمراجعة في وقتها تثبّت المعلومة.`,
       href: "/review",
       action: "ابدأ المراجعة",
     };

@@ -228,7 +228,11 @@ export default function ReviewPage() {
       }
       if (!card || isPending) return;
       if (!showAnswer) {
-        if (event.key === " " || event.key === "Enter") {
+        if (
+          event.key === " " ||
+          event.code === "Space" ||
+          event.key === "Enter"
+        ) {
           event.preventDefault();
           setShowAnswer(true);
         }

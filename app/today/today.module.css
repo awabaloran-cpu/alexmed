@@ -102,8 +102,11 @@
 }
 
 .dayName {
+  max-width: 100%;
+  overflow: hidden;
   color: var(--nl-ink-3);
   font-size: 0.72rem;
+  text-overflow: clip;
   white-space: nowrap;
 }
 
@@ -149,9 +152,13 @@
 }
 
 .fold > summary span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   color: var(--nl-ink-3);
   font-size: 0.85rem;
   font-weight: 400;
+  font-variant-numeric: tabular-nums;
 }
 
 .fold > summary svg {
@@ -205,6 +212,7 @@
 .rowText strong {
   overflow: hidden;
   font-weight: 600;
+  text-align: start;
   text-overflow: ellipsis;
   white-space: nowrap;
 }

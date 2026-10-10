@@ -7,15 +7,23 @@ import { bookDisplayTitle } from "@/lib/book-title";
 import { trpc } from "@/lib/trpc-client";
 import s from "./today.module.css";
 
+// Short forms: seven of them share one row on a phone.
 const WEEKDAY_SHORT_AR = [
-  "الأحد",
-  "الإثنين",
-  "الثلاثاء",
-  "الأربعاء",
-  "الخميس",
-  "الجمعة",
-  "السبت",
+  "أحد",
+  "إثنين",
+  "ثلاثاء",
+  "أربعاء",
+  "خميس",
+  "جمعة",
+  "سبت",
 ];
+
+const localDayKey = (date: Date) =>
+  [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, "0"),
+    String(date.getDate()).padStart(2, "0"),
+  ].join("-");
 
 const TYPE_LABELS: Record<string, string> = {
   general: "عام",
@@ -39,28 +47,24 @@ function examLabel(days: number) {
   return `بعد ${days} ${days <= 10 ? "أيام" : "يومًا"}`;
 }
 
-// The server groups by UTC date (lib/db-books.ts), so the days are built in
-// UTC too: today and the six after it, each with its count (0 when none).
+// The server counts by the student's own days (the page sends its clock's
+// offset): today and the six after it, each with its count (0 when none).
 function weekAhead(forecast: { day: string; count: number }[]) {
   const counts = new Map(
-    forecast.map(entry => [
-      new Date(entry.day).toISOString().slice(0, 10),
-      entry.count,
-    ])
+    forecast.map(entry => [String(entry.day).slice(0, 10), entry.count])
   );
   const start = new Date();
   return Array.from({ length: 7 }, (_, offset) => {
     const date = new Date(
-      Date.UTC(
-        start.getUTCFullYear(),
-        start.getUTCMonth(),
-        start.getUTCDate() + offset
-      )
+      start.getFullYear(),
+      start.getMonth(),
+      start.getDate() + offset
     );
+    const key = localDayKey(date);
     return {
-      key: date.toISOString().slice(0, 10),
-      name: offset === 0 ? "اليوم" : WEEKDAY_SHORT_AR[date.getUTCDay()],
-      count: counts.get(date.toISOString().slice(0, 10)) ?? 0,
+      key,
+      name: offset === 0 ? "اليوم" : WEEKDAY_SHORT_AR[date.getDay()],
+      count: counts.get(key) ?? 0,
       today: offset === 0,
     };
   });
@@ -72,7 +76,9 @@ function weekAhead(forecast: { day: string; count: number }[]) {
 // here is estimated or made up.
 export default function TodayPage() {
   const state = useStudyNext();
-  const forecastQuery = trpc.books.upcomingForecast.useQuery();
+  const forecastQuery = trpc.books.upcomingForecast.useQuery({
+    tzOffsetMinutes: -new Date().getTimezoneOffset(),
+  });
 
   const week = weekAhead(forecastQuery.data ?? []);
   const weekTotal = week.reduce((sum, day) => sum + day.count, 0);
@@ -160,9 +166,7 @@ export default function TodayPage() {
                   <li key={subject.id}>
                     <Link href={`/subjects/${subject.id}`} className={s.row}>
                       <span className={s.rowText}>
-                        <strong>
-                          <bdi>{subject.name}</bdi>
-                        </strong>
+                        <strong dir="auto">{subject.name}</strong>
                         <span>
                           {TYPE_LABELS[subject.type] ?? subject.type} ·{" "}
                           {subject.bookCount} كتاب
@@ -195,13 +199,17 @@ export default function TodayPage() {
                 <li key={book.id}>
                   <Link href={`/books/${book.id}`} className={s.row}>
                     <span className={s.rowText}>
-                      <strong>
-                        <bdi>{bookDisplayTitle(book.fileName)}</bdi>
+                      <strong dir="auto">
+                        {bookDisplayTitle(book.fileName)}
                       </strong>
                       <span>
                         {book.chapterCount === 0
                           ? "نقرأ الصفحات…"
-                          : `${book.completeChapterCount} من ${book.chapterCount} أجزاء جاهزة`}
+                          : book.completeChapterCount === 0
+                            ? "نجهّز أدوات الدراسة…"
+                            : book.chapterCount === 1
+                              ? "جاهز للدراسة"
+                              : `${book.completeChapterCount} من ${book.chapterCount} أجزاء جاهزة`}
                       </span>
                     </span>
                     <ChevronLeft size={18} aria-hidden="true" />

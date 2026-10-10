@@ -1912,21 +1912,45 @@ export async function rateBookCard(
 // multi-day projection meaningful beyond their own single next dueAt, so
 // mixing them in here would either drop them silently or fabricate a
 // forecast for an algorithm that doesn't support one.
+// `tzOffsetMinutes`: what to add to UTC to get the student's clock (e.g.
+// 180 for UTC+3), so a card due at 23:30 UTC counts on the day the student
+// will actually see it; `day` is then that day as "YYYY-MM-DD". Without it
+// the answer is exactly what it always was (UTC days) — the mobile app
+// still asks that way.
 export async function getUpcomingReviewForecastForUser(
   userId: string,
-  days = 7
+  days = 7,
+  tzOffsetMinutes?: number
 ) {
   const db = getDb();
   if (!db) return [];
 
+  if (tzOffsetMinutes === undefined) {
+    const rows = await db.execute<{ day: string; count: number }>(sql`
+      select date(bc."dueAt") as day, count(*)::int as count
+      from book_cards bc
+      where bc."userId" = ${userId}
+        and bc."dueAt" >= now()
+        and bc."dueAt" < now() + ${days} * interval '1 day'
+      group by date(bc."dueAt")
+      order by day asc
+    `);
+    return rows.map(row => ({ day: row.day, count: Number(row.count) }));
+  }
+
+  const offset = Math.trunc(tzOffsetMinutes);
   const rows = await db.execute<{ day: string; count: number }>(sql`
-    select date(bc."dueAt") as day, count(*)::int as count
+    select to_char(
+        (bc."dueAt" at time zone 'UTC') + ${offset}::int * interval '1 minute',
+        'YYYY-MM-DD'
+      ) as day,
+      count(*)::int as count
     from book_cards bc
     where bc."userId" = ${userId}
       and bc."dueAt" >= now()
-      and bc."dueAt" < now() + ${days} * interval '1 day'
-    group by date(bc."dueAt")
-    order by day asc
+      and bc."dueAt" < now() + ${days}::int * interval '1 day'
+    group by 1
+    order by 1 asc
   `);
 
   return rows.map(row => ({ day: row.day, count: Number(row.count) }));
