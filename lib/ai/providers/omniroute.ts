@@ -7,6 +7,7 @@
 // limit routing itself would just duplicate requests for no benefit).
 import { omniRouteConfig } from "../config";
 import { logAiEvent } from "../context";
+import { noteGatewayBusy, withAiSlot } from "../gate";
 import {
   checkModel,
   msUntilNextProbe,
@@ -63,6 +64,20 @@ const GENERATION_TOTAL_BUDGET_MS = 300_000;
 const MIN_ATTEMPT_MS = 20_000;
 const RETRY_MAX_RETRIES = 1; // conservative — see file header.
 const RETRY_BASE_DELAY_MS = 500;
+// "503 chat_admission_busy" is the GATEWAY saying it has no room for one
+// more call right now — not the model failing. The same model is asked
+// again after a growing wait (about 1.5s, 3s, 6s, 12s); it is never counted
+// against the model's circuit and never sent on to the dearer fallback,
+// which sits behind the same gateway. Still busy after that: the call ends
+// as a rate limit, and the queue brings it back later.
+const GATEWAY_BUSY_RETRIES = 4;
+const GATEWAY_BUSY_BASE_DELAY_MS = 2_000;
+const GATEWAY_BUSY_RETRY_AFTER_MS = 30_000;
+
+// Exported for tests.
+export function isGatewayBusy(status: number, body: string): boolean {
+  return status === 503 && body.includes("chat_admission_busy");
+}
 
 const sleep = (ms: number) =>
   new Promise<void>(resolve => setTimeout(resolve, ms));
@@ -164,6 +179,15 @@ async function fetchWithTimeout(
       // header) and never a plain 500 (the next model is a better bet).
       if (response.ok || !isRetryableStatus(response.status)) return response;
       if (attempt === RETRY_MAX_RETRIES) return response;
+      // A busy gateway is handled by the caller, with a real wait — not
+      // asked again half a second later.
+      if (response.status === 503) {
+        const body = await response
+          .clone()
+          .text()
+          .catch(() => "");
+        if (isGatewayBusy(response.status, body)) return response;
+      }
       console.warn(
         `[AI][omniroute] retrying after ${describeStatus(response.status)}`
       );
@@ -442,7 +466,14 @@ export async function collectStreamedResponse(
   };
 }
 
-async function generateText(params: GenerateParams): Promise<GenerateResult> {
+// Every background generation waits its turn at the gate (lib/ai/gate.ts).
+function generateText(params: GenerateParams): Promise<GenerateResult> {
+  return withAiSlot(() => generateTextNow(params));
+}
+
+async function generateTextNow(
+  params: GenerateParams
+): Promise<GenerateResult> {
   const apiKey = requireApiKey();
   const primaryModel = await resolveModel(params);
   // Every call site in this app resolves its model from
@@ -476,6 +507,7 @@ async function generateText(params: GenerateParams): Promise<GenerateResult> {
   let lastRateLimitRetryAfter: number | undefined;
   const skipped: (BreakerSnapshot | null)[] = [];
   let attempted = 0;
+  let busyRetries = 0;
 
   for (let i = 0; i < candidates.length; i++) {
     const model = candidates[i];
@@ -607,13 +639,41 @@ async function generateText(params: GenerateParams): Promise<GenerateResult> {
     // Server-log only (never sent to the client, never the API key) — a 400
     // in particular usually means the payload itself was rejected for a
     // reason worth seeing while debugging a new model/provider.
+    let bodyText = "";
     try {
-      const bodyText = (await response.text()).slice(0, 500);
+      bodyText = (await response.text()).slice(0, 500);
       console.warn(
         `[AI][omniroute] ${model} returned ${response.status}: ${bodyText}`
       );
     } catch {
       // Body already consumed or unreadable.
+    }
+
+    if (isGatewayBusy(response.status, bodyText)) {
+      const wait = backoffWithJitter(busyRetries, GATEWAY_BUSY_BASE_DELAY_MS);
+      // Calls about to start hold back too, instead of knocking at once.
+      noteGatewayBusy(wait);
+      logAiEvent("ai_call", {
+        provider: "omniroute",
+        model,
+        attempt: i + 1,
+        status: "busy",
+        httpStatus: response.status,
+        durationMs: Date.now() - startedAt,
+      });
+      if (
+        busyRetries < GATEWAY_BUSY_RETRIES &&
+        deadline - Date.now() - wait > MIN_ATTEMPT_MS
+      ) {
+        busyRetries++;
+        await sleep(wait);
+        i--; // the same model again
+        continue;
+      }
+      throw new AiRateLimitError(
+        "OmniRoute is busy (chat admission)",
+        GATEWAY_BUSY_RETRY_AFTER_MS
+      );
     }
 
     const type = classifyStatus(response.status);

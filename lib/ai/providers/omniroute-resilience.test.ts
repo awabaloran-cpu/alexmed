@@ -6,9 +6,11 @@ import {
   classifyAiError,
   isPermanentAiError,
 } from "../types";
+import { aiGateState, resetAiGateForTests } from "../gate";
 import {
   backoffWithJitter,
   classifyStatus,
+  isGatewayBusy,
   isRetryableStatus,
   omnirouteProvider,
 } from "./omniroute";
@@ -105,6 +107,8 @@ describe("OmniRoute failure handling across the model chain", () => {
     }
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
+    vi.useRealTimers();
+    resetAiGateForTests();
   });
 
   function stub(byModel: Record<string, () => Response>) {
@@ -146,6 +150,55 @@ describe("OmniRoute failure handling across the model chain", () => {
     stub({ "m/a": () => new Response("down", { status: 503 }) });
     await omnirouteProvider.generateText({ messages, model: "m/a" });
     expect(requested).toEqual(["m/a", "m/a", "m/b"]);
+  });
+
+  const busy = () =>
+    new Response(
+      JSON.stringify({
+        error: {
+          message: "Chat admission capacity is temporarily unavailable.",
+          code: "chat_admission_busy",
+        },
+      }),
+      { status: 503 }
+    );
+
+  it("tells a busy gateway from a model that is down", () => {
+    expect(isGatewayBusy(503, '{"error":{"code":"chat_admission_busy"}}')).toBe(
+      true
+    );
+    expect(isGatewayBusy(503, "down")).toBe(false);
+    expect(isGatewayBusy(500, "chat_admission_busy")).toBe(false);
+  });
+
+  it("a busy gateway is waited out on the same model — no fallback, no failed model", async () => {
+    vi.useFakeTimers();
+    let calls = 0;
+    stub({ "m/a": () => (++calls <= 2 ? busy() : okResponse("m/a")) });
+    const result = omnirouteProvider.generateText({ messages, model: "m/a" });
+    await vi.advanceTimersByTimeAsync(20_000);
+    await expect(result).resolves.toMatchObject({ content: "ok" });
+    // One request per wait, and the dearer models were never asked.
+    expect(requested).toEqual(["m/a", "m/a", "m/a"]);
+    expect(
+      vi
+        .mocked(console.warn)
+        .mock.calls.some(call => String(call[0]).includes('"status":"error"'))
+    ).toBe(false);
+  });
+
+  it("a gateway that stays busy ends as a rate limit for the queue to bring back", async () => {
+    vi.useFakeTimers();
+    stub({ "m/a": busy });
+    const result = omnirouteProvider
+      .generateText({ messages, model: "m/a" })
+      .catch(e => e);
+    await vi.advanceTimersByTimeAsync(120_000);
+    const error = await result;
+    expect(error).toBeInstanceOf(AiRateLimitError);
+    expect((error as AiRateLimitError).retryAfterMs).toBe(30_000);
+    expect(requested).toEqual(["m/a", "m/a", "m/a", "m/a", "m/a"]);
+    expect(aiGateState().inFlight).toBe(0);
   });
 
   it("every model rate-limited surfaces as a rate limit with Retry-After", async () => {
