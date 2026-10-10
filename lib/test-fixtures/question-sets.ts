@@ -83,7 +83,16 @@ export function buildQuestionBankPdf(
   const pageIds: number[] = [];
   objects[1] = "<< /Type /Catalog /Pages 2 0 R >>";
   objects[3] = "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>";
-  let nextId = 4;
+  // A real figure on every page (a plain grey square), so the page worker —
+  // which leaves text-only pages alone (lib/pdf-page-drawing.ts) — has a
+  // picture to look at, as it would in a question bank with figures.
+  const FIGURE_PX = 96;
+  const figure = String.fromCharCode(0xb0).repeat(FIGURE_PX * FIGURE_PX);
+  objects[4] =
+    `<< /Type /XObject /Subtype /Image /Width ${FIGURE_PX} /Height ${FIGURE_PX} ` +
+    `/ColorSpace /DeviceGray /BitsPerComponent 8 /Length ${figure.length} >>\n` +
+    `stream\n${figure}\nendstream`;
+  let nextId = 5;
   for (const lines of pages) {
     const pageId = nextId++;
     const contentId = nextId++;
@@ -95,10 +104,11 @@ export function buildQuestionBankPdf(
       "50 760 Td",
       ...lines.map(line => `(${escape(line)}) '`),
       "ET",
+      "q 300 0 0 300 280 40 cm /Im1 Do Q",
     ].join("\n");
     objects[pageId] =
       `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] ` +
-      `/Resources << /Font << /F1 3 0 R >> >> /Contents ${contentId} 0 R >>`;
+      `/Resources << /Font << /F1 3 0 R >> /XObject << /Im1 4 0 R >> >> /Contents ${contentId} 0 R >>`;
     objects[contentId] =
       `<< /Length ${Buffer.byteLength(stream, "latin1")} >>\nstream\n${stream}\nendstream`;
   }

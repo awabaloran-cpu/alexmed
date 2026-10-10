@@ -18,6 +18,11 @@ import { transientAiRetryDelaySeconds } from "@/lib/ai/types";
 import { claimBookPageVisual } from "@/lib/queue/claim";
 import { publishMessage } from "@/lib/queue/client";
 import { storageGetSignedUrl, storagePut } from "@/lib/storage";
+import {
+  findRepeatedMarks,
+  pageMayHoldVisual,
+  readPageDrawing,
+} from "@/lib/pdf-page-drawing";
 import { getScreenshotUnderLimit } from "@/lib/pdf-screenshot";
 import { verifyQStashRequest } from "@/lib/queue/verify";
 import { NextResponse } from "next/server";
@@ -40,6 +45,11 @@ const PAGES_PER_INVOCATION = 12;
 // republishes itself (per-book Flow Control key, parallelism 1, so the same
 // book's pages are never processed by two overlapping invocations) until no
 // pending pages remain, then checks whether the whole book can finalize.
+//
+// A page that paints no picture, drawing or ruled table
+// (lib/pdf-page-drawing.ts) has nothing for a vision model to describe —
+// its words are already in the text layer. Its image is still stored for
+// the reader; only the AI call is left out.
 export async function POST(request: Request) {
   const rawBody = await request.text();
   const signature = request.headers.get("upstash-signature");
@@ -72,6 +82,8 @@ export async function POST(request: Request) {
   }
 
   let parser: PDFParse | undefined;
+  let repeatedMarks: Set<string> | undefined;
+  let textOnlyPages = 0;
   // Set when the AI service failed in a way that passes (an outage, a rate
   // limit, an open circuit): the batch stops there and the next one waits,
   // so a page's attempts are spread over minutes instead of spent at once.
@@ -104,6 +116,24 @@ export async function POST(request: Request) {
           shot.data,
           "image/png"
         );
+
+        repeatedMarks ??= await findRepeatedMarks(parser);
+        const mayHoldVisual = pageMayHoldVisual(
+          await readPageDrawing(parser, candidate.pageNumber, repeatedMarks)
+        );
+        if (!mayHoldVisual) {
+          textOnlyPages++;
+          await updateBookPageVisualResult(candidate.id, {
+            storageKey,
+            width: shot.width,
+            height: shot.height,
+            hasImages: false,
+            hasTables: false,
+            hasDiagrams: false,
+            visualStatus: "complete",
+          });
+          continue;
+        }
 
         const response = await invokeLLM({
           model: PAGE_VISUAL_MODEL,
@@ -188,6 +218,15 @@ export async function POST(request: Request) {
       }
     }
 
+    if (textOnlyPages) {
+      console.warn(
+        JSON.stringify({
+          event: "book_text_only_pages",
+          bookId,
+          skipped: textOnlyPages,
+        })
+      );
+    }
     const remaining = await getNextPendingBookPage(bookId);
     if (remaining) {
       await publishMessage(

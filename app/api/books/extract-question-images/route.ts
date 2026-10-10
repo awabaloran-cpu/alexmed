@@ -4,6 +4,7 @@ import {
   getNextPendingQuestionFilePage,
   getQuestionFilePageRange,
   insertExtractedQuestionImage,
+  listBrokenQuestionsOnPage,
   listQuestionsForImageOwnership,
   markQuestionFilePageComplete,
   markQuestionFilePageFailed,
@@ -23,6 +24,11 @@ import { transientAiRetryDelaySeconds } from "@/lib/ai/types";
 import { claimQuestionFilePage } from "@/lib/queue/claim";
 import { publishMessage } from "@/lib/queue/client";
 import { storageGetSignedUrl, storagePut } from "@/lib/storage";
+import {
+  findRepeatedMarks,
+  pageMayHoldPicture,
+  readPageDrawing,
+} from "@/lib/pdf-page-drawing";
 import { getScreenshotUnderLimit } from "@/lib/pdf-screenshot";
 import { verifyQStashRequest } from "@/lib/queue/verify";
 import { NextResponse } from "next/server";
@@ -49,7 +55,16 @@ import { PDFParse } from "pdf-parse";
 // (getNextPendingExtractedQuestion) and stops when it reaches the page
 // front, so students get explanations from the first minutes of a long
 // file.
+//
+// A page that paints no picture and no drawing (lib/pdf-page-drawing.ts)
+// cannot hold a question's figure: it is settled without being drawn or
+// sent anywhere — unless one of its questions is waiting to be read again
+// from the picture, which still happens exactly as before.
 const PAGES_PER_INVOCATION = 12;
+// Text-only pages cost no AI call, so they do not use up a run's pages —
+// up to this many are settled on the way, keeping a long text file from
+// taking hundreds of runs to walk through.
+const TEXT_PAGES_PER_INVOCATION = 150;
 
 export async function POST(request: Request) {
   const rawBody = await request.text();
@@ -88,6 +103,8 @@ export async function POST(request: Request) {
   const questions = await listQuestionsForImageOwnership(bookId);
 
   let parser: PDFParse | undefined;
+  let repeatedMarks: Set<string> | undefined;
+  let skippedTextPages = 0;
   // Set when the AI service failed in a way that passes: the batch stops
   // there and the next one waits (see app/api/books/analyze-page-visuals).
   let retryDelay: number | null = null;
@@ -117,6 +134,22 @@ export async function POST(request: Request) {
           parser = new PDFParse({ url: signedGetUrl, CanvasFactory });
         }
 
+        repeatedMarks ??= await findRepeatedMarks(parser);
+        const mayHoldPicture = pageMayHoldPicture(
+          await readPageDrawing(parser, candidate.pageNumber, repeatedMarks)
+        );
+        if (!mayHoldPicture) {
+          const broken = await listBrokenQuestionsOnPage(
+            bookId,
+            candidate.pageNumber
+          );
+          if (!broken.length) {
+            await markQuestionFilePageComplete(candidate.id);
+            if (++skippedTextPages <= TEXT_PAGES_PER_INVOCATION) i--;
+            continue;
+          }
+        }
+
         const shot = await getScreenshotUnderLimit(
           parser,
           candidate.pageNumber,
@@ -136,6 +169,10 @@ export async function POST(request: Request) {
           parser,
           pageImage: shot.dataUrl,
         });
+        if (!mayHoldPicture) {
+          await markQuestionFilePageComplete(candidate.id);
+          continue;
+        }
 
         const pageCandidates = pageQuestionCandidates(
           questions,
@@ -196,6 +233,15 @@ export async function POST(request: Request) {
       }
     }
 
+    if (skippedTextPages) {
+      console.warn(
+        JSON.stringify({
+          event: "question_file_text_pages",
+          bookId,
+          skipped: skippedTextPages,
+        })
+      );
+    }
     const remaining = await getNextPendingQuestionFilePage(bookId);
     if (remaining) {
       // Explanations for the questions behind the page front. Best-effort:
