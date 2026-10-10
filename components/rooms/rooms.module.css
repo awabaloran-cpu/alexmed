@@ -754,6 +754,9 @@
   flex-wrap: wrap;
 }
 .liveHead h1 {
+  /* Named here: the app's own heading colour is the day ink, which is
+     unreadable on the night desk. */
+  color: var(--ink);
   font-size: 17px;
   font-weight: 600;
   margin: 0;

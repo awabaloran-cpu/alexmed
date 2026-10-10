@@ -300,7 +300,10 @@ export default function RoomDesk({
         ) : null}
       </div>
 
-      <div ref={stageRef} className={s.stage}>
+      {/* Left-to-right whatever the page around it: a canvas that inherits
+          right-to-left draws every letter of the PDF apart, and the page
+          would open scrolled to its far edge. */}
+      <div ref={stageRef} className={s.stage} dir="ltr">
         {doc ? (
           <canvas
             ref={canvasRef}
