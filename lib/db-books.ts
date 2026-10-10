@@ -1843,6 +1843,11 @@ export async function getDueCardsForUser(userId: string) {
       chapterId: bookCards.chapterId,
       chapterTitle: bookChapters.title,
       bookFileName: books.fileName,
+      // What the review screen needs to say when each rating would bring
+      // the card back (lib/review-preview.ts).
+      fsrsStability: bookCards.fsrsStability,
+      fsrsDifficulty: bookCards.fsrsDifficulty,
+      lastReviewedAt: bookCards.lastReviewedAt,
     })
     .from(bookCards)
     .innerJoin(bookChapters, eq(bookChapters.id, bookCards.chapterId))

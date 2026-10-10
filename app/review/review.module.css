@@ -1,0 +1,191 @@
+/* The review screen's progress, rating buttons and end-of-session summary
+   (app/review/page.tsx). Tokens from app/base.css. */
+.progress {
+  height: 6px;
+  margin-bottom: 16px;
+  border-radius: 999px;
+  background: var(--nl-rule);
+  overflow: hidden;
+}
+
+.progress i {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--nl-niro);
+  transition: width 0.25s var(--nl-ease);
+}
+
+.ratingHint {
+  margin: 20px 0 8px;
+  color: var(--nl-ink-2);
+  font-size: 0.9rem;
+}
+
+.ratings {
+  display: grid;
+  grid-template-columns: repeat(var(--count, 3), minmax(0, 1fr));
+  gap: 8px;
+}
+
+.rating {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-width: 0;
+  min-height: 64px;
+  padding: 8px 4px;
+  border: 1px solid var(--nl-rule-strong);
+  border-radius: var(--nl-r-md);
+  background: var(--nl-sheet);
+  color: var(--nl-ink);
+  cursor: pointer;
+  transition:
+    transform 0.12s var(--nl-ease),
+    border-color 0.12s var(--nl-ease);
+}
+
+.rating strong {
+  font-size: 0.98rem;
+  font-weight: 600;
+}
+
+.rating span {
+  color: var(--nl-ink-2);
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.rating kbd {
+  display: none;
+  color: var(--nl-ink-3);
+  font-family: inherit;
+  font-size: 0.7rem;
+}
+
+.rating:hover:not(:disabled) {
+  border-color: var(--nl-ink-3);
+}
+
+.rating:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.rating:focus-visible {
+  outline: 2px solid var(--nl-niro);
+  outline-offset: 2px;
+}
+
+.rating:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.again {
+  border-color: transparent;
+  background: var(--nl-wrong-soft);
+}
+
+.hard {
+  border-color: transparent;
+  background: var(--nl-marker-soft);
+}
+
+.good {
+  border-color: transparent;
+  background: var(--nl-niro-soft);
+}
+
+.easy {
+  border-color: transparent;
+  background: var(--nl-correct-soft);
+}
+
+.keys {
+  display: none;
+  margin: 10px 0 0;
+  color: var(--nl-ink-3);
+  font-size: 0.8rem;
+}
+
+/* A keyboard is only promised where there is one. */
+@media (hover: hover) and (pointer: fine) {
+  .rating kbd {
+    display: block;
+  }
+  .keys {
+    display: block;
+  }
+}
+
+.done {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  max-width: 520px;
+  margin: 32px auto 0;
+  padding: 28px 20px;
+  border: 1px solid var(--nl-rule);
+  border-radius: var(--nl-r-lg);
+  background: var(--nl-sheet);
+  text-align: center;
+}
+
+.done > svg {
+  color: var(--nl-correct);
+}
+
+.done h1 {
+  margin: 0;
+  color: var(--nl-ink);
+  font-size: 1.4rem;
+  font-weight: 700;
+  text-wrap: balance;
+}
+
+.figures {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  width: 100%;
+  margin: 0;
+}
+
+.figures div {
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 2px;
+  padding: 12px 4px;
+  border-radius: var(--nl-r-md);
+  background: var(--nl-paper);
+}
+
+.figures dt {
+  color: var(--nl-ink-3);
+  font-size: 0.8rem;
+}
+
+.figures dd {
+  margin: 0;
+  color: var(--nl-ink);
+  font-size: 1.25rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.doneNext {
+  margin: 0;
+  color: var(--nl-ink-2);
+  font-size: 0.92rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .progress i,
+  .rating {
+    transition: none;
+  }
+}

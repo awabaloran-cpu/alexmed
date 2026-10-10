@@ -25,6 +25,10 @@ export async function getDueCardsForUser(userId: string) {
       sourcePage: cards.sourcePage,
       dueAt: cards.dueAt,
       deckFileName: decks.fileName,
+      // For the review screen's "comes back in…" (lib/review-preview.ts).
+      easeFactor: cards.easeFactor,
+      intervalDays: cards.intervalDays,
+      reviewCount: cards.reviewCount,
     })
     .from(cards)
     .innerJoin(decks, eq(decks.id, cards.deckId))
