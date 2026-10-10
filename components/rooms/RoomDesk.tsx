@@ -13,6 +13,12 @@ import {
 } from "lucide-react";
 import type { PDFDocumentProxy, RenderTask } from "pdfjs-dist";
 import { trpc } from "@/lib/trpc-client";
+import {
+  MarkLayer,
+  MarkTools,
+  useRoomMarks,
+  type MarkColor,
+} from "./RoomMarks";
 import { useRooms } from "./RoomsProvider";
 import s from "./rooms.module.css";
 
@@ -40,6 +46,10 @@ export default function RoomDesk({
   onChoose,
   onPage,
   jump,
+  roomSeq,
+  myUserId,
+  canMark,
+  canDeleteAnyMark,
 }: {
   roomId: string;
   bookId: string | null;
@@ -52,6 +62,11 @@ export default function RoomDesk({
   onPage: (page: number) => void;
   // "Go to this page" from outside (a chat message): a new object each time.
   jump: { page: number } | null;
+  // Shared highlights.
+  roomSeq: number;
+  myUserId: string;
+  canMark: boolean;
+  canDeleteAnyMark: boolean;
 }) {
   const { t, tError } = useRooms();
   const utils = trpc.useUtils();
@@ -149,6 +164,11 @@ export default function RoomDesk({
     if (pending !== null && pending === sharedPage) setPending(null);
   }, [pending, sharedPage]);
 
+  const [drawing, setDrawing] = useState(false);
+  const [markColor, setMarkColor] = useState<MarkColor>("yellow");
+  const [selectedMark, setSelectedMark] = useState<string | null>(null);
+  const [markError, setMarkError] = useState<string | null>(null);
+
   const pageCount = doc?.numPages ?? file.data?.pageCount ?? 0;
   const roomPage = pending ?? sharedPage;
   const page = Math.min(Math.max(1, ownPage ?? roomPage), pageCount || 1);
@@ -157,6 +177,11 @@ export default function RoomDesk({
   useEffect(() => {
     onPage(page);
   }, [page, onPage]);
+  const marks = useRoomMarks(roomId, page, roomSeq, !!bookId && !!doc);
+  // A highlight chosen on one page says nothing about the next.
+  useEffect(() => {
+    setSelectedMark(null);
+  }, [page, bookId]);
 
   // The page is drawn to the width it has.
   useEffect(() => {
@@ -286,6 +311,13 @@ export default function RoomDesk({
   }
 
   const zoomIndex = ZOOMS.indexOf(zoom);
+  const markProps = {
+    roomId,
+    marks,
+    selectedId: selectedMark,
+    onSelect: setSelectedMark,
+    onError: (error: unknown) => setMarkError(tError(error)),
+  };
 
   return (
     <div ref={frameRef} className={`${s.reader} ${full ? s.readerFull : ""}`}>
@@ -305,11 +337,19 @@ export default function RoomDesk({
           would open scrolled to its far edge. */}
       <div ref={stageRef} className={s.stage} dir="ltr">
         {doc ? (
-          <canvas
-            ref={canvasRef}
-            role="img"
-            aria-label={t("desk.pageOf", { page, total: pageCount })}
-          />
+          <div className={s.sheetOfPage}>
+            <canvas
+              ref={canvasRef}
+              role="img"
+              aria-label={t("desk.pageOf", { page, total: pageCount })}
+            />
+            <MarkLayer
+              {...markProps}
+              page={page}
+              drawing={drawing && canMark}
+              color={markColor}
+            />
+          </div>
         ) : (
           <p className={s.stageNote} role="status">
             {percent === null
@@ -328,6 +368,25 @@ export default function RoomDesk({
           <Users size={16} aria-hidden="true" />
           {t("desk.backToRoom", { page: roomPage })}
         </button>
+      ) : null}
+
+      <MarkTools
+        {...markProps}
+        canMark={canMark && !!doc}
+        canDeleteAny={canDeleteAnyMark}
+        myUserId={myUserId}
+        drawing={drawing}
+        onDrawing={on => {
+          setMarkError(null);
+          setDrawing(on);
+        }}
+        color={markColor}
+        onColor={setMarkColor}
+      />
+      {markError ? (
+        <p className={s.errorNote} role="alert">
+          {markError}
+        </p>
       ) : null}
 
       <div className={s.readerTools}>

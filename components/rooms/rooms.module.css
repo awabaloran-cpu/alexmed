@@ -1196,3 +1196,324 @@
   background: var(--niro);
   color: #fff;
 }
+
+/* ── the group quiz ── */
+.quiz {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  background: var(--sheet);
+  border: 1px solid var(--rule);
+  border-radius: 16px;
+  padding: 16px;
+}
+.quizHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  color: var(--ink2);
+  font-size: 0.9rem;
+}
+.clock {
+  display: grid;
+  place-items: center;
+  min-width: 44px;
+  height: 44px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: var(--niro-soft);
+  color: var(--ink);
+  font-size: 1.1rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.clockLow {
+  background: var(--marker);
+  color: var(--marker-ink);
+}
+.quizBar {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--rule);
+  overflow: hidden;
+}
+.quizBar i {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--niro);
+  transition: width 0.25s var(--ease);
+}
+.quizText {
+  margin: 0;
+  color: var(--ink);
+  font-size: 1.1rem;
+  font-weight: 600;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+  text-align: start;
+}
+.options {
+  display: grid;
+  gap: 8px;
+}
+.option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 52px;
+  padding: 10px 12px;
+  border: 1px solid var(--rule);
+  border-radius: 12px;
+  background: var(--sheet);
+  color: var(--ink);
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+.option:disabled {
+  cursor: default;
+}
+.option:focus-visible,
+.choice:focus-visible {
+  outline: 2px solid var(--niro);
+  outline-offset: 2px;
+}
+.option > b {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  flex: none;
+  border-radius: 8px;
+  background: var(--raised);
+  color: var(--ink2);
+  font-size: 0.85rem;
+}
+.option > span {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.option > small {
+  flex: none;
+  color: var(--ink3);
+  font-variant-numeric: tabular-nums;
+}
+.option > svg {
+  flex: none;
+}
+.optionMine {
+  border-color: var(--niro);
+  background: var(--niro-soft);
+}
+.optionRight {
+  border-color: var(--good, #0e9f6e);
+  background: color-mix(in srgb, var(--good, #0e9f6e) 16%, transparent);
+}
+.optionWrong {
+  border-color: var(--bad);
+  background: color-mix(in srgb, var(--bad) 14%, transparent);
+}
+.quizNote {
+  margin: 0;
+  color: var(--ink2);
+  font-size: 0.9rem;
+}
+.quizExplain {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--raised);
+  color: var(--ink);
+  font-size: 0.92rem;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+  text-align: start;
+}
+.quizExplain small {
+  color: var(--ink3);
+}
+.board {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.board li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 40px;
+  padding: 4px 10px;
+  border-radius: 10px;
+  color: var(--ink);
+}
+.board li > span {
+  width: 22px;
+  flex: none;
+  color: var(--ink3);
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+.board li > b {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: start;
+}
+.board li > i {
+  flex: none;
+  color: var(--ink2);
+  font-size: 0.82rem;
+  font-style: normal;
+  font-variant-numeric: tabular-nums;
+}
+.boardMe {
+  background: var(--niro-soft);
+}
+.quizCancel {
+  justify-self: center;
+  color: var(--bad);
+}
+.quizDone {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  color: var(--ink);
+  text-align: center;
+}
+.quizDone svg {
+  color: var(--marker);
+}
+.quizDone h2 {
+  margin: 0;
+  font-size: 1.2rem;
+  font-weight: 700;
+}
+.quizDone p {
+  margin: 0;
+  color: var(--ink2);
+}
+.choices {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.choice {
+  min-width: 56px;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--rule);
+  border-radius: 12px;
+  background: var(--sheet);
+  color: var(--ink);
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+.choiceOn {
+  border-color: var(--niro);
+  background: var(--niro-soft);
+  font-weight: 600;
+}
+@media (prefers-reduced-motion: reduce) {
+  .quizBar i {
+    transition: none;
+  }
+}
+
+/* ── shared highlights over the page ── */
+.sheetOfPage {
+  position: relative;
+  display: inline-block;
+  vertical-align: top;
+  line-height: 0;
+}
+.markLayer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.markLayerOn {
+  pointer-events: auto;
+  cursor: crosshair;
+  /* The drag draws; it must not scroll the page under the finger. */
+  touch-action: none;
+}
+.mark {
+  position: absolute;
+  padding: 0;
+  border: 0;
+  border-radius: 3px;
+  background: var(--mark, #ffd43b);
+  opacity: 0.42;
+  mix-blend-mode: multiply;
+  pointer-events: auto;
+  cursor: pointer;
+}
+.markLayerOn .mark {
+  pointer-events: none;
+}
+.markOn {
+  opacity: 0.62;
+  outline: 2px solid #1b2340;
+  outline-offset: 1px;
+}
+.mark:focus-visible {
+  outline: 2px solid #3355ff;
+  outline-offset: 1px;
+}
+.mark_yellow {
+  --mark: #ffd43b;
+}
+.mark_green {
+  --mark: #51cf66;
+}
+.mark_pink {
+  --mark: #ff8fab;
+}
+.mark_blue {
+  --mark: #74c0fc;
+}
+.markTools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.swatch {
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 3px solid var(--sheet);
+  border-radius: 999px;
+  background: var(--mark);
+  box-shadow: 0 0 0 1px var(--rule);
+  cursor: pointer;
+}
+.swatchOn {
+  box-shadow: 0 0 0 2px var(--ink);
+}
+.swatch:focus-visible {
+  outline: 2px solid var(--niro);
+  outline-offset: 3px;
+}
+.markInfo {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 6px 10px;
+  border-radius: 10px;
+  background: var(--raised);
+  color: var(--ink);
+  font-size: 0.88rem;
+}

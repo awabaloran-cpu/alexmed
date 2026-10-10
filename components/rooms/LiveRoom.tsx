@@ -8,6 +8,7 @@ import {
   Ban,
   Crown,
   Flag,
+  ListChecks,
   LogOut,
   MessageCircle,
   MicOff,
@@ -24,6 +25,12 @@ import RoomChat, { useRoomChat } from "./RoomChat";
 import { InviteBox } from "./RoomCreate";
 import RoomDesk from "./RoomDesk";
 import RoomFilePicker from "./RoomFilePicker";
+import {
+  QuizPanel,
+  QuizResults,
+  QuizStartSheet,
+  useRoomQuiz,
+} from "./RoomQuiz";
 import { useRooms } from "./RoomsProvider";
 import s from "./rooms.module.css";
 
@@ -55,6 +62,7 @@ export default function LiveRoom({ roomId }: { roomId: string }) {
     | { kind: "invite"; code: string }
     | { kind: "end" }
     | { kind: "file" }
+    | { kind: "quiz" }
     | null
   >(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -73,6 +81,7 @@ export default function LiveRoom({ roomId }: { roomId: string }) {
   const [jump, setJump] = useState<{ page: number } | null>(null);
   const onPage = useCallback((page: number) => setMyPage(page), []);
   const chat = useRoomChat(roomId, state.data?.room.seq ?? 0, wide || chatOpen);
+  const quiz = useRoomQuiz(roomId, state.data?.room.seq ?? 0);
 
   const leave = trpc.rooms.leave.useMutation({
     onSettled: () => router.replace("/rooms"),
@@ -244,17 +253,39 @@ export default function LiveRoom({ roomId }: { roomId: string }) {
       </div>
 
       <div className={s.work}>
-        <RoomDesk
-          roomId={roomId}
-          bookId={room.bookId}
-          sharedPage={room.sharedPage}
-          canLead={me.can.lead_page}
-          canMoveFreely={me.can.free_nav}
-          canChoose={me.can.edit_room}
-          onChoose={() => setSheet({ kind: "file" })}
-          onPage={onPage}
-          jump={jump}
-        />
+        {quiz.active ? (
+          <QuizPanel
+            roomId={roomId}
+            quiz={quiz.active}
+            memberCount={members.length}
+            myUserId={me.userId}
+            canLead={me.can.start_quiz}
+            onChanged={() => void quiz.refetch()}
+          />
+        ) : quiz.finishedId ? (
+          <QuizResults
+            quizId={quiz.finishedId}
+            myUserId={me.userId}
+            onClose={quiz.dismiss}
+          />
+        ) : null}
+        <div hidden={!!quiz.active || !!quiz.finishedId}>
+          <RoomDesk
+            roomId={roomId}
+            bookId={room.bookId}
+            sharedPage={room.sharedPage}
+            canLead={me.can.lead_page}
+            canMoveFreely={me.can.free_nav}
+            canChoose={me.can.edit_room}
+            onChoose={() => setSheet({ kind: "file" })}
+            onPage={onPage}
+            jump={jump}
+            roomSeq={room.seq}
+            myUserId={me.userId}
+            canMark={me.can.mark}
+            canDeleteAnyMark={me.can.delete_any_mark}
+          />
+        </div>
         {wide ? (
           <aside className={s.side} aria-label={t("chat.title")}>
             <h2>{t("live.chat")}</h2>
@@ -295,6 +326,15 @@ export default function LiveRoom({ roomId }: { roomId: string }) {
             ) : null}
           </button>
         )}
+        {me.can.start_quiz && !quiz.active ? (
+          <button
+            type="button"
+            className={s.btn}
+            onClick={() => setSheet({ kind: "quiz" })}
+          >
+            <ListChecks size={17} aria-hidden="true" /> {t("quiz.open")}
+          </button>
+        ) : null}
         {room.visibility === "private" && me.can.invite ? (
           <button
             type="button"
@@ -346,6 +386,10 @@ export default function LiveRoom({ roomId }: { roomId: string }) {
             }}
           />
         </Sheet>
+      ) : null}
+
+      {sheet?.kind === "quiz" ? (
+        <QuizStartSheet roomId={roomId} onClose={close} />
       ) : null}
 
       {sheet?.kind === "file" ? (
