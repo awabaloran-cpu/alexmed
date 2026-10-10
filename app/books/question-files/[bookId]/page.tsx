@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
+import { useRef } from "react";
 import {
   CircleAlert,
   ClipboardList,
@@ -19,6 +20,19 @@ import { trpc } from "@/lib/trpc-client";
 
 const POLL_INTERVAL_MS = 3000;
 
+// A long file is explained as the student moves through it (server:
+// lib/question-file-window.ts). The page says where the student is when an
+// unexplained question is this close ahead, at most once every few
+// questions, then looks for the new explanations for a while.
+const PREPARE_WHEN_WITHIN = 15;
+const ASK_EVERY = 5;
+const PREPARED_SPAN = 30;
+const WATCH_INTERVAL_MS = 5000;
+const WATCH_FOR_MS = 120_000;
+
+const owed = (question: { aiStatus?: string | null }) =>
+  question.aiStatus === "pending" || question.aiStatus === "processing";
+
 // PR16 — shows exactly what was really found in the file: the extracted
 // answer (if the source stated one) is visually distinct from "no answer in
 // source" — never filled in with a guess.
@@ -33,15 +47,29 @@ const POLL_INTERVAL_MS = 3000;
 export default function QuestionFileDetailPage() {
   const params = useParams<{ bookId: string }>();
   const utils = trpc.useUtils();
+  // Where the page last asked for the questions ahead, and the stretch it
+  // is now waiting on.
+  const askedAt = useRef<number | null>(null);
+  const watching = useRef<{ from: number; until: number } | null>(null);
   const fileQuery = trpc.questionFiles.get.useQuery(
     { bookId: params.bookId },
     {
-      refetchInterval: query =>
-        query.state.data?.book.status === "extracting" ||
-        (query.state.data?.book.status === "complete" &&
-          query.state.data?.coverage.done === false)
-          ? POLL_INTERVAL_MS
-          : false,
+      refetchInterval: query => {
+        const data = query.state.data;
+        if (
+          data?.book.status === "extracting" ||
+          (data?.book.status === "complete" && data.coverage.done === false)
+        ) {
+          return POLL_INTERVAL_MS;
+        }
+        const watch = watching.current;
+        if (!data || !watch || Date.now() > watch.until) return false;
+        return data.questions
+          .slice(watch.from, watch.from + PREPARED_SPAN)
+          .some(owed)
+          ? WATCH_INTERVAL_MS
+          : false;
+      },
     }
   );
   const retryExtraction = trpc.questionFiles.retryExtraction.useMutation({
@@ -60,6 +88,32 @@ export default function QuestionFileDetailPage() {
     { retry: false, refetchOnWindowFocus: false, staleTime: Infinity }
   );
   const saveAttempt = trpc.questionFiles.saveAttempt.useMutation();
+  const reached = trpc.questionFiles.reached.useMutation();
+  const prepareAhead = (questionId: string, index: number) => {
+    const list = fileQuery.data?.questions ?? [];
+    if (!list.slice(index, index + PREPARE_WHEN_WITHIN).some(owed)) return;
+    if (
+      askedAt.current !== null &&
+      Math.abs(index - askedAt.current) < ASK_EVERY
+    ) {
+      return;
+    }
+    askedAt.current = index;
+    reached.mutate(
+      { bookId: params.bookId, questionId },
+      {
+        onSuccess: result => {
+          if (result.preparing) {
+            watching.current = {
+              from: index,
+              until: Date.now() + WATCH_FOR_MS,
+            };
+          }
+          void utils.questionFiles.get.invalidate({ bookId: params.bookId });
+        },
+      }
+    );
+  };
   const report = trpc.sharing.reportFile.useMutation();
 
   if (fileQuery.isLoading || attempts.isLoading) {
@@ -169,6 +223,7 @@ export default function QuestionFileDetailPage() {
         <QuestionList
           questions={questions}
           initialAnswers={attempts.data}
+          onShown={prepareAhead}
           onAnswered={(questionId, selectedIndex) =>
             saveAttempt.mutate({ bookId: book.id, questionId, selectedIndex })
           }

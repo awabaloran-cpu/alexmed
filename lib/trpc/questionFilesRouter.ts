@@ -11,6 +11,8 @@ import {
   retryQuestionFileExtraction,
 } from "../db-question-files";
 import { publishMessage } from "../queue/client";
+import { getQuestionFileAccess } from "../question-file-access";
+import { prepareQuestionsFrom } from "../question-file-progress";
 import { protectedProcedure, router } from "./trpc";
 
 // PR16 — separate from booksRouter since question files are a distinct
@@ -65,7 +67,36 @@ export const questionFilesRouter = router({
           message: "Question not found",
         });
       }
+      // The questions just ahead are prepared while the student reads this
+      // one. Never part of saving the answer: not awaited, never thrown.
+      void prepareQuestionsFrom(input.bookId, input.questionId).catch(error =>
+        console.error("[QuestionFiles] Could not prepare ahead", error)
+      );
       return saved;
+    }),
+
+  // The page says which question the student is at (moving through the
+  // questions saves nothing by itself), so the ones ahead are prepared
+  // before they get there. `preparing` tells the page to watch for them.
+  reached: protectedProcedure
+    .input(
+      z.object({ bookId: z.string().uuid(), questionId: z.string().uuid() })
+    )
+    .mutation(async ({ ctx, input }) => {
+      if (!(await getQuestionFileAccess(ctx.user.id, input.bookId))) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Question file not found",
+        });
+      }
+      try {
+        return {
+          preparing: await prepareQuestionsFrom(input.bookId, input.questionId),
+        };
+      } catch (error) {
+        console.error("[QuestionFiles] Could not prepare ahead", error);
+        return { preparing: false };
+      }
     }),
 
   retryExtraction: protectedProcedure

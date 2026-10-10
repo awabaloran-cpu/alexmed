@@ -196,7 +196,13 @@ function defaultFlowControl(message: QueueMessage): FlowControl {
 
 export async function publishMessage(
   message: QueueMessage,
-  options?: { retries?: number; flowControl?: FlowControl; delay?: number }
+  options?: {
+    retries?: number;
+    flowControl?: FlowControl;
+    delay?: number;
+    // The same id within QStash's de-duplication window is published once.
+    deduplicationId?: string;
+  }
 ): Promise<void> {
   const client = getClient();
   await client.publishJSON({
@@ -206,5 +212,8 @@ export async function publishMessage(
     retryDelay: RETRY_DELAY_FORMULA,
     flowControl: options?.flowControl ?? defaultFlowControl(message),
     ...(options?.delay !== undefined ? { delay: options.delay } : {}),
+    ...(options?.deduplicationId
+      ? { deduplicationId: options.deduplicationId }
+      : {}),
   });
 }

@@ -23,6 +23,7 @@ import { looksLikeNotes } from "../question-file-quality";
 import { retryQuestionFileExtraction } from "../db-question-files";
 import { admitAndStartStudentFile } from "../file-intake";
 import { publishMessage } from "../queue/client";
+import { getQuestionFileWindow } from "../question-file-window";
 import { getUserPlan } from "../billing/entitlement";
 import { summaryLimits } from "../summary/jobs";
 import { assertJobCreationAllowed, RateLimitedError } from "../queue/rateLimit";
@@ -561,7 +562,10 @@ export async function runTelegramWatch(
       return "done";
     }
 
-    const coverage = await getQuestionFileCoverage(book.id);
+    const coverage = await getQuestionFileCoverage(
+      book.id,
+      await getQuestionFileWindow(book.id)
+    );
     if (coverage.questionsTotal === 0) {
       await finish(context, TEXT.noQuestions, [convertRow(uploadId, true)]);
       return "done";

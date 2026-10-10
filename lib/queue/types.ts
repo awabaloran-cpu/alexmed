@@ -30,8 +30,20 @@ export type QueueMessage =
   // lib/question-file-analysis.ts) — fired once, right after stage 1's
   // extract_question_file_job completes, entirely independent of and never
   // blocking the base text extraction that job already did.
-  | { type: "extract_question_file_images"; bookId: string }
-  | { type: "generate_question_file_content"; bookId: string }
+  // `from`/`to`: a span of questions a student has just reached, to be
+  // prepared on top of the file's own window (lib/question-file-window.ts).
+  | {
+      type: "extract_question_file_images";
+      bookId: string;
+      from?: number;
+      to?: number;
+    }
+  | {
+      type: "generate_question_file_content";
+      bookId: string;
+      from?: number;
+      to?: number;
+    }
   // Multimodal مِرآة — best-effort, additive background pass alongside
   // batch generation (see app/api/mirror/extract-images/route.ts).
   | { type: "extract_mirror_images"; jobId: string }

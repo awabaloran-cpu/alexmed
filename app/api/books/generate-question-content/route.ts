@@ -14,6 +14,11 @@ import {
   type ExtractedQuestionTranslation,
 } from "@/lib/question-file-analysis";
 import { isArabicText } from "@/lib/question-extraction";
+import {
+  getQuestionFileWindow,
+  readRequestedSpan,
+  type RequestedSpan,
+} from "@/lib/question-file-window";
 import { invokeLLM, DEFAULT_VISION_MODEL } from "@/lib/llm";
 import { transientAiRetryDelaySeconds } from "@/lib/ai/types";
 import { claimExtractedQuestion } from "@/lib/queue/claim";
@@ -35,6 +40,11 @@ import { NextResponse } from "next/server";
 // was already uploaded to object storage in stage 2, so this only ever
 // signs a GET url for that already-stored key.
 //
+// A long file is explained as it is studied, not all at once: only the
+// questions in the file's window (lib/question-file-window.ts) are taken.
+// The span a student has just reached arrives in the message and is passed
+// on with every hand-over.
+//
 // Several questions are explained at once (getQuestionExplainConcurrency):
 // one at a time, a 160-question file took about six minutes of two-second
 // AI calls.
@@ -51,9 +61,15 @@ export async function POST(request: Request) {
   }
 
   let bookId: string;
+  let span: RequestedSpan | undefined;
   try {
-    const body = JSON.parse(rawBody) as { bookId?: string };
+    const body = JSON.parse(rawBody) as {
+      bookId?: string;
+      from?: unknown;
+      to?: unknown;
+    };
     bookId = typeof body.bookId === "string" ? body.bookId : "";
+    span = readRequestedSpan(body);
     if (!bookId) {
       return NextResponse.json({ error: "معرف الملف مفقود." }, { status: 200 });
     }
@@ -74,6 +90,7 @@ export async function POST(request: Request) {
   // are taken, and the next run waits (see extract-question-images).
   let retryDelay: number | null = null;
   try {
+    const window = await getQuestionFileWindow(bookId, span);
     // Questions are taken one at a time, in file order (each pick reads the
     // next one and claims it, so two workers never hold the same question);
     // the AI calls, where the time goes, run side by side.
@@ -82,7 +99,10 @@ export async function POST(request: Request) {
     const pick = () => {
       const turn = picking.then(async () => {
         while (taken < QUESTIONS_PER_INVOCATION && retryDelay === null) {
-          const candidate = await getNextPendingExtractedQuestion(bookId);
+          const candidate = await getNextPendingExtractedQuestion(
+            bookId,
+            window
+          );
           if (!candidate) return null;
           taken++;
           const claimed = await claimExtractedQuestion(candidate.id);
@@ -197,10 +217,10 @@ export async function POST(request: Request) {
       Array.from({ length: getQuestionExplainConcurrency() }, worker)
     );
 
-    const remaining = await getNextPendingExtractedQuestion(bookId);
+    const remaining = await getNextPendingExtractedQuestion(bookId, window);
     if (remaining) {
       await publishMessage(
-        { type: "generate_question_file_content", bookId },
+        { type: "generate_question_file_content", bookId, ...span },
         {
           flowControl: {
             key: `question-file-content-${bookId}`,
@@ -215,11 +235,11 @@ export async function POST(request: Request) {
     // Nothing to explain right now is not the end while questions are
     // still held back by a page: look again shortly, and if the page stage
     // has gone quiet with pages left, start it again too.
-    const heldBack = await getQuestionsHeldBack(bookId);
+    const heldBack = await getQuestionsHeldBack(bookId, window);
     if (heldBack.waiting > 0) {
       if (heldBack.pagesStalled) {
         await publishMessage(
-          { type: "extract_question_file_images", bookId },
+          { type: "extract_question_file_images", bookId, ...span },
           {
             flowControl: {
               key: `question-file-images-${bookId}`,
@@ -229,7 +249,7 @@ export async function POST(request: Request) {
         );
       }
       await publishMessage(
-        { type: "generate_question_file_content", bookId },
+        { type: "generate_question_file_content", bookId, ...span },
         {
           flowControl: {
             key: `question-file-content-${bookId}`,

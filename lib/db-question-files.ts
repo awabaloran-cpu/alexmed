@@ -18,6 +18,7 @@ import {
 } from "../drizzle/schema";
 import { getDb, requireDb } from "./db";
 import { getQuestionFileCoverage } from "./db-question-file-images";
+import { getQuestionFileWindow } from "./question-file-window";
 import { getQuestionFileAccess } from "./question-file-access";
 import type { ExtractedQuestionInput } from "./question-extraction";
 
@@ -306,7 +307,12 @@ export async function readQuestionFileContent(
     })
   );
 
-  const coverage = await getQuestionFileCoverage(bookId);
+  // "Done" for a long file is "nothing is owed right now" — the rest is
+  // prepared as the student gets near (lib/question-file-window.ts).
+  const coverage = await getQuestionFileCoverage(
+    bookId,
+    await getQuestionFileWindow(bookId)
+  );
 
   return { questions: questionsWithImages, needsReview, coverage };
 }

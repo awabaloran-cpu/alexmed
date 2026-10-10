@@ -166,7 +166,14 @@ describe("what a PDF page draws", () => {
   });
 
   it("curves and slanted lines are a drawing", () => {
-    const curve = [PATH, [STROKE, [new Float32Array([0, 10, 10, 2, 20, 30, 40, 50, 60, 70])], [10, 10, 60, 70]]] as [number, unknown];
+    const curve = [
+      PATH,
+      [
+        STROKE,
+        [new Float32Array([0, 10, 10, 2, 20, 30, 40, 50, 60, 70])],
+        [10, 10, 60, 70],
+      ],
+    ] as [number, unknown];
     const slanted = path4(
       STROKE,
       [

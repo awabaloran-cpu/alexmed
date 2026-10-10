@@ -7,7 +7,7 @@
 // behavior, unchanged), independent of how far these two later stages have
 // gotten. Same getDb()-singleton, ownership-agnostic-for-workers conventions
 // as lib/db-books.ts.
-import { and, asc, count, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, count, eq, inArray, sql, type SQL } from "drizzle-orm";
 import {
   extractedQuestionImageRelations,
   extractedQuestionImages,
@@ -19,6 +19,19 @@ import {
   questionPageRange,
   type ImageOwnerDecision,
 } from "./question-file-analysis";
+import { inQuestionWindow, type QuestionWindow } from "./question-file-window";
+
+// The pages a window's questions need: a question's own page and the one
+// after it (where a figure at the foot of the question, or the rest of a
+// question cut by the page break, sits). `page` is the page-number column.
+function pageOfWindow(bookId: string, window: QuestionWindow, page: SQL): SQL {
+  return sql`exists (
+    select 1 from "extracted_questions" wq
+    where wq."bookId" = ${bookId}
+      and ${inQuestionWindow(window, sql`wq."orderIndex"`)}
+      and ${page} between wq."sourcePage" and wq."sourcePage" + 1
+  )`;
+}
 
 // Ensures a `question_file_pages` row exists for every page 1..pageCount —
 // called once, right when stage 2 starts, so getNextPendingQuestionFilePage
@@ -61,7 +74,12 @@ export async function getQuestionFilePageRange(bookId: string) {
   return questionPageRange(rows.map(row => row.sourcePage));
 }
 
-export async function getNextPendingQuestionFilePage(bookId: string) {
+// With a window (lib/question-file-window.ts) only the pages its questions
+// need are handed out; the rest stay pending until a student gets near.
+export async function getNextPendingQuestionFilePage(
+  bookId: string,
+  window?: QuestionWindow | null
+) {
   const maxAttempts = 3;
   const db = getDb();
   if (!db) return null;
@@ -72,7 +90,14 @@ export async function getNextPendingQuestionFilePage(bookId: string) {
       and(
         eq(questionFilePages.bookId, bookId),
         inArray(questionFilePages.status, ["pending", "failed"]),
-        sql`${questionFilePages.attemptCount} < ${maxAttempts}`
+        sql`${questionFilePages.attemptCount} < ${maxAttempts}`,
+        window
+          ? pageOfWindow(
+              bookId,
+              window,
+              sql`"question_file_pages"."pageNumber"`
+            )
+          : undefined
       )
     )
     .orderBy(asc(questionFilePages.pageNumber))
@@ -181,7 +206,10 @@ export async function saveImageOwnerDecision(
 //
 // Table names are written out: ${table.column} renders unqualified here
 // and would bind to the inner table.
-export async function getNextPendingExtractedQuestion(bookId: string) {
+export async function getNextPendingExtractedQuestion(
+  bookId: string,
+  window?: QuestionWindow | null
+) {
   const maxAttempts = 3;
   const db = getDb();
   if (!db) return null;
@@ -200,7 +228,21 @@ export async function getNextPendingExtractedQuestion(bookId: string) {
         eq(extractedQuestions.bookId, bookId),
         inArray(extractedQuestions.aiStatus, ["pending", "failed"]),
         sql`${extractedQuestions.aiAttemptCount} < ${maxAttempts}`,
-        sql`(
+        // With a window, pages are no longer settled front to back, so each
+        // question waits for its own two pages instead of for a page front.
+        window
+          ? sql`(
+          ${inQuestionWindow(window, sql`"extracted_questions"."orderIndex"`)}
+          and not exists (
+            select 1 from "question_file_pages" p where ${unsettledPage}
+              and p."pageNumber" between "extracted_questions"."sourcePage"
+                and "extracted_questions"."sourcePage" + 1
+          )
+        )`
+          : undefined,
+        window
+          ? undefined
+          : sql`(
           not exists (select 1 from "question_file_pages" p where ${unsettledPage})
           or "extracted_questions"."orderIndex" < (
             select max(q2."orderIndex") from "extracted_questions" q2
@@ -234,7 +276,8 @@ export async function getNextPendingExtractedQuestion(bookId: string) {
 // runs holding two pages, stage 3 stopped at the first of them with half
 // the file unexplained, and nothing ever started either stage again.
 export async function getQuestionsHeldBack(
-  bookId: string
+  bookId: string,
+  window?: QuestionWindow | null
 ): Promise<{ waiting: number; pagesStalled: boolean }> {
   const maxAttempts = 3;
   const db = getDb();
@@ -246,7 +289,10 @@ export async function getQuestionsHeldBack(
       and(
         eq(extractedQuestions.bookId, bookId),
         inArray(extractedQuestions.aiStatus, ["pending", "failed"]),
-        sql`${extractedQuestions.aiAttemptCount} < ${maxAttempts}`
+        sql`${extractedQuestions.aiAttemptCount} < ${maxAttempts}`,
+        window
+          ? inQuestionWindow(window, sql`"extracted_questions"."orderIndex"`)
+          : undefined
       )
     );
   const [pages] = await db
@@ -255,7 +301,18 @@ export async function getQuestionsHeldBack(
       recent: sql<number>`count(*) filter (where ${questionFilePages.updatedAt} > now() - interval '3 minutes')::int`,
     })
     .from(questionFilePages)
-    .where(eq(questionFilePages.bookId, bookId));
+    .where(
+      and(
+        eq(questionFilePages.bookId, bookId),
+        window
+          ? pageOfWindow(
+              bookId,
+              window,
+              sql`"question_file_pages"."pageNumber"`
+            )
+          : undefined
+      )
+    );
   return {
     waiting: questions?.waiting ?? 0,
     pagesStalled: (pages?.toDo ?? 0) > 0 && (pages?.recent ?? 0) === 0,
@@ -354,8 +411,11 @@ export type QuestionFileCoverage = {
 // style — the UI polls this instead of guessing from a single book-level
 // status, since stage 2 and stage 3 finish independently and at different
 // times for a large file.
+// With a window, `done` means "nothing is owed right now": every page and
+// question the window asks for is settled. The totals stay the whole file's.
 export async function getQuestionFileCoverage(
-  bookId: string
+  bookId: string,
+  window?: QuestionWindow | null
 ): Promise<QuestionFileCoverage> {
   const db = getDb();
   if (!db) {
@@ -392,6 +452,30 @@ export async function getQuestionFileCoverage(
   const imagePagesProcessed = Number(pageStats?.processed ?? 0);
   const questionsTotal = Number(questionStats?.total ?? 0);
   const questionsAiComplete = Number(questionStats?.aiComplete ?? 0);
+
+  if (window) {
+    const [owed] = await db.execute<{ pages: number; questions: number }>(sql`
+      select
+        (select count(*)::int from "question_file_pages" p
+          where p."bookId" = ${bookId}
+            and p."status" not in ('complete', 'failed')
+            and ${pageOfWindow(bookId, window, sql`p."pageNumber"`)}) as pages,
+        (select count(*)::int from "extracted_questions" q
+          where q."bookId" = ${bookId}
+            and q."aiStatus" not in ('complete', 'failed')
+            and ${inQuestionWindow(window, sql`q."orderIndex"`)}) as questions
+    `);
+    return {
+      imagePagesTotal,
+      imagePagesProcessed,
+      questionsTotal,
+      questionsAiComplete,
+      done:
+        imagePagesTotal > 0 &&
+        Number(owed?.pages ?? 0) === 0 &&
+        Number(owed?.questions ?? 0) === 0,
+    };
+  }
 
   return {
     imagePagesTotal,

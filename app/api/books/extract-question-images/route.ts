@@ -30,6 +30,11 @@ import {
   readPageDrawing,
 } from "@/lib/pdf-page-drawing";
 import { getScreenshotUnderLimit } from "@/lib/pdf-screenshot";
+import {
+  getQuestionFileWindow,
+  readRequestedSpan,
+  type RequestedSpan,
+} from "@/lib/question-file-window";
 import { verifyQStashRequest } from "@/lib/queue/verify";
 import { NextResponse } from "next/server";
 // Must be imported before "pdf-parse" — see app/api/books/extract/route.ts.
@@ -56,6 +61,12 @@ import { PDFParse } from "pdf-parse";
 // front, so students get explanations from the first minutes of a long
 // file.
 //
+// A long file is not walked to its end: only the pages of the questions in
+// the file's window (lib/question-file-window.ts) are looked at — the first
+// questions, then what lies ahead of the students as they move. A message
+// may carry the span a student has just reached; it is passed on with
+// every hand-over so the whole chain works on it.
+//
 // A page that paints no picture and no drawing (lib/pdf-page-drawing.ts)
 // cannot hold a question's figure: it is settled without being drawn or
 // sent anywhere — unless one of its questions is waiting to be read again
@@ -75,9 +86,15 @@ export async function POST(request: Request) {
   }
 
   let bookId: string;
+  let span: RequestedSpan | undefined;
   try {
-    const body = JSON.parse(rawBody) as { bookId?: string };
+    const body = JSON.parse(rawBody) as {
+      bookId?: string;
+      from?: unknown;
+      to?: unknown;
+    };
     bookId = typeof body.bookId === "string" ? body.bookId : "";
+    span = readRequestedSpan(body);
     if (!bookId) {
       return NextResponse.json({ error: "معرف الملف مفقود." }, { status: 200 });
     }
@@ -101,6 +118,7 @@ export async function POST(request: Request) {
   await ensureQuestionFilePages(bookId, book.pageCount);
   const questionRange = await getQuestionFilePageRange(bookId);
   const questions = await listQuestionsForImageOwnership(bookId);
+  const window = await getQuestionFileWindow(bookId, span);
 
   let parser: PDFParse | undefined;
   let repeatedMarks: Set<string> | undefined;
@@ -110,7 +128,7 @@ export async function POST(request: Request) {
   let retryDelay: number | null = null;
   try {
     for (let i = 0; i < PAGES_PER_INVOCATION; i++) {
-      const candidate = await getNextPendingQuestionFilePage(bookId);
+      const candidate = await getNextPendingQuestionFilePage(bookId, window);
       if (!candidate) break;
 
       const claimed = await claimQuestionFilePage(candidate.id);
@@ -242,13 +260,13 @@ export async function POST(request: Request) {
         })
       );
     }
-    const remaining = await getNextPendingQuestionFilePage(bookId);
+    const remaining = await getNextPendingQuestionFilePage(bookId, window);
     if (remaining) {
       // Explanations for the questions behind the page front. Best-effort:
       // the last batch starts stage 3 again for whatever is left.
       try {
         await publishMessage(
-          { type: "generate_question_file_content", bookId },
+          { type: "generate_question_file_content", bookId, ...span },
           {
             flowControl: {
               key: `question-file-content-${bookId}`,
@@ -260,7 +278,7 @@ export async function POST(request: Request) {
         console.error("[QuestionFiles] Could not start explanations", error);
       }
       await publishMessage(
-        { type: "extract_question_file_images", bookId },
+        { type: "extract_question_file_images", bookId, ...span },
         {
           flowControl: {
             key: `question-file-images-${bookId}`,
@@ -274,7 +292,11 @@ export async function POST(request: Request) {
 
     // Every page has reached a terminal status (each figure's owner was
     // decided with its page) — stage 3 takes over per-question enrichment.
-    await publishMessage({ type: "generate_question_file_content", bookId });
+    await publishMessage({
+      type: "generate_question_file_content",
+      bookId,
+      ...span,
+    });
     return NextResponse.json({ bookId, status: "images_done" });
   } catch (error) {
     console.error("[QuestionFiles] Image pipeline failed", error);

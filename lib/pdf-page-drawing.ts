@@ -174,8 +174,7 @@ export function readOperators(
         const placed = Math.abs(matrix[0] * matrix[3] - matrix[1] * matrix[2]);
         const pageShare = pageArea > 0 ? placed / pageArea : 1;
         reading.pictures.push({ key, pageShare });
-        const mark =
-          repeatedMarks.has(key) && pageShare <= MARK_MAX_PAGE_SHARE;
+        const mark = repeatedMarks.has(key) && pageShare <= MARK_MAX_PAGE_SHARE;
         if (!mark) reading.images++;
         break;
       }
@@ -240,7 +239,9 @@ async function readPage(
 // The pictures a file repeats on most of its pages at a small size — its
 // logo or stamp. Read once per file from a spread of pages; a file too
 // short to judge has none.
-export async function findRepeatedMarks(parser: PDFParse): Promise<Set<string>> {
+export async function findRepeatedMarks(
+  parser: PDFParse
+): Promise<Set<string>> {
   const marks = new Set<string>();
   try {
     const doc = await openDocument(parser);

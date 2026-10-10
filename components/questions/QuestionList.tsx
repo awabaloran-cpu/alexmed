@@ -22,6 +22,9 @@ export type QuestionListItem = {
   sourcePage: number;
   keywords: string[] | null;
   aiExplanationAr: string | null;
+  // "pending" / "processing" while the explanation is still being prepared
+  // (a long file is explained as the student moves through it).
+  aiStatus?: string | null;
   // «اربطها» — a one-line memory hook (newer files only).
   mnemonicAr?: string | null;
   imageUrl: string | null;
@@ -118,6 +121,7 @@ export default function QuestionList({
   breakEvery,
   renderBreak,
   renderComplete,
+  onShown,
 }: {
   questions: QuestionListItem[];
   watermark?: string;
@@ -131,6 +135,9 @@ export default function QuestionList({
   // e.g. the result and a way to share it. Like the break, this component
   // does not know what it contains.
   renderComplete?: (result: { answered: number; correct: number }) => ReactNode;
+  // Told which question the student is looking at, each time it changes
+  // (deck only) — moving between questions saves nothing by itself.
+  onShown?: (questionId: string, index: number) => void;
 }) {
   const watermarkImage = watermark ? watermarkTile(watermark) : null;
   const [answers, setAnswers] = useState<Record<string, CardAnswer>>(() =>
@@ -170,6 +177,7 @@ export default function QuestionList({
       breakEvery={renderBreak ? breakEvery : undefined}
       renderBreak={renderBreak}
       renderComplete={renderComplete}
+      onShown={onShown}
     />
   );
 }
@@ -237,9 +245,11 @@ function QuestionDeck({
   breakEvery,
   renderBreak,
   renderComplete,
+  onShown,
 }: {
   questions: QuestionListItem[];
   answers: Record<string, CardAnswer>;
+  onShown?: (questionId: string, index: number) => void;
   renderCard: (question: QuestionListItem, i: number) => ReactNode;
   startIndex?: number;
   breakEvery?: number;
@@ -274,6 +284,13 @@ function QuestionDeck({
   const goNextRef = useRef(goNext);
   goNextRef.current = goNext;
   const paused = pausedBefore !== null;
+
+  const onShownRef = useRef(onShown);
+  onShownRef.current = onShown;
+  const shownId = questions[safeIndex]?.id;
+  useEffect(() => {
+    if (shownId) onShownRef.current?.(shownId, safeIndex);
+  }, [shownId, safeIndex]);
 
   // ← / → between questions (RTL: ← is "next"), unless typing somewhere.
   useEffect(() => {
@@ -408,6 +425,9 @@ function QuestionCard({
   const [showTranslation, setShowTranslation] = useState(false);
   const { selected, revealed: revealedByUser } = answer;
   const revealed = revealAll || revealedByUser;
+  const preparing =
+    !question.aiExplanationAr &&
+    (question.aiStatus === "pending" || question.aiStatus === "processing");
   const { index: correct, fromAi } = correctAnswerOf(question);
   const options = question.options ?? [];
   const hasTranslation = !!question.questionTextAr;
@@ -492,7 +512,13 @@ function QuestionCard({
               {answeredRight ? "إجابة صحيحة" : "إجابة خاطئة"}
             </p>
           )}
-          {correct === null ? (
+          {preparing ? (
+            <p className={s.aiNote}>
+              <Sparkles size={12} aria-hidden="true" /> جاري تجهيز الشرح…
+            </p>
+          ) : null}
+          {correct === null && preparing && options.length ? null : correct ===
+            null ? (
             <p className={`${s.result} ${s.resultNeutral}`}>
               {options.length
                 ? "لا توجد إجابة مذكورة لهذا السؤال في الملف."
