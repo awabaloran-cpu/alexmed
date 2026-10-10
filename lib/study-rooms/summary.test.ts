@@ -17,6 +17,7 @@ vi.mock("@/lib/db", () => ({
 }));
 
 import { roomsRouter } from "../trpc/roomsRouter";
+import { sweepRooms } from "./rooms";
 
 const id = (n: number) =>
   `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
@@ -266,5 +267,73 @@ describe("the rooms a student has been in", () => {
     await as(AHMED).remove({ roomId, userId: OMAR, ban: true });
     await as(AHMED).end({ roomId });
     expect(await as(OMAR).history()).toEqual([]);
+  });
+});
+
+describe("rooms stay true to who is really there", () => {
+  const seenAgo = (userId: string, minutes: number) =>
+    test.client.query(
+      `UPDATE study_room_members SET "lastSeenAt" = now() - make_interval(mins => $3)
+       WHERE "roomId" = $1 AND "userId" = $2`,
+      [roomId, userId, minutes]
+    );
+  const quietFor = (minutes: number) =>
+    test.client.query(
+      `UPDATE study_rooms SET "lastActiveAt" = now() - make_interval(mins => $2) WHERE id = $1`,
+      [roomId, minutes]
+    );
+
+  it("someone not heard from is taken out as if they had left, and may come back", async () => {
+    await seenAgo(SARA, 11);
+    expect(await sweepRooms()).toEqual({ left: 1, closed: 0 });
+    const state = await as(AHMED).state({ roomId });
+    expect(state.members.map(member => member.name)).toEqual(["أحمد", "عمر"]);
+    // For Sara it is a room she left: in her past sessions, and open to her.
+    expect((await as(SARA).history())[0]).toMatchObject({ id: roomId });
+    expect(await refusal(as(SARA).state({ roomId }))).toBe(
+      "NOT_FOUND:not_available"
+    );
+    await as(SARA).join({ roomId });
+    expect((await as(SARA).state({ roomId })).members).toHaveLength(3);
+  });
+
+  it("the leader not heard from hands the room to the longest present", async () => {
+    await seenAgo(AHMED, 11);
+    await sweepRooms();
+    const state = await as(SARA).state({ roomId });
+    expect(state.room.hostId).toBe(SARA);
+    expect(state.members.map(member => member.name)).toEqual(["سارة", "عمر"]);
+  });
+
+  it("a room left with nobody is closed, and its summary stays", async () => {
+    for (const userId of [AHMED, SARA, OMAR]) await seenAgo(userId, 11);
+    // Taking them out is itself something that happened in the room: it
+    // gets its ten quiet minutes from then, like a room everyone left.
+    expect(await sweepRooms()).toEqual({ left: 3, closed: 0 });
+    await quietFor(11);
+    expect(await sweepRooms()).toEqual({ left: 0, closed: 1 });
+    expect(await refusal(as(AHMED).state({ roomId }))).toBe(
+      "NOT_FOUND:not_available"
+    );
+    expect(await refusal(as(AHMED).join({ roomId }))).not.toBe("allowed");
+    const summary = await as(SARA).summary({ roomId });
+    expect(summary.room.ended).toBe(true);
+    expect(summary.participants).toHaveLength(3);
+    expect((await as(OMAR).history())[0]).toMatchObject({ ended: true });
+  });
+
+  it("a room people are quietly reading in is left alone", async () => {
+    // Nothing has changed in it for an hour, but all three are still there.
+    await quietFor(60);
+    expect(await sweepRooms()).toEqual({ left: 0, closed: 0 });
+    expect((await as(AHMED).state({ roomId })).members).toHaveLength(3);
+  });
+
+  it("a room just emptied is given its ten minutes", async () => {
+    for (const userId of [AHMED, SARA, OMAR])
+      await as(userId).leave({ roomId });
+    expect(await sweepRooms()).toEqual({ left: 0, closed: 0 });
+    await quietFor(11);
+    expect(await sweepRooms()).toEqual({ left: 0, closed: 1 });
   });
 });

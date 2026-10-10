@@ -19,6 +19,7 @@ import {
 import { requireDb } from "../db";
 import { mayEnterRoom, mayOpenPublicRoom, mayUseSection } from "./age";
 import {
+  EMPTY_ROOM_MINUTES,
   REPORTS_TO_HIDE,
   ROOM_CAPACITY_DEFAULT,
   type RoomLanguage,
@@ -1194,6 +1195,54 @@ export async function closeEmptyRooms(minutes: number): Promise<number> {
     .limit(200);
   for (const room of stale) await closeRoom(db, room.id, null, "empty_end");
   return stale.length;
+}
+
+// 🧹 Keeping the rooms true to who is really there.
+//
+// Being in a room is being heard from: the room's page asks for its state
+// every few seconds (roomState), and that asking is the heartbeat. A
+// student who closed the tab, lost the connection or let the phone sleep
+// never says "leave" — so anyone not heard from for EMPTY_ROOM_MINUTES is
+// taken out exactly as if they had left (leadership passes on the same
+// way), and a room then left with nobody is closed. Without this a room
+// stayed "live" in its section for days with nobody in it (seen on the
+// first live room, 2026-10-11).
+//
+// A student who comes back to the tab simply rejoins (the page does it:
+// someone who left may return without an invite).
+export async function sweepRooms(
+  minutes: number = EMPTY_ROOM_MINUTES
+): Promise<{ left: number; closed: number }> {
+  const db = requireDb();
+  const ghosts = await db
+    .select({
+      roomId: studyRoomMembers.roomId,
+      userId: studyRoomMembers.userId,
+    })
+    .from(studyRoomMembers)
+    .innerJoin(studyRooms, eq(studyRooms.id, studyRoomMembers.roomId))
+    .where(
+      and(
+        eq(studyRooms.status, "active"),
+        eq(studyRoomMembers.state, "joined"),
+        sql`${studyRoomMembers.lastSeenAt} < now() - make_interval(mins => ${minutes})`
+      )
+    )
+    .limit(300);
+  for (const ghost of ghosts) await leaveRoom(ghost.userId, ghost.roomId);
+  return { left: ghosts.length, closed: await closeEmptyRooms(minutes) };
+}
+
+// The sweep, run by whoever lists the rooms: at most once a minute in each
+// server process, never in the way of the listing, never thrown.
+const SWEEP_EVERY_MS = 60_000;
+let lastSweepAt = 0;
+export function sweepRoomsSoon(): void {
+  if (Date.now() - lastSweepAt < SWEEP_EVERY_MS) return;
+  lastSweepAt = Date.now();
+  void sweepRooms().catch(error =>
+    console.error("[StudyRooms] Sweep failed", error)
+  );
 }
 
 export { REPORTS_TO_HIDE };

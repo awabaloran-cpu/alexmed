@@ -63,6 +63,7 @@ import {
   removeMember,
   roomState,
   rotateInvite,
+  sweepRoomsSoon,
   setMember,
   suggestSubjects,
   transferHost,
@@ -164,13 +165,18 @@ export const roomsRouter = router({
         })
         .optional()
     )
-    .query(({ ctx, input }) =>
-      guard(async () => exploreRooms(await getViewer(ctx.user.id), input ?? {}))
-    ),
+    .query(({ ctx, input }) => {
+      // Whoever lists the rooms also tidies them (lib/study-rooms/rooms.ts).
+      sweepRoomsSoon();
+      return guard(async () =>
+        exploreRooms(await getViewer(ctx.user.id), input ?? {})
+      );
+    }),
 
-  mine: roomsProcedure.query(({ ctx }) =>
-    guard(async () => myRooms(await getViewer(ctx.user.id)))
-  ),
+  mine: roomsProcedure.query(({ ctx }) => {
+    sweepRoomsSoon();
+    return guard(async () => myRooms(await getViewer(ctx.user.id)));
+  }),
 
   create: roomsProcedure
     .input(

@@ -48,6 +48,9 @@ export default function LiveRoom({ roomId }: { roomId: string }) {
     { roomId },
     {
       refetchInterval: query => (query.state.error ? false : POLL_MS),
+      // The reading is the heartbeat: it goes on while the tab is hidden
+      // (the browser slows it down, which is enough to stay in the room).
+      refetchIntervalInBackground: true,
       retry: (count, error) =>
         // A refusal is final; a network blip is tried again.
         !["not_available", "room_ended"].includes(error.message) && count < 3,
@@ -55,6 +58,21 @@ export default function LiveRoom({ roomId }: { roomId: string }) {
     }
   );
   const refresh = () => utils.rooms.state.invalidate({ roomId });
+  // Away long enough to be taken out of the room (a sleeping phone, a lost
+  // connection): coming back is rejoining, once, without being asked.
+  const rejoin = trpc.rooms.join.useMutation({
+    onSuccess: () => state.refetch(),
+  });
+  const triedRejoin = useRef(false);
+  const stateError = state.error?.message;
+  useEffect(() => {
+    if (stateError === "not_available" && !triedRejoin.current) {
+      triedRejoin.current = true;
+      rejoin.mutate({ roomId });
+    }
+    // rejoin is a new object every render; the error is what matters.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stateError, roomId]);
   const [sheet, setSheet] = useState<
     | { kind: "member"; userId: string }
     | { kind: "report"; userId: string | null }
@@ -134,7 +152,7 @@ export default function LiveRoom({ roomId }: { roomId: string }) {
     return () => window.clearTimeout(timer);
   }, [notice]);
 
-  if (state.isLoading) {
+  if (state.isLoading || rejoin.isPending) {
     return <div className={s.skeleton} style={{ minHeight: 320 }} />;
   }
   if (!data) {
