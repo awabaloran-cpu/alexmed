@@ -330,6 +330,13 @@
       "when": 1791503623971,
       "tag": "0046_bot_summaries",
       "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1791616907357,
+      "tag": "0047_study_rooms_core",
+      "breakpoints": true
     }
   ]
 }

@@ -3,6 +3,7 @@ import {
   bigint,
   boolean,
   check,
+  date,
   index,
   integer,
   jsonb,
@@ -3286,6 +3287,292 @@ export const adEvents = pgTable(
     ),
   })
 );
+
+// ── 👥 Study Rooms (docs/study-rooms) ──────────────────────────────────────
+// Students studying one file together, live. Everything here is additive:
+// no existing table or column changes. Off behind STUDY_ROOMS_ENABLED.
+
+// The coloured sections of the Rooms tab (medicine, engineering, high
+// school…). `audience` says who a section is for — a high-school section is
+// for under-18 accounts and never has public rooms (lib/study-rooms/age.ts).
+export const studySections = pgTable("study_sections", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  key: varchar("key", { length: 24 }).notNull().unique(),
+  nameAr: text("nameAr").notNull(),
+  nameEn: text("nameEn").notNull(),
+  // A lucide icon name and a colour token name — never free-form values.
+  icon: varchar("icon", { length: 24 }).notNull(),
+  color: varchar("color", { length: 16 }).notNull(),
+  // "adult" | "minor"
+  audience: varchar("audience", { length: 8 }).default("adult").notNull(),
+  publicRooms: boolean("publicRooms").default(true).notNull(),
+  sortOrder: integer("sortOrder").default(0).notNull(),
+  active: boolean("active").default(true).notNull(),
+  createdAt: timestamp("createdAt", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+});
+
+// One shared list of subjects, so a student in Jordan and one in Egypt meet
+// on "Pharmacology" whatever their course is called. `aliases` are
+// normalized spellings (lib/study-rooms/text.ts) a search also matches.
+export const studySubjects = pgTable(
+  "study_subjects",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    sectionId: uuid("sectionId")
+      .notNull()
+      .references(() => studySections.id, { onDelete: "cascade" }),
+    nameEn: text("nameEn").notNull(),
+    nameAr: text("nameAr").notNull(),
+    aliases: jsonb("aliases").$type<string[]>().default([]).notNull(),
+    active: boolean("active").default(true).notNull(),
+    createdAt: timestamp("createdAt", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  table => ({
+    sectionIdx: index("study_subjects_section_idx").on(table.sectionId),
+    nameUnique: uniqueIndex("study_subjects_section_name_idx").on(
+      table.sectionId,
+      table.nameEn
+    ),
+  })
+);
+
+// What the rooms need to know about a student and `users` does not hold.
+// None of it is shown to anyone except the country. Gender and the date of
+// birth are the student's own declaration — set once, then only an admin
+// changes them.
+export const studyRoomProfiles = pgTable("study_room_profiles", {
+  userId: uuid("userId")
+    .primaryKey()
+    .references(() => users.id, { onDelete: "cascade" }),
+  // "female" | "male"
+  gender: varchar("gender", { length: 6 }),
+  genderSetAt: timestamp("genderSetAt", { withTimezone: true }),
+  // ISO 3166-1 alpha-2
+  country: varchar("country", { length: 2 }),
+  birthDate: date("birthDate"),
+  birthDateSetAt: timestamp("birthDateSetAt", { withTimezone: true }),
+  // "university" | "high_school"
+  stage: varchar("stage", { length: 12 }),
+  // The declared stage and the declared age disagree — for an admin to see.
+  ageFlag: boolean("ageFlag").default(false).notNull(),
+  // The rules of public rooms, accepted once.
+  rulesAcceptedAt: timestamp("rulesAcceptedAt", { withTimezone: true }),
+  // "ar" | "en"
+  uiLanguage: varchar("uiLanguage", { length: 2 }),
+  updatedAt: timestamp("updatedAt", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+});
+
+export type StudyRoomSettings = {
+  freeNav: boolean;
+  marks: boolean;
+  chat: boolean;
+  speak: "open" | "request" | "host";
+  quizStart: "host" | "cohost";
+  invite: "host" | "anyone";
+};
+
+export const studyRooms = pgTable(
+  "study_rooms",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    // The current host — changes when leadership is handed over.
+    hostId: uuid("hostId")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    createdById: uuid("createdById").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    // "public" | "private"
+    visibility: varchar("visibility", { length: 8 }).notNull(),
+    // "adult" | "minor" — the creator's age group when the room was opened;
+    // the two never share a room.
+    audience: varchar("audience", { length: 8 }).notNull(),
+    title: text("title").notNull(),
+    sectionId: uuid("sectionId")
+      .notNull()
+      .references(() => studySections.id),
+    subjectId: uuid("subjectId").references(() => studySubjects.id, {
+      onDelete: "set null",
+    }),
+    // "Another subject", as the student typed it.
+    subjectText: text("subjectText"),
+    topic: text("topic"),
+    topicKey: text("topicKey"),
+    university: text("university"),
+    universityKey: text("universityKey"),
+    courseCode: text("courseCode"),
+    // "ar" | "en" | "mixed"
+    language: varchar("language", { length: 8 }).default("ar").notNull(),
+    womenOnly: boolean("womenOnly").default(false).notNull(),
+    capacity: integer("capacity").default(8).notNull(),
+    // Countries of the members present, kept on the row for cards and the
+    // country filter.
+    countries: jsonb("countries").$type<string[]>().default([]).notNull(),
+    bookId: uuid("bookId").references(() => books.id, { onDelete: "set null" }),
+    sharedPage: integer("sharedPage").default(1).notNull(),
+    pageLeaderId: uuid("pageLeaderId"),
+    settings: jsonb("settings").$type<StudyRoomSettings>().notNull(),
+    // sha256 of the invite code; the code itself is never stored.
+    inviteHash: text("inviteHash").unique(),
+    locked: boolean("locked").default(false).notNull(),
+    // Hidden from discovery after reports, until an admin looks.
+    hiddenAt: timestamp("hiddenAt", { withTimezone: true }),
+    // "active" | "ended"
+    status: varchar("status", { length: 8 }).default("active").notNull(),
+    // The sequence number of the room's events.
+    seq: bigint("seq", { mode: "number" }).default(0).notNull(),
+    lastActiveAt: timestamp("lastActiveAt", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    endedAt: timestamp("endedAt", { withTimezone: true }),
+    createdAt: timestamp("createdAt", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  table => ({
+    exploreIdx: index("study_rooms_explore_idx").on(
+      table.status,
+      table.visibility,
+      table.sectionId,
+      table.lastActiveAt
+    ),
+    subjectIdx: index("study_rooms_subject_idx").on(
+      table.subjectId,
+      table.topicKey
+    ),
+    hostIdx: index("study_rooms_host_idx").on(table.hostId, table.status),
+    bookIdx: index("study_rooms_book_idx").on(table.bookId),
+  })
+);
+
+export type StudyRoomGrants = {
+  chat?: boolean;
+  mark?: boolean;
+  speak?: boolean;
+  lead?: boolean;
+};
+
+export const studyRoomMembers = pgTable(
+  "study_room_members",
+  {
+    roomId: uuid("roomId")
+      .notNull()
+      .references(() => studyRooms.id, { onDelete: "cascade" }),
+    userId: uuid("userId")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    // "host" | "cohost" | "member"
+    role: varchar("role", { length: 8 }).default("member").notNull(),
+    // "joined" | "left" | "kicked" | "banned"
+    state: varchar("state", { length: 8 }).default("joined").notNull(),
+    grants: jsonb("grants").$type<StudyRoomGrants>().default({}).notNull(),
+    mutedByHost: boolean("mutedByHost").default(false).notNull(),
+    joinedAt: timestamp("joinedAt", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    leftAt: timestamp("leftAt", { withTimezone: true }),
+    lastSeenAt: timestamp("lastSeenAt", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  table => ({
+    pk: primaryKey({ columns: [table.roomId, table.userId] }),
+    userIdx: index("study_room_members_user_idx").on(table.userId, table.state),
+  })
+);
+
+export const studyRoomReports = pgTable(
+  "study_room_reports",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    reporterId: uuid("reporterId").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    roomId: uuid("roomId").references(() => studyRooms.id, {
+      onDelete: "set null",
+    }),
+    // Null: the report is about the room itself.
+    targetUserId: uuid("targetUserId").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    reason: varchar("reason", { length: 24 }).notNull(),
+    details: text("details"),
+    // "open" | "actioned" | "dismissed"
+    status: varchar("status", { length: 10 }).default("open").notNull(),
+    handledById: uuid("handledById"),
+    handledAt: timestamp("handledAt", { withTimezone: true }),
+    createdAt: timestamp("createdAt", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  table => ({
+    statusIdx: index("study_room_reports_status_idx").on(
+      table.status,
+      table.createdAt
+    ),
+    roomIdx: index("study_room_reports_room_idx").on(table.roomId),
+  })
+);
+
+// A platform-level ban from the rooms only — the rest of the account is
+// untouched. `until` null means for good.
+export const studyRoomBans = pgTable("study_room_bans", {
+  userId: uuid("userId")
+    .primaryKey()
+    .references(() => users.id, { onDelete: "cascade" }),
+  until: timestamp("until", { withTimezone: true }),
+  reason: text("reason"),
+  byAdminId: uuid("byAdminId"),
+  createdAt: timestamp("createdAt", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+});
+
+// What happened in a room and who did it — ids and small facts only, never
+// what was said. Also what the rate limits count from.
+export const studyRoomEvents = pgTable(
+  "study_room_events",
+  {
+    id: bigint("id", { mode: "number" })
+      .primaryKey()
+      .generatedAlwaysAsIdentity(),
+    roomId: uuid("roomId").references(() => studyRooms.id, {
+      onDelete: "cascade",
+    }),
+    actorId: uuid("actorId").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    type: varchar("type", { length: 24 }).notNull(),
+    targetUserId: uuid("targetUserId"),
+    data: jsonb("data").$type<Record<string, string | number | boolean | null>>(),
+    createdAt: timestamp("createdAt", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  table => ({
+    roomIdx: index("study_room_events_room_idx").on(
+      table.roomId,
+      table.createdAt
+    ),
+    actorIdx: index("study_room_events_actor_idx").on(
+      table.actorId,
+      table.type,
+      table.createdAt
+    ),
+  })
+);
+
+export type StudySection = typeof studySections.$inferSelect;
+export type StudySubject = typeof studySubjects.$inferSelect;
+export type StudyRoomProfile = typeof studyRoomProfiles.$inferSelect;
+export type StudyRoom = typeof studyRooms.$inferSelect;
+export type StudyRoomMember = typeof studyRoomMembers.$inferSelect;
 
 export type TelegramAccount = typeof telegramAccounts.$inferSelect;
 export type TelegramUpload = typeof telegramUploads.$inferSelect;

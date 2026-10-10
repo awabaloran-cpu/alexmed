@@ -6,6 +6,7 @@ import { AiRateLimitError } from "../ai/types";
 import { BillingError } from "../billing/usage";
 import { isApprovedDoctor } from "../db-doctors";
 import { doctorSetsEnabled } from "../doctor-sets-config";
+import { studyRoomsEnabled } from "../study-rooms/config";
 
 export const INTERNAL_ERROR_MESSAGE = "حدث خطأ غير متوقع. حاول مرة أخرى.";
 const AI_BUSY_MESSAGE = "المساعد مشغول الآن. حاول بعد قليل.";
@@ -91,6 +92,17 @@ export const doctorProcedure = doctorSetsProcedure.use(
   })
 );
 
+// 👥 Study Rooms. While STUDY_ROOMS_ENABLED isn't "true" every procedure of
+// the feature answers NOT_FOUND, as if it didn't exist.
+const requireStudyRoomsEnabled = t.middleware(async ({ next }) => {
+  if (!studyRoomsEnabled()) {
+    throw new TRPCError({ code: "NOT_FOUND", message: "not_available" });
+  }
+  return next();
+});
+
+export const roomsProcedure = protectedProcedure.use(requireStudyRoomsEnabled);
+
 export const adminProcedure = t.procedure.use(
   t.middleware(async opts => {
     const { ctx, next } = opts;
@@ -112,3 +124,5 @@ export const adminProcedure = t.procedure.use(
 export const adminDoctorSetsProcedure = adminProcedure.use(
   requireDoctorSetsEnabled
 );
+
+export const roomsAdminProcedure = adminProcedure.use(requireStudyRoomsEnabled);
