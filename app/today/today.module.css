@@ -1,0 +1,256 @@
+/* "خطة اليوم" (app/today/page.tsx). Ink & highlighter tokens from
+   app/base.css; the next-task card itself is the home's (.home-next). */
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  width: 100%;
+  max-width: 720px;
+  margin-inline: auto;
+  padding: 20px 16px 32px;
+}
+
+.head h1 {
+  margin: 0;
+  font-size: clamp(1.5rem, 4vw, 1.9rem);
+  font-weight: 700;
+  color: var(--nl-ink);
+  text-wrap: balance;
+}
+
+.head p {
+  margin: 4px 0 0;
+  color: var(--nl-ink-3);
+  font-size: 0.95rem;
+}
+
+/* The week ahead: seven days, one bar each. */
+.week {
+  padding: 16px;
+  border: 1px solid var(--nl-rule);
+  border-radius: var(--nl-r-md);
+  background: var(--nl-sheet);
+}
+
+.weekHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.weekHead h2 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--nl-ink);
+}
+
+.weekHead span {
+  color: var(--nl-ink-3);
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.days {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.day {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.count {
+  color: var(--nl-ink-2);
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.count.none {
+  color: var(--nl-ink-3);
+}
+
+.track {
+  display: flex;
+  align-items: flex-end;
+  width: 100%;
+  max-width: 34px;
+  height: 64px;
+  border-radius: var(--nl-r-sm);
+  background: var(--nl-paper);
+  overflow: hidden;
+}
+
+.bar {
+  width: 100%;
+  border-radius: var(--nl-r-sm);
+  background: var(--nl-niro);
+}
+
+.today .bar {
+  background: var(--nl-marker);
+}
+
+.dayName {
+  color: var(--nl-ink-3);
+  font-size: 0.72rem;
+  white-space: nowrap;
+}
+
+.today .dayName {
+  color: var(--nl-ink);
+  font-weight: 600;
+}
+
+.weekEmpty {
+  margin: 0;
+  color: var(--nl-ink-3);
+  font-size: 0.9rem;
+}
+
+/* Secondary sections: closed until asked for. */
+.fold {
+  border: 1px solid var(--nl-rule);
+  border-radius: var(--nl-r-md);
+  background: var(--nl-sheet);
+}
+
+.fold > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 52px;
+  padding: 0 16px;
+  color: var(--nl-ink);
+  font-weight: 600;
+  cursor: pointer;
+  list-style: none;
+}
+
+.fold > summary::-webkit-details-marker {
+  display: none;
+}
+
+.fold > summary:focus-visible {
+  outline: 2px solid var(--nl-niro);
+  outline-offset: 2px;
+  border-radius: var(--nl-r-md);
+}
+
+.fold > summary span {
+  color: var(--nl-ink-3);
+  font-size: 0.85rem;
+  font-weight: 400;
+}
+
+.fold > summary svg {
+  flex: none;
+  color: var(--nl-ink-3);
+  transition: transform 0.18s var(--nl-ease);
+}
+
+.fold[open] > summary svg {
+  transform: rotate(-90deg);
+}
+
+.foldBody {
+  padding: 0 8px 8px;
+}
+
+.rows {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 52px;
+  padding: 8px;
+  border-top: 1px solid var(--nl-rule);
+  border-radius: var(--nl-r-sm);
+  color: var(--nl-ink);
+  text-decoration: none;
+}
+
+.row:hover {
+  background: var(--nl-paper);
+}
+
+.row:focus-visible {
+  outline: 2px solid var(--nl-niro);
+  outline-offset: -2px;
+}
+
+.rowText {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.rowText strong {
+  overflow: hidden;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rowText span {
+  color: var(--nl-ink-3);
+  font-size: 0.85rem;
+}
+
+.row > svg {
+  flex: none;
+  color: var(--nl-ink-3);
+}
+
+.examSoon {
+  flex: none;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--nl-marker-soft);
+  color: var(--nl-ink);
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
+
+.emptyNote {
+  margin: 0;
+  padding: 8px 8px 12px;
+  color: var(--nl-ink-3);
+  font-size: 0.9rem;
+}
+
+.emptyNote a {
+  color: var(--nl-niro-deep);
+  font-weight: 600;
+}
+
+.skeleton {
+  display: block;
+  height: 44px;
+  margin: 8px;
+  border-radius: var(--nl-r-sm);
+  background: var(--nl-paper);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fold > summary svg {
+    transition: none;
+  }
+}

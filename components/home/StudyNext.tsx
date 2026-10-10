@@ -41,15 +41,14 @@ function bookState(book: BookRow) {
   return "ready" as const;
 }
 
-export function StudyNext() {
-  const { data: session } = useSession();
+// The one thing to do now, and why — shared by the home and /today so both
+// always give the same answer.
+export function useStudyNext() {
   const booksQuery = trpc.books.list.useQuery();
   const booksDue = trpc.books.dueCards.useQuery();
   const decksDue = trpc.decks.dueCards.useQuery();
   const subjectsQuery = trpc.subjects.list.useQuery();
 
-  const firstName = session?.user?.name?.trim().split(/\s+/)[0];
-  const hello = greeting(new Date().getHours());
   const books = (booksQuery.data ?? []) as BookRow[];
   const dueCount = (booksDue.data?.length ?? 0) + (decksDue.data?.length ?? 0);
   const loading =
@@ -107,6 +106,66 @@ export function StudyNext() {
     };
   }
 
+  return {
+    next,
+    loading,
+    books,
+    dueCount,
+    exam,
+    subjects: subjectsQuery.data ?? [],
+    subjectsLoading: subjectsQuery.isLoading,
+  };
+}
+
+// "مهمتك التالية الآن": one title, the reason, one button.
+export function NextTaskCard({
+  state,
+}: {
+  state: ReturnType<typeof useStudyNext>;
+}) {
+  const { next, loading, books, dueCount, exam } = state;
+  return (
+    <section
+      className={`home-next${loading ? " is-loading" : ""}`}
+      aria-labelledby="home-next-title"
+      aria-busy={loading}
+    >
+      {loading ? (
+        <>
+          <span className="home-next-skeleton" />
+          <span className="home-next-skeleton is-short" />
+        </>
+      ) : (
+        <>
+          <h2 id="home-next-title">{next.title}</h2>
+          <p>{next.detail}</p>
+          <Link href={next.href} className="nl-marker-button">
+            {next.busy ? (
+              <Loader2 size={17} className="spin" aria-hidden="true" />
+            ) : !books.length && dueCount === 0 ? (
+              <Upload size={17} aria-hidden="true" />
+            ) : null}
+            {next.action}
+          </Link>
+          {exam && (
+            <p className="home-next-exam">
+              <CalendarClock size={16} aria-hidden="true" />
+              امتحان {exam.name} {daysLabel(daysUntil(exam.examDate!))}
+            </p>
+          )}
+        </>
+      )}
+    </section>
+  );
+}
+
+export function StudyNext() {
+  const { data: session } = useSession();
+  const state = useStudyNext();
+  const { books } = state;
+  const firstName = session?.user?.name?.trim().split(/\s+/)[0];
+  const hello = greeting(new Date().getHours());
+
   return (
     <>
       <header className="home-head">
@@ -116,37 +175,7 @@ export function StudyNext() {
         </h1>
       </header>
 
-      <section
-        className={`home-next${loading ? " is-loading" : ""}`}
-        aria-labelledby="home-next-title"
-        aria-busy={loading}
-      >
-        {loading ? (
-          <>
-            <span className="home-next-skeleton" />
-            <span className="home-next-skeleton is-short" />
-          </>
-        ) : (
-          <>
-            <h2 id="home-next-title">{next.title}</h2>
-            <p>{next.detail}</p>
-            <Link href={next.href} className="nl-marker-button">
-              {next.busy ? (
-                <Loader2 size={17} className="spin" aria-hidden="true" />
-              ) : !books.length && dueCount === 0 ? (
-                <Upload size={17} aria-hidden="true" />
-              ) : null}
-              {next.action}
-            </Link>
-            {exam && (
-              <p className="home-next-exam">
-                <CalendarClock size={16} aria-hidden="true" />
-                امتحان {exam.name} {daysLabel(daysUntil(exam.examDate!))}
-              </p>
-            )}
-          </>
-        )}
-      </section>
+      <NextTaskCard state={state} />
 
       {books.length > 0 && (
         <section className="home-section" aria-labelledby="home-books-title">

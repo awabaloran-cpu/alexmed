@@ -1,16 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import {
-  BookOpen,
-  CalendarClock,
-  CheckCircle2,
-  Layers3,
-  TrendingUp,
-} from "lucide-react";
+import { ChevronLeft } from "lucide-react";
+import { NextTaskCard, useStudyNext } from "@/components/home/StudyNext";
+import { bookDisplayTitle } from "@/lib/book-title";
 import { trpc } from "@/lib/trpc-client";
+import s from "./today.module.css";
 
-const WEEKDAY_LABELS_AR = [
+const WEEKDAY_SHORT_AR = [
   "الأحد",
   "الإثنين",
   "الثلاثاء",
@@ -30,230 +27,191 @@ const TYPE_LABELS: Record<string, string> = {
   custom: "مخصص",
 };
 
-function formatDate(value: string | Date) {
-  return new Date(value).toLocaleDateString("ar-u-nu-latn", {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  });
-}
-
 function daysUntil(value: string | Date) {
   const ms = new Date(value).getTime() - Date.now();
   return Math.ceil(ms / (1000 * 60 * 60 * 24));
 }
 
-// "لوحة اليوم" (PR3) — a new, additive landing page that aggregates real
-// data already served by existing endpoints (subjects, مِرآة/كتبي due cards,
-// books) across every subject. Deliberately does NOT replace "/" (مِرآة's
-// own home stays exactly as-is, per the "don't touch مِرآة" rule) — this is
-// an additional StudyOS-wide entry point, linked from the sidebar.
-// "اختبار مقترح"/"نقاط ضعف متكررة" from the original StudyOS plan are
-// deferred (they need the quiz/error-tracking work in a later PR) rather
-// than shown with fabricated data.
+function examLabel(days: number) {
+  if (days <= 0) return "الامتحان اليوم";
+  if (days === 1) return "الامتحان غدًا";
+  if (days === 2) return "بعد يومين";
+  return `بعد ${days} ${days <= 10 ? "أيام" : "يومًا"}`;
+}
+
+// The server groups by UTC date (lib/db-books.ts), so the days are built in
+// UTC too: today and the six after it, each with its count (0 when none).
+function weekAhead(forecast: { day: string; count: number }[]) {
+  const counts = new Map(
+    forecast.map(entry => [
+      new Date(entry.day).toISOString().slice(0, 10),
+      entry.count,
+    ])
+  );
+  const start = new Date();
+  return Array.from({ length: 7 }, (_, offset) => {
+    const date = new Date(
+      Date.UTC(
+        start.getUTCFullYear(),
+        start.getUTCMonth(),
+        start.getUTCDate() + offset
+      )
+    );
+    return {
+      key: date.toISOString().slice(0, 10),
+      name: offset === 0 ? "اليوم" : WEEKDAY_SHORT_AR[date.getUTCDay()],
+      count: counts.get(date.toISOString().slice(0, 10)) ?? 0,
+      today: offset === 0,
+    };
+  });
+}
+
+// "خطة اليوم": the next thing to do first — the same answer the home gives
+// (components/home/StudyNext.tsx) — then the week of reviews ahead, and the
+// rest folded away. Only what the existing queries return is shown; nothing
+// here is estimated or made up.
 export default function TodayPage() {
-  const subjectsQuery = trpc.subjects.list.useQuery();
-  const booksDue = trpc.books.dueCards.useQuery();
-  const decksDue = trpc.decks.dueCards.useQuery();
-  const booksQuery = trpc.books.list.useQuery();
+  const state = useStudyNext();
   const forecastQuery = trpc.books.upcomingForecast.useQuery();
 
-  const dueCount = (booksDue.data?.length ?? 0) + (decksDue.data?.length ?? 0);
+  const week = weekAhead(forecastQuery.data ?? []);
+  const weekTotal = week.reduce((sum, day) => sum + day.count, 0);
+  const busiest = Math.max(1, ...week.map(day => day.count));
 
-  const upcomingExam = (subjectsQuery.data ?? [])
-    .filter(subject => subject.examDate && daysUntil(subject.examDate) >= 0)
-    .sort(
-      (a, b) =>
-        new Date(a.examDate!).getTime() - new Date(b.examDate!).getTime()
-    )[0];
-
-  // Most recently created book that already has at least one usable
-  // chapter — the best honest "keep reading" suggestion available without
-  // a dedicated read/unread tracking column (which doesn't exist yet).
-  const suggestedBook = (booksQuery.data ?? []).find(
-    book => book.completeChapterCount > 0
-  );
+  const subjects = [...state.subjects].sort((a, b) => {
+    const left = a.examDate ? new Date(a.examDate).getTime() : Infinity;
+    const right = b.examDate ? new Date(b.examDate).getTime() : Infinity;
+    return left - right;
+  });
 
   return (
-    <section className="cards-view">
-      <div className="cards-header">
-        <div>
-          <div className="eyebrow">
-            <span className="eyebrow-dot" /> StudyOS
-          </div>
-          <h1>ماذا ستدرس اليوم؟</h1>
-          <p>نظرة سريعة على كل موادك في مكان واحد.</p>
-        </div>
-      </div>
+    <div className={s.page}>
+      <header className={s.head}>
+        <h1>خطة اليوم</h1>
+        <p>الخطوة التالية أولًا، ثم ما ينتظرك هذا الأسبوع.</p>
+      </header>
 
-      <div className="stats-row" style={{ marginBottom: 24 }}>
-        <div className="stat-card">
-          <span>بطاقات مستحقة اليوم</span>
-          <strong>{dueCount}</strong>
-        </div>
-        {upcomingExam && (
-          <div className="stat-card accent">
-            <span>أقرب امتحان</span>
-            <strong>
-              {upcomingExam.name} · {daysUntil(upcomingExam.examDate!)} يوم
-            </strong>
-          </div>
-        )}
-      </div>
+      <NextTaskCard state={state} />
 
-      <h2 style={{ marginBottom: 12 }}>موادك</h2>
-      {subjectsQuery.isLoading ? (
-        <p>جاري التحميل...</p>
-      ) : !subjectsQuery.data?.length ? (
-        <div className="empty-state" style={{ marginBottom: 24 }}>
-          <h3>لم تُنشئ أي مادة بعد</h3>
-          <Link href="/subjects" className="secondary-button">
-            أنشئ مادتك الأولى
-          </Link>
+      <section className={s.week} aria-labelledby="today-week-title">
+        <div className={s.weekHead}>
+          <h2 id="today-week-title">مراجعات الأسبوع القادم</h2>
+          {!forecastQuery.isLoading && weekTotal > 0 && (
+            <span>{weekTotal} بطاقة</span>
+          )}
         </div>
-      ) : (
-        <div className="library-grid" style={{ marginBottom: 24 }}>
-          {subjectsQuery.data.map(subject => (
-            <Link
-              key={subject.id}
-              href={`/subjects/${subject.id}`}
-              className="library-item"
-              style={{ display: "contents" }}
-            >
-              <div className="library-item-icon">
-                <BookOpen size={18} />
-              </div>
-              <div className="library-item-meta">
-                <strong>{subject.name}</strong>
-                <span>
-                  {TYPE_LABELS[subject.type] ?? subject.type} ·{" "}
-                  {subject.bookCount} كتاب
-                  {subject.examDate
-                    ? ` · امتحان ${formatDate(subject.examDate)}`
-                    : ""}
+        {forecastQuery.isLoading ? (
+          <span className={s.skeleton} aria-hidden="true" />
+        ) : weekTotal === 0 ? (
+          <p className={s.weekEmpty}>
+            لا توجد مراجعات مجدولة خلال الأيام السبعة القادمة.
+          </p>
+        ) : (
+          <ol className={s.days}>
+            {week.map(day => (
+              <li
+                key={day.key}
+                className={`${s.day}${day.today ? ` ${s.today}` : ""}`}
+                aria-label={`${day.name}: ${day.count} بطاقة`}
+              >
+                <span className={`${s.count}${day.count ? "" : ` ${s.none}`}`}>
+                  {day.count || "–"}
                 </span>
-              </div>
-            </Link>
-          ))}
-        </div>
-      )}
-
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
-          gap: 16,
-        }}
-      >
-        <div className="panel-card">
-          <div className="panel-heading">
-            <div>
-              <span className="section-kicker">المراجعة</span>
-              <h2>المستحق اليوم</h2>
-            </div>
-            <Layers3 size={20} className="heading-icon" />
-          </div>
-          {dueCount > 0 ? (
-            <>
-              <p>{dueCount} بطاقة بانتظار مراجعتك من ملفات الأسئلة وكتبي معًا.</p>
-              <Link
-                href="/review"
-                className="primary-button"
-                style={{ marginTop: 12, display: "inline-flex" }}
-              >
-                ابدأ المراجعة
-              </Link>
-            </>
-          ) : (
-            <p style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <CheckCircle2 size={16} /> لا توجد بطاقات مستحقة الآن.
-            </p>
-          )}
-        </div>
-
-        <div className="panel-card">
-          <div className="panel-heading">
-            <div>
-              <span className="section-kicker">كتبي</span>
-              <h2>تابع القراءة</h2>
-            </div>
-            <BookOpen size={20} className="heading-icon" />
-          </div>
-          {suggestedBook ? (
-            <>
-              <p>{suggestedBook.fileName}</p>
-              <Link
-                href={`/books/${suggestedBook.id}`}
-                className="secondary-button"
-                style={{ marginTop: 12, display: "inline-flex" }}
-              >
-                افتح الكتاب
-              </Link>
-            </>
-          ) : (
-            <p>ارفع كتابك الأول لتبدأ.</p>
-          )}
-        </div>
-
-        <div className="panel-card">
-          <div className="panel-heading">
-            <div>
-              <span className="section-kicker">خطة الدراسة</span>
-              <h2>الأسبوع القادم (كتبي)</h2>
-            </div>
-            <TrendingUp size={20} className="heading-icon" />
-          </div>
-          {forecastQuery.isLoading ? (
-            <p>جاري التحميل...</p>
-          ) : !forecastQuery.data?.length ? (
-            <p style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <CheckCircle2 size={16} /> لا توجد مراجعات مجدولة قريبًا.
-            </p>
-          ) : (
-            <div
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                gap: 6,
-                marginTop: 8,
-              }}
-            >
-              {forecastQuery.data.map(entry => (
-                <div
-                  key={entry.day}
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    fontSize: 13,
-                  }}
-                >
-                  <span>
-                    {WEEKDAY_LABELS_AR[new Date(entry.day).getUTCDay()]} ·{" "}
-                    {formatDate(entry.day)}
-                  </span>
-                  <b>{entry.count}</b>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {upcomingExam && (
-          <div className="panel-card">
-            <div className="panel-heading">
-              <div>
-                <span className="section-kicker">موعد</span>
-                <h2>موعد الاختبار القادم</h2>
-              </div>
-              <CalendarClock size={20} className="heading-icon" />
-            </div>
-            <p>
-              {upcomingExam.name} — {formatDate(upcomingExam.examDate!)} (بعد{" "}
-              {daysUntil(upcomingExam.examDate!)} يوم)
-            </p>
-          </div>
+                <span className={s.track} aria-hidden="true">
+                  <span
+                    className={s.bar}
+                    style={{
+                      height: day.count
+                        ? `${Math.max(8, (day.count / busiest) * 100)}%`
+                        : 0,
+                    }}
+                  />
+                </span>
+                <span className={s.dayName}>{day.name}</span>
+              </li>
+            ))}
+          </ol>
         )}
-      </div>
-    </section>
+      </section>
+
+      <details className={s.fold}>
+        <summary>
+          موادك
+          <span>
+            {state.subjectsLoading ? "" : `${subjects.length} `}
+            <ChevronLeft size={18} aria-hidden="true" />
+          </span>
+        </summary>
+        <div className={s.foldBody}>
+          {state.subjectsLoading ? (
+            <span className={s.skeleton} aria-hidden="true" />
+          ) : subjects.length === 0 ? (
+            <p className={s.emptyNote}>
+              لم تُنشئ أي مادة بعد.{" "}
+              <Link href="/subjects">أنشئ مادتك الأولى</Link>
+            </p>
+          ) : (
+            <ul className={s.rows}>
+              {subjects.map(subject => {
+                const days = subject.examDate
+                  ? daysUntil(subject.examDate)
+                  : null;
+                return (
+                  <li key={subject.id}>
+                    <Link href={`/subjects/${subject.id}`} className={s.row}>
+                      <span className={s.rowText}>
+                        <strong>
+                          <bdi>{subject.name}</bdi>
+                        </strong>
+                        <span>
+                          {TYPE_LABELS[subject.type] ?? subject.type} ·{" "}
+                          {subject.bookCount} كتاب
+                        </span>
+                      </span>
+                      {days !== null && days >= 0 && (
+                        <span className={s.examSoon}>{examLabel(days)}</span>
+                      )}
+                      <ChevronLeft size={18} aria-hidden="true" />
+                    </Link>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+      </details>
+
+      {state.books.length > 0 && (
+        <details className={s.fold}>
+          <summary>
+            كتبك
+            <span>
+              {state.books.length} <ChevronLeft size={18} aria-hidden="true" />
+            </span>
+          </summary>
+          <div className={s.foldBody}>
+            <ul className={s.rows}>
+              {state.books.slice(0, 8).map(book => (
+                <li key={book.id}>
+                  <Link href={`/books/${book.id}`} className={s.row}>
+                    <span className={s.rowText}>
+                      <strong>
+                        <bdi>{bookDisplayTitle(book.fileName)}</bdi>
+                      </strong>
+                      <span>
+                        {book.chapterCount === 0
+                          ? "نقرأ الصفحات…"
+                          : `${book.completeChapterCount} من ${book.chapterCount} أجزاء جاهزة`}
+                      </span>
+                    </span>
+                    <ChevronLeft size={18} aria-hidden="true" />
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </details>
+      )}
+    </div>
   );
 }
