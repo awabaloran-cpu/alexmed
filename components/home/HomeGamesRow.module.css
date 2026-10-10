@@ -1,0 +1,75 @@
+.wrap {
+  display: grid;
+  gap: 10px;
+  margin-top: 20px;
+}
+.head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.head h2 {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--nl-ink-3);
+  margin: 0;
+}
+.head a {
+  font-size: 12.5px;
+  color: var(--nl-ink-3);
+  text-decoration: none;
+}
+.row {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  padding-bottom: 6px;
+  scrollbar-width: none;
+  scroll-snap-type: x proximity;
+}
+.card {
+  flex: none;
+  width: 150px;
+  border-radius: 18px;
+  padding: 12px;
+  display: grid;
+  gap: 8px;
+  align-content: start;
+  background: var(--nl-sheet);
+  border: 1px solid var(--nl-rule);
+  color: var(--nl-ink);
+  text-decoration: none;
+  scroll-snap-align: start;
+  transition: transform 0.2s var(--nl-ease), border-color 0.2s;
+}
+.card:hover {
+  transform: translateY(-3px);
+  border-color: var(--nl-niro);
+}
+.card:focus-visible {
+  outline: 2px solid var(--nl-marker);
+  outline-offset: 2px;
+}
+.card strong {
+  font-size: 13.5px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+.art {
+  height: 64px;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  font-size: 28px;
+}
+.meta {
+  font-size: 11.5px;
+  color: var(--nl-ink-3);
+  line-height: 1.5;
+}
+@media (prefers-reduced-motion: reduce) {
+  .card {
+    transition: none;
+  }
+}

@@ -13,6 +13,7 @@ import {
   Plus,
   Sparkles,
   User,
+  Users,
 } from "lucide-react";
 import NiroAvatar from "@/components/niro/NiroAvatar";
 import { trpc } from "@/lib/trpc-client";
@@ -106,9 +107,20 @@ const ACCESS_CODE_CHOICE = {
   icon: KeyRound,
 } as const;
 
+// 👥 While Study Rooms is on (docs/study-rooms), "الغرف" takes the games'
+// place in the bar and the games move to a row at the end of the home page
+// (components/home/HomeGamesRow.tsx). Off: the bar is exactly as before.
+const ROOMS_ITEM = { href: "/rooms", label: "الغرف", icon: Users } as const;
+
 export default function BottomNav() {
   const pathname = usePathname();
   const [chooserOpen, setChooserOpen] = useState(false);
+  const roomsOn =
+    trpc.rooms.enabled.useQuery(undefined, { staleTime: Infinity, retry: false })
+      .data?.enabled === true;
+  const items = roomsOn
+    ? ITEMS.map(item => (item.href === "/games" ? ROOMS_ITEM : item))
+    : ITEMS;
   // 🔒 "كود من دكتورك" joins the choices only while Protected Doctor
   // Question Sets is switched on — asked for when the sheet opens, not on
   // every page load.
@@ -125,7 +137,7 @@ export default function BottomNav() {
   return (
     <>
       <nav className="student-bottom-nav" aria-label="التنقّل الرئيسي">
-        {ITEMS.map(item => {
+        {items.map(item => {
           const href =
             item.href === "/assistant"
               ? resolveAssistantHref(pathname)

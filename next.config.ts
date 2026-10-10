@@ -47,6 +47,18 @@ const nextConfig: NextConfig = {
           },
         ],
       },
+      // 👥 Study rooms (docs/study-rooms): the ONE place the microphone may
+      // be asked for — live voice between the students of a room, never
+      // recorded. Everywhere else it stays refused by the rule above.
+      {
+        source: "/rooms/:path*",
+        headers: [
+          {
+            key: "Permissions-Policy",
+            value: "camera=(), microphone=(self), geolocation=()",
+          },
+        ],
+      },
       // The Mini App's front door (app/tg) — the ONE page Telegram Web may
       // show in a frame (it displays Mini Apps that way; the phone and
       // desktop apps use their own web view and are not affected). The page
