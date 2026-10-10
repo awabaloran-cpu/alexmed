@@ -47,6 +47,77 @@ export async function createQuestionFileShell(
   return book;
 }
 
+// Is this id one of the student's own study books? (What a question file
+// that turned out to be a book has become.)
+export async function isOwnStudyBook(
+  userId: string,
+  bookId: string
+): Promise<boolean> {
+  const db = getDb();
+  if (!db || !/^[0-9a-f-]{36}$/i.test(bookId)) return false;
+  const [row] = await db
+    .select({ id: books.id })
+    .from(books)
+    .where(
+      and(
+        eq(books.id, bookId),
+        eq(books.userId, userId),
+        eq(books.sourceType, "study_book")
+      )
+    )
+    .limit(1);
+  return Boolean(row);
+}
+
+// A doctor's protected set? (lib/db-question-sets.ts) Its questions are the
+// doctor's to review, and it is never turned into anything else.
+export async function isProtectedQuestionSetBook(
+  bookId: string
+): Promise<boolean> {
+  const db = getDb();
+  if (!db) return false;
+  const [row] = await db
+    .select({ id: questionSets.id })
+    .from(questionSets)
+    .where(eq(questionSets.bookId, bookId))
+    .limit(1);
+  return Boolean(row);
+}
+
+// 📚 The file turned out to be a study book (lib/question-file-quality.ts's
+// isBookNotQuestions): the SAME row becomes a book that is still being
+// read — same id, same stored PDF, same folder, and whatever page text the
+// reader already staged (the book worker resumes from it instead of
+// reading or OCR-ing the file again). Nothing else of a question file
+// exists yet at that point; anything that does is removed.
+// False when the row is not a student's question file still being read.
+export async function convertQuestionFileToBook(
+  bookId: string
+): Promise<boolean> {
+  const db = requireDb();
+  return db.transaction(async tx => {
+    const converted = await tx
+      .update(books)
+      .set({ sourceType: "study_book", extractionError: null })
+      .where(
+        and(
+          eq(books.id, bookId),
+          eq(books.sourceType, "question_file"),
+          eq(books.status, "extracting"),
+          sql`not exists (
+            select 1 from "question_sets" s where s."bookId" = ${bookId}
+          )`
+        )
+      )
+      .returning({ id: books.id });
+    if (!converted.length) return false;
+    await tx
+      .delete(extractedQuestions)
+      .where(eq(extractedQuestions.bookId, bookId));
+    return true;
+  });
+}
+
 // No-ownership-filter lookup for the extraction queue worker — same
 // trust-boundary reasoning as lib/db-books.ts's getBookById.
 export async function getQuestionFileBookById(

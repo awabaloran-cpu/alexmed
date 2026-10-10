@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useParams } from "next/navigation";
-import { useRef } from "react";
+import { useParams, useRouter } from "next/navigation";
+import { useEffect, useRef } from "react";
 import {
   CircleAlert,
   ClipboardList,
@@ -46,6 +46,7 @@ const owed = (question: { aiStatus?: string | null }) =>
 // blended visually with a real extractedAnswerIndex.
 export default function QuestionFileDetailPage() {
   const params = useParams<{ bookId: string }>();
+  const router = useRouter();
   const utils = trpc.useUtils();
   // Where the page last asked for the questions ahead, and the stretch it
   // is now waiting on.
@@ -72,6 +73,12 @@ export default function QuestionFileDetailPage() {
       },
     }
   );
+  // 📚 The file turned out to be a study book and is being prepared as one
+  // (same id — lib/question-file-quality.ts): the student is taken to it.
+  const becameBook = fileQuery.error?.message === "converted_to_book";
+  useEffect(() => {
+    if (becameBook) router.replace(`/books/${params.bookId}`);
+  }, [becameBook, params.bookId, router]);
   const retryExtraction = trpc.questionFiles.retryExtraction.useMutation({
     onSuccess: () =>
       utils.questionFiles.get.invalidate({ bookId: params.bookId }),
@@ -115,6 +122,17 @@ export default function QuestionFileDetailPage() {
     );
   };
   const report = trpc.sharing.reportFile.useMutation();
+
+  if (becameBook) {
+    return (
+      <section className="upload-view">
+        <div className="empty-state">
+          <Loader2 size={28} className="spin" />
+          <h3>هذا الملف كتاب وليس ملف أسئلة — جاري فتحه ككتاب...</h3>
+        </div>
+      </section>
+    );
+  }
 
   if (fileQuery.isLoading || attempts.isLoading) {
     return (
@@ -169,9 +187,7 @@ export default function QuestionFileDetailPage() {
       {shared ? (
         <div className="inline-alert wide" role="note">
           <Users size={16} aria-hidden="true" />
-          <span>
-            شاركه معك {sharedBy ?? "زميلك"}. إجاباتك وتقدّمك خاصة بك.
-          </span>
+          <span>شاركه معك {sharedBy ?? "زميلك"}. إجاباتك وتقدّمك خاصة بك.</span>
           <button
             type="button"
             className="secondary-button"

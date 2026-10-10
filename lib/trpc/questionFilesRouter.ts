@@ -6,6 +6,7 @@ import {
 } from "../db-question-attempts";
 import {
   getQuestionFileForViewer,
+  isOwnStudyBook,
   listQuestionFilesForUser,
   listSharedQuestionFiles,
   retryQuestionFileExtraction,
@@ -19,6 +20,9 @@ import { protectedProcedure, router } from "./trpc";
 // concept from study books in the UI (their own "ملفات الأسئلة" section),
 // even though both live in the same books table (sourceType distinguishes
 // them) and share the ownership-checked getDb() conventions.
+// What questionFiles.get answers for a file that became a study book.
+export const CONVERTED_TO_BOOK = "converted_to_book";
+
 export const questionFilesRouter = router({
   list: protectedProcedure.query(async ({ ctx }) => {
     return listQuestionFilesForUser(ctx.user.id);
@@ -36,9 +40,13 @@ export const questionFilesRouter = router({
       // The owner, or a classmate the file was shared with.
       const result = await getQuestionFileForViewer(ctx.user.id, input.bookId);
       if (!result) {
+        // 📚 The file was a study book and is now one (same id): the page
+        // goes to it instead of saying "not found".
         throw new TRPCError({
           code: "NOT_FOUND",
-          message: "Question file not found",
+          message: (await isOwnStudyBook(ctx.user.id, input.bookId))
+            ? CONVERTED_TO_BOOK
+            : "Question file not found",
         });
       }
       return result;

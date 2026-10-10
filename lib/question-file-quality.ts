@@ -29,3 +29,32 @@ export function looksLikeNotes(counts: QuestionFileCounts): boolean {
   const perPage = pageCount > 0 ? answerable / pageCount : 1;
   return share < MIN_ANSWERABLE_SHARE && perPage < MIN_ANSWERABLE_PER_PAGE;
 }
+
+// 📚 Is this "question file" really a study book? Decided once the whole
+// file has been read, before any question is stored: the student uploaded a
+// book under "questions", and it is started as a book instead of being
+// answered with "no questions found" (or with a handful of stray lines
+// presented as questions).
+//
+// `blocks` = everything the reader took for a question, valid or held
+// back. A real question file — even an odd one the reader mostly holds
+// back, or a list of open questions without options — has a block on about
+// every page; a book has pages of prose and a few stray numbered lines.
+// Three pages of text at least: a one-page file says too little either way.
+const MIN_BOOK_TEXT_PAGES = 3;
+const MAX_BOOK_BLOCKS_PER_PAGE = 0.5;
+
+export function isBookNotQuestions(input: {
+  textPages: number;
+  blocks: number;
+  valid: number;
+  answerable: number;
+}): boolean {
+  const { textPages, blocks, valid, answerable } = input;
+  if (textPages < MIN_BOOK_TEXT_PAGES) return false;
+  if (blocks / textPages >= MAX_BOOK_BLOCKS_PER_PAGE) return false;
+  return (
+    valid === 0 ||
+    looksLikeNotes({ total: valid, answerable, pageCount: textPages })
+  );
+}

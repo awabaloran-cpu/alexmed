@@ -3,7 +3,9 @@ import {
   type BookPageText,
 } from "@/lib/db-books";
 import {
+  convertQuestionFileToBook,
   getQuestionFileBookById,
+  isProtectedQuestionSetBook,
   markQuestionFileComplete,
   markQuestionFileFailed,
   saveExtractedQuestions,
@@ -11,6 +13,7 @@ import {
 import { findMissingPageNumbers, normalizePageText } from "@/lib/pdf-cards";
 import { ocrPages, OCR_PAGES_PER_BATCH } from "@/lib/pdf-ocr";
 import { analyzeQuestionDocument } from "@/lib/question-extraction";
+import { isBookNotQuestions } from "@/lib/question-file-quality";
 import { claimBookExtraction, releaseBookExtraction } from "@/lib/queue/claim";
 import { storageGetSignedUrl } from "@/lib/storage";
 import { publishMessage } from "@/lib/queue/client";
@@ -211,8 +214,48 @@ export async function POST(request: Request) {
     // Document understanding first (lib/question-document.ts): cover /
     // front matter / answer key are never parsed as questions, and an
     // incomplete block is held back instead of saved.
-    const analysis = analyzeQuestionDocument(readable);
+    //
+    // A student's own file is taken as it is: a question the file gives
+    // with one option, or none, is kept and shown, not held back. A
+    // doctor's set keeps the strict reading — the doctor reviews those.
+    const protectedSet = await isProtectedQuestionSetBook(bookId);
+    const analysis = analyzeQuestionDocument(readable, {
+      acceptIncompleteOptions: !protectedSet,
+    });
     const questions = analysis.questions;
+
+    // 📚 A study book uploaded under "questions" is started as a book — the
+    // same row and stored file — instead of being refused or shown as a
+    // few stray lines. The file is handed back first, so the book worker
+    // never finds this run's lease still live.
+    if (
+      !protectedSet &&
+      isBookNotQuestions({
+        textPages: readable.length,
+        blocks: questions.length + analysis.needsReview.length,
+        valid: questions.length,
+        answerable: questions.filter(q => (q.options?.length ?? 0) >= 2).length,
+      })
+    ) {
+      await releaseBookExtraction(bookId);
+      if (await convertQuestionFileToBook(bookId)) {
+        console.warn(
+          JSON.stringify({
+            event: "question_file_converted_to_book",
+            bookId,
+            textPages: readable.length,
+            valid: questions.length,
+            heldBack: analysis.needsReview.length,
+          })
+        );
+        await publishMessage(
+          { type: "extract_book_job", bookId },
+          { flowControl: { key: `books-extract-${bookId}`, parallelism: 1 } }
+        );
+        return NextResponse.json({ bookId, status: "converted_to_book" });
+      }
+    }
+
     if (analysis.needsReview.length) {
       console.warn(
         JSON.stringify({

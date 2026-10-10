@@ -507,8 +507,14 @@ export async function runTelegramWatch(
   const context = await getUploadContext(uploadId);
   if (!context || context.upload.status !== "processing") return "skipped";
   const { upload } = context;
-  const kind = isDocumentKind(upload.kind) ? upload.kind : null;
   const book = upload.bookId ? await getBookById(upload.bookId) : null;
+  // What the file IS now: a "question file" that turned out to be a book
+  // is read as one (convertQuestionFileToBook keeps the same row).
+  const kind: DocumentKind | null = !isDocumentKind(upload.kind)
+    ? null
+    : book && book.sourceType !== "question_file"
+      ? "book"
+      : upload.kind;
 
   if (!book || !kind) {
     await markUploadFailed(uploadId, "file_missing");

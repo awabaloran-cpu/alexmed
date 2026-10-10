@@ -445,7 +445,8 @@ export function numberUnnumberedQuestions(stream: StreamLine[]): StreamLine[] {
         // line with no full stop — only an obviously wrapped line continues
         // the previous block. Without this the opening lines of the next
         // multi-line stem were swallowed as the previous answer's text.
-        const tight = kinds[p] === "option" || ANSWER_LABEL.test(stream[p].text);
+        const tight =
+          kinds[p] === "option" || ANSWER_LABEL.test(stream[p].text);
         const continues = tight
           ? lowercase || /[,\-–]\s*$/.test(prev)
           : lowercase || !SENTENCE_END.test(prev);
@@ -770,8 +771,26 @@ export function validateQuestion(
 
 // ── 6. The whole analysis ───────────────────────────────────────────────
 
+// What a question is short of when the FILE itself is: one option only,
+// letters that skip (A then C), or no options in a multiple-choice file.
+export const INCOMPLETE_OPTION_REASONS = [
+  "single_option",
+  "options_out_of_order",
+  "missing_options",
+] as const;
+
+export type QuestionDocumentOptions = {
+  // A student's own file: a question whose only fault is in
+  // INCOMPLETE_OPTION_REASONS is kept and shown as the file gives it,
+  // instead of being held back. Its stem still has to be whole, and
+  // anything glued into it (an answer, the next question) still holds it
+  // back. Off for a doctor's set, where the doctor reviews such blocks.
+  acceptIncompleteOptions?: boolean;
+};
+
 export function analyzeQuestionDocument(
-  rawPages: Page[]
+  rawPages: Page[],
+  documentOptions: QuestionDocumentOptions = {}
 ): QuestionDocumentAnalysis {
   const pages = [...rawPages].sort((a, b) => a.page - b.page);
   const cleaned = cleanPages(pages);
@@ -857,7 +876,14 @@ export function analyzeQuestionDocument(
   const needsReview: NeedsReviewQuestion[] = [];
   const all: StoredQuestionInput[] = [];
   for (const question of parsed) {
-    const reasons = validateQuestion(question, mcqDocument);
+    const found = validateQuestion(question, mcqDocument);
+    const incompleteOnly =
+      documentOptions.acceptIncompleteOptions === true &&
+      found.length > 0 &&
+      found.every(reason =>
+        (INCOMPLETE_OPTION_REASONS as readonly string[]).includes(reason)
+      );
+    const reasons = incompleteOnly ? [] : found;
     const notes = question.notes.length ? question.notes.join("\n") : "";
     const stored: ExtractedQuestionInput = {
       orderIndex: all.length,
@@ -876,7 +902,12 @@ export function analyzeQuestionDocument(
     all.push({
       ...stored,
       reviewStatus: reasons.length ? "needs_review" : null,
-      reviewReason: reasons.length ? reasons.join(",") : null,
+      // A kept incomplete question still says what it was short of.
+      reviewReason: reasons.length
+        ? reasons.join(",")
+        : incompleteOnly
+          ? `incomplete_options:${found.join("+")}`
+          : null,
     });
     if (reasons.length) {
       needsReview.push({
