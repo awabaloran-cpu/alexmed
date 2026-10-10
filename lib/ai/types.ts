@@ -87,9 +87,12 @@ export class AiAuthError extends Error {
 }
 
 export class AiInvalidRequestError extends Error {
-  constructor(message: string) {
+  // The HTTP status the gateway answered with, when there was one.
+  readonly status?: number;
+  constructor(message: string, status?: number) {
     super(message);
     this.name = "AiInvalidRequestError";
+    this.status = status;
   }
 }
 
@@ -181,6 +184,39 @@ export function transientAiRetryDelaySeconds(
   const backoff = 30 * 3 ** Math.max(0, attemptCount - 1);
   const asked = Math.ceil((aiRetryAfterMs(error) ?? 0) / 1000);
   return Math.min(Math.max(backoff, asked), 300);
+}
+
+// A failure of the SERVICE, not of the item that was sent: the account is
+// out of credit (402) or its key is refused, the provider is rate-limiting,
+// or every model's circuit is open. The next item would fail the same way,
+// and so would this one a second later — so a worker that gives each item
+// a few attempts must not spend one on it. Live, 2026-10-10: the gateway
+// answered 402 for an evening, and every question of every file uploaded
+// in that time used its three attempts and stayed without an explanation
+// after the credit came back.
+//
+// A timeout or a 5xx is NOT one: either can come from the item itself, and
+// keeps its bounded attempts.
+export function isAiServiceOutage(error: unknown): boolean {
+  const type = classifyAiError(error);
+  if (type === "auth" || type === "rate_limit" || type === "circuit_open") {
+    return true;
+  }
+  return error instanceof AiInvalidRequestError && error.status === 402;
+}
+
+// How long to stop for after the `waits`-th outage in a row: 1, 2, 4, 8
+// minutes, then every 15 — or longer if the failure asked for it. null when
+// the failure is not an outage.
+export const AI_OUTAGE_MAX_DELAY_SECONDS = 900;
+export function aiServiceOutageDelaySeconds(
+  error: unknown,
+  waits: number
+): number | null {
+  if (!isAiServiceOutage(error)) return null;
+  const backoff = 60 * 2 ** Math.min(Math.max(0, waits), 10);
+  const asked = Math.ceil((aiRetryAfterMs(error) ?? 0) / 1000);
+  return Math.min(Math.max(backoff, asked), AI_OUTAGE_MAX_DELAY_SECONDS);
 }
 
 export interface AiProvider {

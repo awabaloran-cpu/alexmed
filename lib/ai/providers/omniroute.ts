@@ -695,7 +695,11 @@ async function generateTextNow(
     } else if (type === "upstream") {
       fail(type, new AiUpstreamError(message), response.status);
     } else {
-      fail(type, new AiInvalidRequestError(message), response.status);
+      fail(
+        type,
+        new AiInvalidRequestError(message, response.status),
+        response.status
+      );
     }
     if (!isLastCandidate) {
       console.warn(

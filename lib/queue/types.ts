@@ -38,11 +38,14 @@ export type QueueMessage =
       from?: number;
       to?: number;
     }
+  // `waits`: how many times in a row this file's run has stopped for an AI
+  // service outage (app/api/books/generate-question-content).
   | {
       type: "generate_question_file_content";
       bookId: string;
       from?: number;
       to?: number;
+      waits?: number;
     }
   // Multimodal مِرآة — best-effort, additive background pass alongside
   // batch generation (see app/api/mirror/extract-images/route.ts).

@@ -11,6 +11,7 @@ vi.mock("@/lib/db-question-file-images", () => ({
   getNextPendingExtractedQuestion: vi.fn(),
   getQuestionsHeldBack: vi.fn(),
   markExtractedQuestionAiFailed: vi.fn(),
+  returnExtractedQuestionAttempt: vi.fn(),
   saveExtractedQuestionEnrichment: vi.fn(),
 }));
 vi.mock("@/lib/storage", () => ({
@@ -30,11 +31,18 @@ import {
   getNextPendingExtractedQuestion,
   getQuestionsHeldBack,
   markExtractedQuestionAiFailed,
+  returnExtractedQuestionAttempt,
   saveExtractedQuestionEnrichment,
 } from "@/lib/db-question-file-images";
 import { storageGetSignedUrl } from "@/lib/storage";
 import { invokeLLM } from "@/lib/llm";
-import { AiUpstreamError } from "@/lib/ai/types";
+import {
+  AiAuthError,
+  AiCircuitOpenError,
+  AiInvalidRequestError,
+  AiRateLimitError,
+  AiUpstreamError,
+} from "@/lib/ai/types";
 import { POST } from "./route";
 
 const mockVerify = verifyQStashRequest as unknown as ReturnType<typeof vi.fn>;
@@ -54,6 +62,8 @@ const mockHeldBack = getQuestionsHeldBack as unknown as ReturnType<
 const mockMarkFailed = markExtractedQuestionAiFailed as unknown as ReturnType<
   typeof vi.fn
 >;
+const mockReturnAttempt =
+  returnExtractedQuestionAttempt as unknown as ReturnType<typeof vi.fn>;
 const mockSaveEnrichment =
   saveExtractedQuestionEnrichment as unknown as ReturnType<typeof vi.fn>;
 const mockSignedUrl = storageGetSignedUrl as unknown as ReturnType<
@@ -98,6 +108,7 @@ describe("POST /api/books/generate-question-content", () => {
       .mockResolvedValue({ id: "b1", fileKey: "books/b1.pdf" });
     mockGetImages.mockReset().mockResolvedValue([]);
     mockNextQuestion.mockReset();
+    mockReturnAttempt.mockReset();
     mockHeldBack
       .mockReset()
       .mockResolvedValue({ waiting: 0, pagesStalled: false });
@@ -338,6 +349,97 @@ describe("POST /api/books/generate-question-content", () => {
         delay: 30,
       }
     );
+  });
+
+  // Every question is handed out and claimed; the AI answers `error`.
+  function everyQuestionFailsWith(error: Error) {
+    let handedOut = 0;
+    mockNextQuestion.mockImplementation(async () => ({
+      id: `q${handedOut++}`,
+      bookId: "b1",
+      questionText: "x",
+      options: null,
+      extractedAnswerText: null,
+      extractedAnswerIndex: null,
+    }));
+    mockClaim.mockImplementation(async (id: string) => ({
+      id,
+      bookId: "b1",
+      attemptCount: 1,
+    }));
+    mockInvoke.mockRejectedValue(error);
+  }
+
+  it.each([
+    ["no credit left (402)", new AiInvalidRequestError("status 402", 402)],
+    ["a refused key", new AiAuthError("unauthorized")],
+    ["rate limiting", new AiRateLimitError("rate limited upstream")],
+    ["every model's circuit open", new AiCircuitOpenError("all open", 5_000)],
+  ])(
+    "an outage of the AI service costs no question an attempt: %s",
+    async (_name, error) => {
+      everyQuestionFailsWith(error);
+
+      const response = await POST(request({ bookId: "b1" }));
+
+      expect((await response.json()).status).toBe("processing");
+      expect(mockMarkFailed).not.toHaveBeenCalled();
+      // Each question in hand goes back to waiting; no more are taken.
+      expect(mockReturnAttempt.mock.calls.length).toBe(
+        mockClaim.mock.calls.length
+      );
+      expect(mockClaim.mock.calls.length).toBeLessThanOrEqual(4);
+      expect(mockPublish).toHaveBeenCalledTimes(1);
+      expect(mockPublish).toHaveBeenCalledWith(
+        { type: "generate_question_file_content", bookId: "b1", waits: 1 },
+        {
+          flowControl: { key: "question-file-content-b1", parallelism: 1 },
+          delay: 60,
+        }
+      );
+    }
+  );
+
+  it("waits longer each time the outage lasts, then stops asking", async () => {
+    everyQuestionFailsWith(new AiInvalidRequestError("status 402", 402));
+
+    await POST(request({ bookId: "b1", waits: 3 }));
+    expect(mockPublish).toHaveBeenLastCalledWith(
+      { type: "generate_question_file_content", bookId: "b1", waits: 4 },
+      expect.objectContaining({ delay: 480 })
+    );
+    await POST(request({ bookId: "b1", waits: 9 }));
+    expect(mockPublish).toHaveBeenLastCalledWith(
+      { type: "generate_question_file_content", bookId: "b1", waits: 10 },
+      expect.objectContaining({ delay: 900 })
+    );
+
+    mockPublish.mockClear();
+    const response = await POST(request({ bookId: "b1", waits: 16 }));
+    expect((await response.json()).status).toBe("ai_service_down");
+    expect(mockPublish).not.toHaveBeenCalled();
+    // The questions are left waiting, never failed.
+    expect(mockMarkFailed).not.toHaveBeenCalled();
+  });
+
+  it("a wrong request (not an outage) still fails the question", async () => {
+    everyQuestionFailsWith(new AiInvalidRequestError("status 400", 400));
+    mockNextQuestion
+      .mockReset()
+      .mockResolvedValueOnce({
+        id: "q0",
+        bookId: "b1",
+        questionText: "x",
+        options: null,
+        extractedAnswerText: null,
+        extractedAnswerIndex: null,
+      })
+      .mockResolvedValue(null);
+
+    await POST(request({ bookId: "b1" }));
+
+    expect(mockMarkFailed).toHaveBeenCalledTimes(1);
+    expect(mockReturnAttempt).not.toHaveBeenCalled();
   });
 
   function translatedResponse(questionAr: string, optionsAr: string[]) {

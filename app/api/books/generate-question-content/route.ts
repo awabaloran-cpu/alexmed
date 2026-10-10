@@ -4,6 +4,7 @@ import {
   getNextPendingExtractedQuestion,
   getQuestionsHeldBack,
   markExtractedQuestionAiFailed,
+  returnExtractedQuestionAttempt,
   saveExtractedQuestionEnrichment,
 } from "@/lib/db-question-file-images";
 import {
@@ -20,7 +21,10 @@ import {
   type RequestedSpan,
 } from "@/lib/question-file-window";
 import { invokeLLM, DEFAULT_VISION_MODEL } from "@/lib/llm";
-import { transientAiRetryDelaySeconds } from "@/lib/ai/types";
+import {
+  aiServiceOutageDelaySeconds,
+  transientAiRetryDelaySeconds,
+} from "@/lib/ai/types";
 import { claimExtractedQuestion } from "@/lib/queue/claim";
 import { publishMessage } from "@/lib/queue/client";
 import { getQuestionExplainConcurrency } from "@/lib/queue/types";
@@ -51,6 +55,13 @@ import { NextResponse } from "next/server";
 const QUESTIONS_PER_INVOCATION = 24;
 // How long to wait before looking again for questions a page holds back.
 const HELD_BACK_RECHECK_SECONDS = 120;
+// An AI service outage (no credit, a refused key, rate limiting, every
+// model's circuit open) costs no question an attempt: the run stops and
+// looks again after 1, 2, 4, 8 minutes, then every 15 — this many times in
+// a row (about three hours). After that it stops asking; the questions
+// stay waiting, and the next student to reach them starts the run again
+// (lib/question-file-progress.ts).
+const MAX_OUTAGE_WAITS = 16;
 
 export async function POST(request: Request) {
   const rawBody = await request.text();
@@ -62,14 +73,19 @@ export async function POST(request: Request) {
 
   let bookId: string;
   let span: RequestedSpan | undefined;
+  let waits = 0;
   try {
     const body = JSON.parse(rawBody) as {
       bookId?: string;
       from?: unknown;
       to?: unknown;
+      waits?: unknown;
     };
     bookId = typeof body.bookId === "string" ? body.bookId : "";
     span = readRequestedSpan(body);
+    if (Number.isInteger(body.waits) && Number(body.waits) > 0) {
+      waits = Number(body.waits);
+    }
     if (!bookId) {
       return NextResponse.json({ error: "معرف الملف مفقود." }, { status: 200 });
     }
@@ -89,6 +105,8 @@ export async function POST(request: Request) {
   // Set when the AI service failed in a way that passes: no more questions
   // are taken, and the next run waits (see extract-question-images).
   let retryDelay: number | null = null;
+  // Set when that failure was an outage of the service itself.
+  let outage = false;
   try {
     const window = await getQuestionFileWindow(bookId, span);
     // Questions are taken one at a time, in file order (each pick reads the
@@ -197,6 +215,14 @@ export async function POST(request: Request) {
           `[QuestionFiles] Question ${candidate.id} AI enrichment failed`,
           questionError
         );
+        const outageDelay = aiServiceOutageDelaySeconds(questionError, waits);
+        if (outageDelay !== null) {
+          // Not this question's failure: it waits, with its attempts whole.
+          await returnExtractedQuestionAttempt(candidate.id);
+          outage = true;
+          retryDelay ??= outageDelay;
+          return;
+        }
         await markExtractedQuestionAiFailed(
           candidate.id,
           "تعذر توليد الشرح والكلمات المفتاحية لهذا السؤال."
@@ -218,9 +244,24 @@ export async function POST(request: Request) {
     );
 
     const remaining = await getNextPendingExtractedQuestion(bookId, window);
+    if (remaining && outage && waits >= MAX_OUTAGE_WAITS) {
+      console.error(
+        JSON.stringify({
+          event: "question_file_ai_outage_gave_up",
+          bookId,
+          waits,
+        })
+      );
+      return NextResponse.json({ bookId, status: "ai_service_down" });
+    }
     if (remaining) {
       await publishMessage(
-        { type: "generate_question_file_content", bookId, ...span },
+        {
+          type: "generate_question_file_content",
+          bookId,
+          ...span,
+          ...(outage ? { waits: waits + 1 } : {}),
+        },
         {
           flowControl: {
             key: `question-file-content-${bookId}`,

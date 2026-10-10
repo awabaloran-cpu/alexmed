@@ -399,6 +399,29 @@ export async function markExtractedQuestionAiFailed(
     .where(eq(extractedQuestions.id, questionId));
 }
 
+// The AI service itself was down (lib/ai/types.ts's isAiServiceOutage): the
+// question goes back to waiting and the attempt it was claimed with is
+// given back — an outage is not one of its three tries.
+export async function returnExtractedQuestionAttempt(
+  questionId: string
+): Promise<void> {
+  const db = getDb();
+  if (!db) throw new Error("Database not available");
+  await db
+    .update(extractedQuestions)
+    .set({
+      aiStatus: "pending",
+      aiAttemptCount: sql`greatest(${extractedQuestions.aiAttemptCount} - 1, 0)`,
+      aiError: null,
+    })
+    .where(
+      and(
+        eq(extractedQuestions.id, questionId),
+        eq(extractedQuestions.aiStatus, "processing")
+      )
+    );
+}
+
 export type QuestionFileCoverage = {
   imagePagesTotal: number;
   imagePagesProcessed: number;

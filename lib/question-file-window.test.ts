@@ -311,11 +311,41 @@ describe("a long question file is prepared as it is studied", () => {
     expect(
       await prepareQuestionsFrom(SET_BOOK, await questionId(SET_BOOK, 3))
     ).toBe(false);
-    expect(
-      await prepareQuestionsFrom(SHORT_BOOK, await questionId(SHORT_BOOK, 3))
-    ).toBe(false);
     expect(await prepareQuestionsFrom(BOOK, DOCTOR)).toBe(false);
     expect(holder.published).toHaveLength(0);
+
+    // A short file is explained whole by its own run. With questions still
+    // owed and none being explained, that run has stopped (a long AI
+    // outage, a restart): it is started again — whole, never a span.
+    const short = await questionId(SHORT_BOOK, 3);
+    expect(await prepareQuestionsFrom(SHORT_BOOK, short)).toBe(true);
+    expect(holder.published).toHaveLength(1);
+    expect(holder.published[0].message).toEqual({
+      type: "generate_question_file_content",
+      bookId: SHORT_BOOK,
+    });
+    expect(holder.published[0].options).toMatchObject({
+      flowControl: {
+        key: `question-file-content-${SHORT_BOOK}`,
+        parallelism: 1,
+      },
+      deduplicationId: expect.stringMatching(
+        new RegExp(`^qf-resume-${SHORT_BOOK}-\\d+$`)
+      ),
+    });
+
+    // While its run is explaining a question, nothing more is started.
+    holder.published.length = 0;
+    await test.client.query(
+      `UPDATE extracted_questions SET "aiStatus" = 'processing' WHERE id = $1`,
+      [short]
+    );
+    expect(await prepareQuestionsFrom(SHORT_BOOK, short)).toBe(true);
+    expect(holder.published).toHaveLength(0);
+    await test.client.query(
+      `UPDATE extracted_questions SET "aiStatus" = 'pending' WHERE id = $1`,
+      [short]
+    );
     // A set is handed out whole, exactly as before.
     const page = await getNextPendingQuestionFilePage(
       SET_BOOK,
