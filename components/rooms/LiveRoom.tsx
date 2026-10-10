@@ -2,13 +2,14 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   Ban,
   Crown,
   Flag,
   LogOut,
+  MessageCircle,
   MicOff,
   Settings,
   ShieldCheck,
@@ -19,7 +20,10 @@ import { REPORT_REASONS, type ReportReason } from "@/lib/study-rooms/config";
 import type { RoomsKey } from "@/lib/study-rooms/i18n";
 import { trpc } from "@/lib/trpc-client";
 import { Avatar, Sheet, SubjectLine } from "./parts";
+import RoomChat, { useRoomChat } from "./RoomChat";
 import { InviteBox } from "./RoomCreate";
+import RoomDesk from "./RoomDesk";
+import RoomFilePicker from "./RoomFilePicker";
 import { useRooms } from "./RoomsProvider";
 import s from "./rooms.module.css";
 
@@ -50,9 +54,25 @@ export default function LiveRoom({ roomId }: { roomId: string }) {
     | { kind: "settings" }
     | { kind: "invite"; code: string }
     | { kind: "end" }
+    | { kind: "file" }
     | null
   >(null);
   const [notice, setNotice] = useState<string | null>(null);
+  // The chat sits beside the file on a wide screen, and opens over it on a
+  // phone.
+  const [chatOpen, setChatOpen] = useState(false);
+  const [wide, setWide] = useState(false);
+  useEffect(() => {
+    const query = window.matchMedia("(min-width: 960px)");
+    const sync = () => setWide(query.matches);
+    sync();
+    query.addEventListener("change", sync);
+    return () => query.removeEventListener("change", sync);
+  }, []);
+  const [myPage, setMyPage] = useState<number | null>(null);
+  const [jump, setJump] = useState<{ page: number } | null>(null);
+  const onPage = useCallback((page: number) => setMyPage(page), []);
+  const chat = useRoomChat(roomId, state.data?.room.seq ?? 0, wide || chatOpen);
 
   const leave = trpc.rooms.leave.useMutation({
     onSettled: () => router.replace("/rooms"),
@@ -223,8 +243,32 @@ export default function LiveRoom({ roomId }: { roomId: string }) {
         </AnimatePresence>
       </div>
 
-      <div className={s.desk}>
-        <p>{me.can.edit_room ? t("live.noFileHost") : t("live.noFile")}</p>
+      <div className={s.work}>
+        <RoomDesk
+          roomId={roomId}
+          bookId={room.bookId}
+          sharedPage={room.sharedPage}
+          canLead={me.can.lead_page}
+          canMoveFreely={me.can.free_nav}
+          canChoose={me.can.edit_room}
+          onChoose={() => setSheet({ kind: "file" })}
+          onPage={onPage}
+          jump={jump}
+        />
+        {wide ? (
+          <aside className={s.side} aria-label={t("chat.title")}>
+            <h2>{t("live.chat")}</h2>
+            <RoomChat
+              roomId={roomId}
+              chat={chat}
+              myUserId={me.userId}
+              page={room.bookId ? myPage : null}
+              canChat={me.can.chat}
+              canDeleteAny={me.can.delete_any_message}
+              onGoToPage={page => setJump({ page })}
+            />
+          </aside>
+        ) : null}
       </div>
 
       {mutationError ? (
@@ -234,6 +278,23 @@ export default function LiveRoom({ roomId }: { roomId: string }) {
       ) : null}
 
       <div className={s.dock}>
+        {wide ? null : (
+          <button
+            type="button"
+            className={s.btn}
+            aria-label={
+              chat.unread
+                ? t("live.chatUnread", { n: chat.unread })
+                : t("live.chat")
+            }
+            onClick={() => setChatOpen(true)}
+          >
+            <MessageCircle size={17} aria-hidden="true" /> {t("live.chat")}
+            {chat.unread ? (
+              <span className={s.badge}>{chat.unread}</span>
+            ) : null}
+          </button>
+        )}
         {room.visibility === "private" && me.can.invite ? (
           <button
             type="button"
@@ -269,6 +330,31 @@ export default function LiveRoom({ roomId }: { roomId: string }) {
           <LogOut size={17} aria-hidden="true" /> {t("live.leave")}
         </button>
       </div>
+
+      {!wide && chatOpen ? (
+        <Sheet title={t("chat.title")} onClose={() => setChatOpen(false)}>
+          <RoomChat
+            roomId={roomId}
+            chat={chat}
+            myUserId={me.userId}
+            page={room.bookId ? myPage : null}
+            canChat={me.can.chat}
+            canDeleteAny={me.can.delete_any_message}
+            onGoToPage={page => {
+              setJump({ page });
+              setChatOpen(false);
+            }}
+          />
+        </Sheet>
+      ) : null}
+
+      {sheet?.kind === "file" ? (
+        <RoomFilePicker
+          roomId={roomId}
+          currentBookId={room.bookId}
+          onClose={close}
+        />
+      ) : null}
 
       {sheet?.kind === "member" && target ? (
         <Sheet title={target.name ?? ""} onClose={close}>
