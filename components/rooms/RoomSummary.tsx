@@ -40,8 +40,7 @@ export default function RoomSummary({ roomId }: { roomId: string }) {
     );
   }
 
-  const { room, minutes, myMinutes, participants, file, markedPages } =
-    summary.data;
+  const { room, myMinutes, participants, file, markedPages } = summary.data;
   const { quizzes, messages } = summary.data;
   const marks = markedPages.reduce((sum, row) => sum + row.marks, 0);
   const fileHref = file?.bookId
@@ -64,10 +63,7 @@ export default function RoomSummary({ roomId }: { roomId: string }) {
           <dt>
             <Clock size={15} aria-hidden="true" /> {t("sum.duration")}
           </dt>
-          <dd>{t("sum.minutes", { n: minutes })}</dd>
-          {myMinutes !== minutes ? (
-            <small>{t("sum.myMinutes", { n: myMinutes })}</small>
-          ) : null}
+          <dd>{t("sum.minutes", { n: myMinutes })}</dd>
         </div>
         <div>
           <dt>

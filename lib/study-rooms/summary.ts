@@ -241,6 +241,7 @@ export async function roomHistory(viewer: Viewer) {
       subjectAr: studySubjects.nameAr,
       subjectText: studyRooms.subjectText,
       leftAt: studyRoomMembers.leftAt,
+      joinedAt: studyRoomMembers.joinedAt,
       people: sql<number>`(
         select count(*)::int from "study_room_members" m
         where m."roomId" = "study_rooms"."id" and m."state" in ('joined', 'left')
@@ -271,7 +272,9 @@ export async function roomHistory(viewer: Viewer) {
       subject: row.subjectEn ?? row.subjectText ?? null,
       subjectAr: row.subjectAr ?? null,
       when: row.endedAt ?? row.leftAt ?? row.lastActiveAt,
-      minutes: minutesBetween(row.createdAt, until),
+      // The student's own (last) stay. A room can stay open for days with
+      // nobody in it, so its age says nothing about how long was studied.
+      minutes: minutesBetween(row.joinedAt, row.leftAt ?? until),
       people: Number(row.people),
     };
   });

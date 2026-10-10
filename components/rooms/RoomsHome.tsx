@@ -274,7 +274,16 @@ export default function RoomsHome() {
                     {" · "}
                     {t("rooms.historyLine", {
                       minutes: past.minutes,
-                      people: past.people,
+                      people: t(
+                        past.people === 1
+                          ? "rooms.people.one"
+                          : past.people === 2
+                            ? "rooms.people.two"
+                            : past.people <= 10
+                              ? "rooms.people.few"
+                              : "rooms.people.many",
+                        { n: past.people }
+                      ),
                     })}
                   </span>
                 </Link>
