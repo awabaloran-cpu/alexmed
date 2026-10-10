@@ -69,7 +69,7 @@ export function QuizStartSheet({
   roomId: string;
   onClose: () => void;
 }) {
-  const { t, tError } = useRooms();
+  const { t, tError, language } = useRooms();
   const utils = trpc.useUtils();
   const files = trpc.questionFiles.list.useQuery();
   const ready = (files.data ?? []).filter(
@@ -111,6 +111,13 @@ export function QuizStartSheet({
                 {bookDisplayTitle(file.fileName)}
                 <small>
                   {t("quiz.questionCount", { n: file.questionCount })}
+                  {" · "}
+                  {t("quiz.uploaded", {
+                    date: new Intl.DateTimeFormat(
+                      language === "ar" ? "ar-EG-u-nu-latn" : "en",
+                      { day: "numeric", month: "short" }
+                    ).format(new Date(file.createdAt)),
+                  })}
                 </small>
               </span>
             </button>

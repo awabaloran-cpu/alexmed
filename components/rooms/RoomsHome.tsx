@@ -132,13 +132,14 @@ const Skeletons = ({ n }: { n: number }) => (
 // their live counts, then "live now" in two rows. A minor: their section
 // and their own private rooms — no discovery at all.
 export default function RoomsHome() {
-  const { t, viewer } = useRooms();
+  const { t, viewer, language } = useRooms();
   const adult = viewer.audience === "adult";
   const filters = useRoomFilters();
   const sections = trpc.rooms.sections.useQuery(undefined, {
     refetchInterval: 30_000,
   });
   const mine = trpc.rooms.mine.useQuery();
+  const history = trpc.rooms.history.useQuery();
   const live = trpc.rooms.explore.useQuery(filters.input, {
     enabled: adult,
     refetchInterval: 20_000,
@@ -256,6 +257,32 @@ export default function RoomsHome() {
           </Link>
         </div>
       )}
+
+      {history.data?.length ? (
+        <>
+          <p className={s.sub}>{t("rooms.history")}</p>
+          <ul className={s.historyList}>
+            {history.data.map(past => (
+              <li key={past.id}>
+                <Link href={`/rooms/${past.id}/summary`}>
+                  <b dir="auto">{past.title}</b>
+                  <span>
+                    {new Intl.DateTimeFormat(
+                      language === "ar" ? "ar-EG-u-nu-latn" : "en",
+                      { day: "numeric", month: "short" }
+                    ).format(new Date(past.when))}
+                    {" · "}
+                    {t("rooms.historyLine", {
+                      minutes: past.minutes,
+                      people: past.people,
+                    })}
+                  </span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </>
+      ) : null}
     </>
   );
 }

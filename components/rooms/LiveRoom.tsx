@@ -84,10 +84,11 @@ export default function LiveRoom({ roomId }: { roomId: string }) {
   const quiz = useRoomQuiz(roomId, state.data?.room.seq ?? 0);
 
   const leave = trpc.rooms.leave.useMutation({
-    onSettled: () => router.replace("/rooms"),
+    onSuccess: () => router.replace(`/rooms/${roomId}/summary`),
+    onError: () => router.replace("/rooms"),
   });
   const end = trpc.rooms.end.useMutation({
-    onSuccess: () => router.replace("/rooms"),
+    onSuccess: () => router.replace(`/rooms/${roomId}/summary`),
   });
   const setMember = trpc.rooms.setMember.useMutation({ onSuccess: refresh });
   const remove = trpc.rooms.remove.useMutation({ onSuccess: refresh });
@@ -158,6 +159,14 @@ export default function LiveRoom({ roomId }: { roomId: string }) {
             {t("rooms.retry")}
           </button>
         )}
+        {state.error?.message === "room_ended" ? (
+          <Link
+            className={`${s.btn} ${s.primary}`}
+            href={`/rooms/${roomId}/summary`}
+          >
+            {t("live.seeSummary")}
+          </Link>
+        ) : null}
         <Link className={s.btn} href="/rooms">
           {t("lobby.toRooms")}
         </Link>

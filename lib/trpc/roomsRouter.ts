@@ -49,6 +49,7 @@ import {
   unbanFromRooms,
 } from "../study-rooms/moderation";
 import { adminSetProfile, getViewer, setProfile } from "../study-rooms/profile";
+import { roomHistory, roomSummary } from "../study-rooms/summary";
 import {
   createRoom,
   createRoomForBook,
@@ -483,6 +484,18 @@ export const roomsRouter = router({
     .query(({ ctx, input }) =>
       guard(async () => quizResults(await getViewer(ctx.user.id), input.quizId))
     ),
+
+  // ── After the sitting ──
+  // For anyone who took part, during the room and after it has ended.
+  summary: roomsProcedure
+    .input(z.object({ roomId: uuid }))
+    .query(({ ctx, input }) =>
+      guard(async () => roomSummary(await getViewer(ctx.user.id), input.roomId))
+    ),
+
+  history: roomsProcedure.query(({ ctx }) =>
+    guard(async () => roomHistory(await getViewer(ctx.user.id)))
+  ),
 
   // ── Admin ──
   adminReports: roomsAdminProcedure

@@ -1517,3 +1517,125 @@
   color: var(--ink);
   font-size: 0.88rem;
 }
+
+/* ── after a sitting ── */
+.summary {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+.summaryHead {
+  display: grid;
+  gap: 2px;
+}
+.summaryHead h1 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 1.4rem;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+.figures {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 8px;
+  margin: 0;
+}
+.figures > div {
+  display: grid;
+  gap: 2px;
+  padding: 12px;
+  border: 1px solid var(--rule);
+  border-radius: 14px;
+  background: var(--sheet);
+}
+.figures dt {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--ink2);
+  font-size: 0.82rem;
+}
+.figures dd {
+  margin: 0;
+  color: var(--ink);
+  font-size: 1.25rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.figures small {
+  color: var(--ink3);
+  font-size: 0.78rem;
+}
+.summaryBlock {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid var(--rule);
+  border-radius: 16px;
+  background: var(--sheet);
+  color: var(--ink);
+}
+.summaryBlock h2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+}
+.summaryBlock p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.names {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.names span {
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--raised);
+  font-size: 0.88rem;
+}
+.summaryActions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.historyList {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.historyList a {
+  display: grid;
+  gap: 2px;
+  min-height: 52px;
+  padding: 10px 12px;
+  border: 1px solid var(--rule);
+  border-radius: 14px;
+  background: var(--sheet);
+  color: var(--ink);
+  text-decoration: none;
+}
+.historyList a:focus-visible {
+  outline: 2px solid var(--niro);
+  outline-offset: 2px;
+}
+.historyList b {
+  overflow: hidden;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: start;
+}
+.historyList span {
+  color: var(--ink2);
+  font-size: 0.84rem;
+  font-variant-numeric: tabular-nums;
+}
