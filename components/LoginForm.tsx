@@ -10,9 +10,8 @@ import { useState } from "react";
 import NiroAuthScene from "@/components/niro/NiroAuthScene";
 import { GoogleIcon, PasswordInput } from "@/components/AuthFields";
 import { niroLine } from "@/lib/niro";
+import { loginErrorFromQuery, SUSPENDED_MESSAGE_AR } from "@/lib/login-errors";
 
-const SUSPENDED_MESSAGE_AR =
-  "حسابك معلّق حاليًا. تواصل مع الدعم إذا كنت تظن أن هذا خطأ.";
 const TOO_MANY_ATTEMPTS_MESSAGE_AR =
   "محاولات دخول كثيرة على هذا البريد. حاول بعد شوي.";
 
@@ -27,12 +26,11 @@ export default function LoginForm({
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   // The Google OAuth path (unlike Credentials' redirect:false) does a full
-  // redirect back here with ?error=... on failure — e.g. after
-  // lib/auth.ts's signIn callback rejects a suspended account.
-  const [error, setError] = useState(
-    searchParams.get("error") === "account_suspended"
-      ? SUSPENDED_MESSAGE_AR
-      : ""
+  // redirect back here with ?error=... on failure — a suspended account, an
+  // email that already has a password account, a cancelled sign-in. Every
+  // one of them is said (lib/login-errors.ts), never a silent form.
+  const [error, setError] = useState(() =>
+    loginErrorFromQuery(searchParams.get("error"))
   );
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
