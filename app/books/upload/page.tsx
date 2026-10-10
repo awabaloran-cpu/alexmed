@@ -4,6 +4,8 @@ import { useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   BookOpen,
+  Check,
+  ChevronLeft,
   CircleAlert,
   ClipboardList,
   FileText,
@@ -20,6 +22,7 @@ import {
   errorFromResponseBody,
 } from "@/components/billing/UpgradePrompt";
 import { putFileWithProgress } from "@/lib/upload-client";
+import s from "./upload.module.css";
 
 type Stage = "idle" | "uploading" | "planning";
 type FileKind = "study_book" | "question_file";
@@ -243,6 +246,19 @@ export default function BookUploadPage() {
             </div>
           )}
 
+          {!file && stage === "idle" && (
+            <ul className={s.facts}>
+              <li>
+                <Check size={15} aria-hidden="true" />
+                نقرأ الصفحات المصوّرة (سكانر) أيضًا.
+              </li>
+              <li>
+                <Check size={15} aria-hidden="true" />
+                تبدأ الدراسة من أول النتائج والباقي يكتمل في الخلفية.
+              </li>
+            </ul>
+          )}
+
           {file && stage === "idle" && (
             <div className="selected-file">
               <div className="selected-file-icon">
@@ -271,53 +287,69 @@ export default function BookUploadPage() {
               the subject/profile pipeline entirely and goes to the separate
               extraction pipeline instead. */}
           {file && stage === "idle" && !fileKind && (
-            <div style={{ marginTop: 14 }}>
-              <span style={{ display: "block", fontSize: 12, marginBottom: 8 }}>
-                ما نوع هذا الملف؟
-              </span>
-              <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                <button
-                  type="button"
-                  className="secondary-button"
-                  style={{
-                    flex: "1 1 160px",
-                    flexDirection: "column",
-                    minHeight: 64,
-                  }}
-                  onClick={() => setFileKind("study_book")}
-                >
-                  <BookOpen size={20} />
-                  <span>كتاب دراسي</span>
-                </button>
-                <button
-                  type="button"
-                  className="secondary-button"
-                  style={{
-                    flex: "1 1 160px",
-                    flexDirection: "column",
-                    minHeight: 64,
-                  }}
-                  onClick={() => setFileKind("question_file")}
-                >
-                  <ClipboardList size={20} />
-                  <span>ملف أسئلة</span>
-                </button>
-              </div>
+            <fieldset className={s.kinds}>
+              <legend>ما نوع هذا الملف؟</legend>
+              <button
+                type="button"
+                className={s.kind}
+                onClick={() => setFileKind("study_book")}
+              >
+                <BookOpen size={20} aria-hidden="true" />
+                <strong>كتاب دراسي</strong>
+                <span>ملخص، بطاقات، اختبار وخريطة ذهنية لكل فصل.</span>
+              </button>
+              <button
+                type="button"
+                className={s.kind}
+                onClick={() => setFileKind("question_file")}
+              >
+                <ClipboardList size={20} aria-hidden="true" />
+                <strong>ملف أسئلة</strong>
+                <span>أسئلة الملف نفسها مع شرح عربي لكل سؤال.</span>
+              </button>
+            </fieldset>
+          )}
+
+          {file && stage === "idle" && fileKind && (
+            <div className={s.chosen}>
+              {fileKind === "study_book" ? (
+                <BookOpen size={18} aria-hidden="true" />
+              ) : (
+                <ClipboardList size={18} aria-hidden="true" />
+              )}
+              <p>
+                <strong>
+                  {fileKind === "study_book" ? "كتاب دراسي" : "ملف أسئلة"}
+                </strong>
+                <span>
+                  {fileKind === "study_book"
+                    ? "سنجهّز لكل فصل: ملخصًا، بطاقات، اختبارًا وخريطة ذهنية."
+                    : "نستخرج الأسئلة الموجودة فعليًا في الملف ونشرحها — لا نولّد أسئلة جديدة."}
+                </span>
+              </p>
+              <button type="button" onClick={() => setFileKind(null)}>
+                تغيير
+              </button>
+            </div>
+          )}
+
+          {file && stage === "idle" && fileKind && (
+            <div className={s.field}>
+              <SubjectPicker value={subjectId} onChange={setSubjectId} />
             </div>
           )}
 
           {file && stage === "idle" && fileKind === "study_book" && (
-            <div style={{ marginTop: 14 }}>
-              <label>
-                <span
-                  style={{ display: "block", fontSize: 12, marginBottom: 4 }}
-                >
-                  نوع المادة
-                </span>
+            <details className={s.optional}>
+              <summary>
+                إعدادات اختيارية
+                <ChevronLeft size={16} aria-hidden="true" />
+              </summary>
+              <label className={s.optionalField}>
+                <span>نوع المادة</span>
                 <select
                   value={profile}
                   onChange={event => setProfile(event.target.value)}
-                  style={{ width: "100%" }}
                 >
                   {Object.entries(PROFILE_LABELS).map(([value, label]) => (
                     <option key={value} value={value}>
@@ -325,22 +357,11 @@ export default function BookUploadPage() {
                     </option>
                   ))}
                 </select>
+                <small>
+                  يضبط أسلوب الشرح والأسئلة. اتركه «عام» إن لم تكن متأكدًا.
+                </small>
               </label>
-            </div>
-          )}
-
-          {file && stage === "idle" && fileKind === "question_file" && (
-            <div className="inline-alert" style={{ marginTop: 14 }}>
-              <ClipboardList size={16} />
-              سيتم استخراج الأسئلة الموجودة فعليًا في الملف — لن يتم توليد أسئلة
-              جديدة بالذكاء الاصطناعي.
-            </div>
-          )}
-
-          {file && stage === "idle" && fileKind && (
-            <div style={{ marginTop: 14 }}>
-              <SubjectPicker value={subjectId} onChange={setSubjectId} />
-            </div>
+            </details>
           )}
 
           {error &&
@@ -418,13 +439,13 @@ export default function BookUploadPage() {
               caused a real student's upload to silently die after they
               waited ~10 minutes with no progress feedback and left. */}
           {stage === "uploading" && (
-            <p style={{ marginTop: 12, fontSize: 11, color: "#8a9493" }}>
+            <p className={s.note}>
               لا تسكّر الصفحة أو تنتقل لصفحة ثانية أثناء الرفع — الملف عم ينتقل
               مباشرة من متصفحك، وأي تنقّل بيلغي الرفع.
             </p>
           )}
           {stage === "planning" && (
-            <p style={{ marginTop: 12, fontSize: 11, color: "#8a9493" }}>
+            <p className={s.note}>
               الملف وصل للتخزين — تقدر تسكّر الصفحة وترجع بعدين، مش هنفقد أي
               تقدم من هون وطالع.
             </p>

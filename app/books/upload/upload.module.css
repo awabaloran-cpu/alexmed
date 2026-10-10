@@ -1,0 +1,217 @@
+/* The upload screen's own pieces (app/books/upload/page.tsx): what the
+   upload gives, the two kinds of file, and the optional settings. Tokens
+   from app/base.css. */
+.facts {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 12px 0 0;
+  padding: 0;
+  color: var(--nl-ink-2);
+  font-size: 0.86rem;
+  list-style: none;
+}
+
+.facts li {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.facts svg {
+  flex: none;
+  margin-top: 3px;
+  color: var(--nl-correct);
+}
+
+.kinds {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 10px;
+  min-width: 0;
+  margin: 16px 0 0;
+  padding: 0;
+  border: 0;
+}
+
+.kinds legend {
+  margin-bottom: 8px;
+  padding: 0;
+  color: var(--nl-ink);
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.kind {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  min-height: 96px;
+  padding: 14px;
+  border: 1px solid var(--nl-rule-strong);
+  border-radius: var(--nl-r-md);
+  background: var(--nl-sheet);
+  color: var(--nl-ink);
+  text-align: start;
+  cursor: pointer;
+  transition:
+    border-color 0.15s var(--nl-ease),
+    background 0.15s var(--nl-ease);
+}
+
+.kind:hover {
+  border-color: var(--nl-niro);
+  background: var(--nl-niro-soft);
+}
+
+.kind:focus-visible {
+  outline: 2px solid var(--nl-niro);
+  outline-offset: 2px;
+}
+
+.kind svg {
+  color: var(--nl-niro);
+}
+
+.kind strong {
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.kind span {
+  color: var(--nl-ink-3);
+  font-size: 0.84rem;
+  line-height: 1.5;
+}
+
+.chosen {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-top: 14px;
+  padding: 12px 14px;
+  border-radius: var(--nl-r-md);
+  background: var(--nl-niro-soft);
+  color: var(--nl-ink);
+}
+
+.chosen > svg {
+  flex: none;
+  margin-top: 3px;
+  color: var(--nl-niro);
+}
+
+.chosen p {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  margin: 0;
+}
+
+.chosen strong {
+  font-weight: 600;
+}
+
+.chosen span {
+  color: var(--nl-ink-2);
+  font-size: 0.86rem;
+  line-height: 1.55;
+}
+
+.chosen button {
+  flex: none;
+  min-height: 44px;
+  margin-block: -8px;
+  padding: 0 8px;
+  border: 0;
+  background: none;
+  color: var(--nl-niro-deep);
+  font-size: 0.86rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.chosen button:focus-visible {
+  outline: 2px solid var(--nl-niro);
+  outline-offset: 2px;
+  border-radius: var(--nl-r-sm);
+}
+
+.field {
+  margin-top: 14px;
+}
+
+.optional {
+  margin-top: 12px;
+  border-top: 1px solid var(--nl-rule);
+}
+
+.optional > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 44px;
+  color: var(--nl-ink-2);
+  font-size: 0.9rem;
+  cursor: pointer;
+  list-style: none;
+}
+
+.optional > summary::-webkit-details-marker {
+  display: none;
+}
+
+.optional > summary:focus-visible {
+  outline: 2px solid var(--nl-niro);
+  outline-offset: 2px;
+  border-radius: var(--nl-r-sm);
+}
+
+.optional > summary svg {
+  color: var(--nl-ink-3);
+  transition: transform 0.18s var(--nl-ease);
+}
+
+.optional[open] > summary svg {
+  transform: rotate(-90deg);
+}
+
+.optionalField {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-bottom: 8px;
+}
+
+.optionalField > span {
+  color: var(--nl-ink);
+  font-size: 0.86rem;
+  font-weight: 600;
+}
+
+.optionalField select {
+  width: 100%;
+  min-height: 44px;
+}
+
+.optionalField small {
+  color: var(--nl-ink-3);
+  font-size: 0.8rem;
+}
+
+.note {
+  margin: 12px 0 0;
+  color: var(--nl-ink-3);
+  font-size: 0.8rem;
+  line-height: 1.6;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kind,
+  .optional > summary svg {
+    transition: none;
+  }
+}
