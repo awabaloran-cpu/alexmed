@@ -1,0 +1,39 @@
+{
+  "channels": [
+    { "slug": "ar-niro-studio", "language": "ar", "name": "استوديو نيرو", "art": "general", "color": "#2440c7", "verified": true, "description": "اختبارات خفيفة في المعلومات العامة والرياضة يكتبها فريق NiroLearn، مناسبة لدقائق الاستراحة بين جلسات المذاكرة أو للّعب مع الأصدقاء في غرفة." },
+    { "slug": "ar-atlas", "language": "ar", "name": "أطلس", "art": "globe", "color": "#0f6b5c", "verified": true, "description": "جغرافيا وتاريخ: عواصم وقارات وحضارات وأحداث. كل اختبار جولة قصيرة على الخريطة أو عبر الزمن." },
+    { "slug": "ar-curiosity", "language": "ar", "name": "مختبر الفضول", "art": "chemistry", "color": "#7a2f8f", "verified": true, "description": "علوم وحيوانات لمن يحب أن يسأل «لماذا؟»: جسم الإنسان، الفضاء، الكيمياء، الفيزياء وعجائب الكائنات الحية." },
+    { "slug": "en-niro-studio", "language": "en", "name": "Niro Studio", "art": "general", "color": "#2440c7", "verified": true, "description": "Light general-knowledge and sports quizzes written by the NiroLearn team, made for the minutes between study sessions or for a game with friends in a room." },
+    { "slug": "en-atlas", "language": "en", "name": "Atlas Trail", "art": "globe", "color": "#0f6b5c", "verified": true, "description": "Geography and history: capitals, continents, civilizations and events. Each quiz is a short trip across the map or through time." },
+    { "slug": "en-curiosity", "language": "en", "name": "Curiosity Lab", "art": "chemistry", "color": "#7a2f8f", "verified": true, "description": "Science and animals for people who like to ask why: the human body, space, chemistry, physics and the wonders of living things." }
+  ],
+  "sections": [
+    { "key": "banner-ar", "type": "banner", "language": "ar", "order": 10, "filter": { "banners": [
+      { "title": "العب مع أصدقائك", "subtitle": "افتح غرفة، شارك الرابط، وتسابقوا على نفس السؤال في نفس اللحظة.", "art": "olympics", "color": "#2440c7", "quizSlug": "ar-general-start" },
+      { "title": "رحلة إلى الفضاء", "subtitle": "ثمانية أسئلة عن الكواكب والنجوم والمجرّات.", "art": "space", "color": "#1b1f4b", "quizSlug": "ar-science-space" },
+      { "title": "أطلس: العالم في جيبك", "subtitle": "جغرافيا وتاريخ في اختبارات قصيرة.", "art": "globe", "color": "#0f6b5c", "channelSlug": "ar-atlas" }
+    ] } },
+    { "key": "banner-en", "type": "banner", "language": "en", "order": 10, "filter": { "banners": [
+      { "title": "Play with your friends", "subtitle": "Open a room, share the link and race on the same question at the same moment.", "art": "olympics", "color": "#2440c7", "quizSlug": "en-general-warm-up" },
+      { "title": "A trip into space", "subtitle": "Eight questions on planets, stars and galaxies.", "art": "space", "color": "#1b1f4b", "quizSlug": "en-science-space" },
+      { "title": "Atlas Trail: the world in your pocket", "subtitle": "Geography and history in short quizzes.", "art": "globe", "color": "#0f6b5c", "channelSlug": "en-atlas" }
+    ] } },
+    { "key": "channels", "type": "partners", "language": null, "order": 20, "titleAr": "قنوات نيرو", "titleEn": "Niro channels", "filter": {} },
+    { "key": "picked", "type": "ranked_list", "language": null, "order": 30, "titleAr": "اخترنا لك", "titleEn": "Picked for you", "filter": { "sort": "popular", "limit": 9 } },
+    { "key": "collections", "type": "featured_collections", "language": null, "order": 40, "titleAr": "تشكيلات متميزة", "titleEn": "Featured collections", "filter": { "collections": [
+      { "category": "general", "art": "general", "color": "#0e8f8f" },
+      { "category": "science", "art": "space", "color": "#4338ca" },
+      { "category": "geography", "art": "globe", "color": "#0f6b5c" },
+      { "category": "history", "art": "ancient", "color": "#9a5b13" },
+      { "category": "animals", "art": "animal", "color": "#a13d63" },
+      { "category": "sports", "art": "football", "color": "#1d6b2f" }
+    ] } },
+    { "key": "learn", "type": "learn_cards", "language": null, "order": 50, "titleAr": "وضع التعلّم الفردي", "titleEn": "Solo learning", "subtitleAr": "جرّب وضع التعلّم: سؤال بسؤال، مع الجواب الصحيح بعد كل إجابة.", "subtitleEn": "Try learn mode: one question at a time, with the right answer after each.", "filter": { "category": "science", "limit": 8 } },
+    { "key": "channel-curiosity-ar", "type": "channel_block", "language": "ar", "order": 60, "filter": { "channelSlug": "ar-curiosity", "limit": 6 } },
+    { "key": "channel-curiosity-en", "type": "channel_block", "language": "en", "order": 60, "filter": { "channelSlug": "en-curiosity", "limit": 6 } },
+    { "key": "recommended", "type": "horizontal_cards", "language": null, "order": 70, "titleAr": "موصى بها", "titleEn": "Recommended", "filter": { "category": "geography", "limit": 8 } },
+    { "key": "channel-atlas-ar", "type": "channel_block", "language": "ar", "order": 80, "filter": { "channelSlug": "ar-atlas", "limit": 6 } },
+    { "key": "channel-atlas-en", "type": "channel_block", "language": "en", "order": 80, "filter": { "channelSlug": "en-atlas", "limit": 6 } },
+    { "key": "history", "type": "horizontal_cards", "language": null, "order": 90, "titleAr": "من التاريخ", "titleEn": "From history", "filter": { "category": "history", "limit": 8 } }
+  ]
+}

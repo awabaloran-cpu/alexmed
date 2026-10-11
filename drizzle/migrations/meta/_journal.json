@@ -358,6 +358,13 @@
       "when": 1791689303014,
       "tag": "0050_colleagues_room_invites",
       "breakpoints": true
+    },
+    {
+      "idx": 51,
+      "version": "7",
+      "when": 1791713431835,
+      "tag": "0051_discover",
+      "breakpoints": true
     }
   ]
 }

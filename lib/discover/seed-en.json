@@ -1,0 +1,287 @@
+[
+  {
+    "slug": "en-general-warm-up", "title": "General Knowledge Warm-up", "category": "general", "art": "general", "color": "#3b2f7a", "channel": "en-niro-studio", "tags": ["general", "occ:school"],
+    "description": "Eight light questions from every corner to wake your brain up before studying.",
+    "questions": [
+      { "q": "How many days are there in a leap year?", "o": ["364", "365", "366", "367"], "a": 2 },
+      { "q": "Which is the largest planet in the Solar System?", "o": ["Jupiter", "Saturn", "Earth", "Neptune"], "a": 0 },
+      { "q": "How many colours are there in a rainbow?", "o": ["5", "6", "7", "9"], "a": 2 },
+      { "q": "What is the currency of Japan?", "o": ["Yuan", "Yen", "Won", "Rupee"], "a": 1 },
+      { "q": "How many sides does a hexagon have?", "o": ["5", "6", "7", "8"], "a": 1 },
+      { "q": "Which metal is liquid at room temperature?", "o": ["Iron", "Aluminium", "Copper", "Mercury"], "a": 3 },
+      { "q": "How many minutes are there in two hours?", "o": ["100", "120", "140", "160"], "a": 1 },
+      { "q": "Which is the smallest continent by area?", "o": ["Europe", "South America", "Australia", "Antarctica"], "a": 2 }
+    ]
+  },
+  {
+    "slug": "en-general-numbers", "title": "The Numbers Game", "category": "general", "art": "numbers", "color": "#7a3b1f", "channel": "en-niro-studio", "tags": ["numbers", "occ:school"],
+    "description": "Every answer is a number. How many do you know without counting?",
+    "questions": [
+      { "q": "How many continents are there?", "o": ["5", "6", "7", "8"], "a": 2 },
+      { "q": "How many letters are in the English alphabet?", "o": ["24", "25", "26", "28"], "a": 2 },
+      { "q": "How many sides does an octagon have?", "o": ["6", "7", "8", "10"], "a": 2 },
+      { "q": "How many degrees are in a right angle?", "o": ["45", "90", "180", "360"], "a": 1 },
+      { "q": "How many players does a basketball team have on court?", "o": ["5", "6", "7", "11"], "a": 0 },
+      { "q": "How many zeros are in one million?", "o": ["4", "5", "6", "7"], "a": 2 },
+      { "q": "How many planets are in the Solar System?", "o": ["7", "8", "9", "10"], "a": 1 },
+      { "q": "How many strings does a standard guitar have?", "o": ["4", "5", "6", "8"], "a": 2 },
+      { "q": "How many items make a dozen?", "o": ["6", "10", "12", "20"], "a": 2 },
+      { "q": "How many years are in a century?", "o": ["10", "50", "100", "1000"], "a": 2 }
+    ]
+  },
+  {
+    "slug": "en-general-words", "title": "Words and Languages", "category": "general", "art": "language", "color": "#1f5a6b", "channel": "en-niro-studio", "tags": ["languages"],
+    "description": "Who speaks what? A short walk through the world's languages and a few tricky words.",
+    "questions": [
+      { "q": "What is the official language of Brazil?", "o": ["Spanish", "Portuguese", "French", "English"], "a": 1 },
+      { "q": "What is the plural of \"mouse\"?", "o": ["Mouses", "Mice", "Meese", "Mousen"], "a": 1 },
+      { "q": "Which language did the ancient Romans speak?", "o": ["Greek", "Latin", "Italian", "Aramaic"], "a": 1 },
+      { "q": "Which word is the opposite of \"ancient\"?", "o": ["Old", "Modern", "Historic", "Antique"], "a": 1 },
+      { "q": "What is the official language of Egypt?", "o": ["Arabic", "Persian", "Turkish", "French"], "a": 0 },
+      { "q": "In which language does \"bonjour\" mean hello?", "o": ["Spanish", "Italian", "French", "German"], "a": 2 },
+      { "q": "Which language has the most native speakers?", "o": ["English", "Hindi", "Mandarin Chinese", "Spanish"], "a": 2 },
+      { "q": "Which language do most people in Mexico speak?", "o": ["Spanish", "Portuguese", "English", "Italian"], "a": 0 }
+    ]
+  },
+  {
+    "slug": "en-general-inventions", "title": "Inventions That Changed Life", "category": "general", "art": "invention", "color": "#5a4a12", "channel": "en-niro-studio", "tags": ["inventions"],
+    "description": "From the light bulb to the web: who made what?",
+    "questions": [
+      { "q": "Who is famous for developing the practical light bulb?", "o": ["Nikola Tesla", "Thomas Edison", "Albert Einstein", "Isaac Newton"], "a": 1 },
+      { "q": "Who is credited with inventing the telephone?", "o": ["Alexander Graham Bell", "Guglielmo Marconi", "Thomas Edison", "James Watt"], "a": 0 },
+      { "q": "Who introduced movable-type printing to Europe?", "o": ["Leonardo da Vinci", "Johannes Gutenberg", "Galileo Galilei", "Martin Luther"], "a": 1 },
+      { "q": "What are the Wright brothers famous for?", "o": ["The first car", "The first powered aeroplane", "The first train", "The first submarine"], "a": 1 },
+      { "q": "Who discovered penicillin?", "o": ["Louis Pasteur", "Marie Curie", "Alexander Fleming", "Robert Koch"], "a": 2 },
+      { "q": "Which instrument measures temperature?", "o": ["Barometer", "Thermometer", "Microscope", "Compass"], "a": 1 },
+      { "q": "Who developed the theory of relativity?", "o": ["Albert Einstein", "Isaac Newton", "Niels Bohr", "Stephen Hawking"], "a": 0 },
+      { "q": "What did Tim Berners-Lee invent?", "o": ["The mobile phone", "Email", "The World Wide Web", "The personal computer"], "a": 2 }
+    ]
+  },
+  {
+    "slug": "en-geo-world-capitals", "title": "World Capitals", "category": "geography", "art": "capitals", "color": "#14532d", "channel": "en-atlas", "tags": ["capitals", "geography"],
+    "description": "Ten countries, ten capitals. Watch out for the famous cities that are not the answer.",
+    "questions": [
+      { "q": "What is the capital of France?", "o": ["Lyon", "Marseille", "Paris", "Nice"], "a": 2 },
+      { "q": "What is the capital of Japan?", "o": ["Osaka", "Tokyo", "Kyoto", "Hiroshima"], "a": 1 },
+      { "q": "What is the capital of Australia?", "o": ["Sydney", "Melbourne", "Canberra", "Perth"], "a": 2 },
+      { "q": "What is the capital of Canada?", "o": ["Toronto", "Vancouver", "Montreal", "Ottawa"], "a": 3 },
+      { "q": "What is the capital of Italy?", "o": ["Milan", "Rome", "Naples", "Venice"], "a": 1 },
+      { "q": "What is the capital of Turkey?", "o": ["Istanbul", "Izmir", "Ankara", "Bursa"], "a": 2 },
+      { "q": "What is the capital of Egypt?", "o": ["Alexandria", "Cairo", "Giza", "Aswan"], "a": 1 },
+      { "q": "What is the capital of Spain?", "o": ["Barcelona", "Madrid", "Seville", "Valencia"], "a": 1 },
+      { "q": "What is the capital of Brazil?", "o": ["Rio de Janeiro", "São Paulo", "Brasília", "Salvador"], "a": 2 },
+      { "q": "What is the capital of Germany?", "o": ["Munich", "Hamburg", "Frankfurt", "Berlin"], "a": 3 }
+    ]
+  },
+  {
+    "slug": "en-geo-continents", "title": "Continents and Oceans", "category": "geography", "art": "globe", "color": "#0f4c6e", "channel": "en-atlas", "tags": ["geography", "occ:earth"],
+    "description": "Seven continents and five oceans: what lies where?",
+    "questions": [
+      { "q": "Which is the largest continent by area?", "o": ["Africa", "Asia", "North America", "Europe"], "a": 1 },
+      { "q": "Which is the largest ocean?", "o": ["Atlantic", "Indian", "Pacific", "Arctic"], "a": 2 },
+      { "q": "On which continent is Egypt?", "o": ["Asia", "Africa", "Europe", "South America"], "a": 1 },
+      { "q": "Which ocean lies between Europe and North America?", "o": ["Atlantic", "Pacific", "Indian", "Southern"], "a": 0 },
+      { "q": "What is the frozen continent at the far south called?", "o": ["Greenland", "Antarctica", "Siberia", "Alaska"], "a": 1 },
+      { "q": "On which continent is Brazil?", "o": ["Africa", "North America", "South America", "Europe"], "a": 2 },
+      { "q": "Which is the smallest ocean?", "o": ["Indian", "Arctic", "Atlantic", "Pacific"], "a": 1 },
+      { "q": "On which continent is Kenya?", "o": ["Africa", "Asia", "Australia", "South America"], "a": 0 }
+    ]
+  },
+  {
+    "slug": "en-geo-rivers-mountains", "title": "Rivers, Mountains and Deserts", "category": "geography", "art": "mountain", "color": "#4a3f2a", "channel": "en-atlas", "tags": ["geography", "nature", "occ:earth"],
+    "description": "The highest peaks, the longest rivers and the widest deserts.",
+    "questions": [
+      { "q": "Which is the longest river in Africa?", "o": ["Congo", "Niger", "Nile", "Zambezi"], "a": 2 },
+      { "q": "Which is the highest mountain in the world?", "o": ["Kilimanjaro", "Everest", "Mont Blanc", "K2"], "a": 1 },
+      { "q": "In which mountain range is Mount Everest?", "o": ["Alps", "Andes", "Himalayas", "Rockies"], "a": 2 },
+      { "q": "Which is the largest hot desert in the world?", "o": ["Sahara", "Kalahari", "Gobi", "Mojave"], "a": 0 },
+      { "q": "On which continent does the Amazon River flow?", "o": ["Africa", "Asia", "South America", "North America"], "a": 2 },
+      { "q": "On which continent are the Alps?", "o": ["Asia", "Europe", "Africa", "South America"], "a": 1 },
+      { "q": "The lowest point on land is on the shore of which body of water?", "o": ["Dead Sea", "Caspian Sea", "Red Sea", "Lake Victoria"], "a": 0 },
+      { "q": "In which country does the Mississippi River flow?", "o": ["Canada", "Mexico", "United States", "Brazil"], "a": 2 }
+    ]
+  },
+  {
+    "slug": "en-geo-countries", "title": "Countries of the World", "category": "geography", "art": "map", "color": "#5b2145", "channel": "en-atlas", "tags": ["countries"],
+    "description": "The biggest, the smallest and a few you can spot by their shape.",
+    "questions": [
+      { "q": "Which is the largest country in the world by area?", "o": ["Canada", "China", "Russia", "United States"], "a": 2 },
+      { "q": "Which country is shaped like a boot?", "o": ["Greece", "Italy", "Portugal", "Norway"], "a": 1 },
+      { "q": "Which country is known as the Land of the Rising Sun?", "o": ["China", "Thailand", "Japan", "South Korea"], "a": 2 },
+      { "q": "In which country are the pyramids of Giza?", "o": ["Mexico", "Sudan", "Egypt", "Iraq"], "a": 2 },
+      { "q": "Which is the smallest country in the world?", "o": ["Monaco", "Vatican City", "San Marino", "Malta"], "a": 1 },
+      { "q": "Off the coast of which country is the Great Barrier Reef?", "o": ["Australia", "Indonesia", "Philippines", "New Zealand"], "a": 0 },
+      { "q": "Nairobi is the capital of which country?", "o": ["Uganda", "Ethiopia", "Tanzania", "Kenya"], "a": 3 },
+      { "q": "Which country has the city of Istanbul?", "o": ["Greece", "Turkey", "Iran", "Bulgaria"], "a": 1 }
+    ]
+  },
+  {
+    "slug": "en-history-ancient", "title": "Ancient Civilizations", "category": "history", "art": "ancient", "color": "#6b4a1a", "channel": "en-atlas", "tags": ["history", "civilizations"],
+    "description": "Egypt, Mesopotamia, Rome and Greece: who built what, and where?",
+    "questions": [
+      { "q": "In which country did the civilization of the pharaohs rise?", "o": ["Iraq", "Egypt", "Greece", "India"], "a": 1 },
+      { "q": "Which civilization is linked to the Hanging Gardens?", "o": ["Babylonian", "Roman", "Egyptian", "Phoenician"], "a": 0 },
+      { "q": "Where did cuneiform writing appear?", "o": ["Egypt", "China", "Mesopotamia", "Greece"], "a": 2 },
+      { "q": "Which writing system is the ancient Egyptians' own?", "o": ["Cuneiform", "Hieroglyphs", "Latin", "Runes"], "a": 1 },
+      { "q": "In which country is the ancient city of Petra?", "o": ["Syria", "Lebanon", "Jordan", "Saudi Arabia"], "a": 2 },
+      { "q": "In which city is the Colosseum?", "o": ["Athens", "Rome", "Cairo", "Istanbul"], "a": 1 },
+      { "q": "In which city is the Acropolis?", "o": ["Athens", "Rome", "Alexandria", "Carthage"], "a": 0 },
+      { "q": "In which country is Machu Picchu?", "o": ["Mexico", "Chile", "Peru", "Bolivia"], "a": 2 }
+    ]
+  },
+  {
+    "slug": "en-history-explorers", "title": "Explorers and Firsts", "category": "history", "art": "explorer", "color": "#1d4d4a", "channel": "en-atlas", "tags": ["history", "explorers"],
+    "description": "The first to cross, climb, sail around and fly beyond.",
+    "questions": [
+      { "q": "Whose expedition was the first to sail around the world?", "o": ["Christopher Columbus", "Ferdinand Magellan", "Vasco da Gama", "James Cook"], "a": 1 },
+      { "q": "In which year did Columbus first reach the Americas?", "o": ["1392", "1492", "1592", "1692"], "a": 1 },
+      { "q": "Which Venetian traveller is famous for his journey to China?", "o": ["Marco Polo", "Amerigo Vespucci", "Galileo Galilei", "Antonio Vivaldi"], "a": 0 },
+      { "q": "Who led the first expedition to reach the South Pole?", "o": ["Robert Scott", "Ernest Shackleton", "Roald Amundsen", "Edmund Hillary"], "a": 2 },
+      { "q": "Who was the first person to travel into space?", "o": ["Yuri Gagarin", "Neil Armstrong", "John Glenn", "Alan Shepard"], "a": 0 },
+      { "q": "Who was the first person to walk on the Moon?", "o": ["Buzz Aldrin", "Neil Armstrong", "Michael Collins", "Yuri Gagarin"], "a": 1 },
+      { "q": "From which Moroccan city did the traveller Ibn Battuta set out?", "o": ["Fez", "Marrakesh", "Tangier", "Rabat"], "a": 2 },
+      { "q": "In which year was Mount Everest first climbed to the top?", "o": ["1933", "1943", "1953", "1963"], "a": 2 }
+    ]
+  },
+  {
+    "slug": "en-history-20th-century", "title": "The 20th Century", "category": "history", "art": "century", "color": "#3f2a2a", "channel": "en-atlas", "tags": ["history"],
+    "description": "Wars, walls and a walk on the Moon: dates worth remembering.",
+    "questions": [
+      { "q": "In which year did the First World War begin?", "o": ["1905", "1914", "1918", "1939"], "a": 1 },
+      { "q": "In which year did the Second World War end?", "o": ["1939", "1942", "1945", "1950"], "a": 2 },
+      { "q": "In which year did people first land on the Moon?", "o": ["1961", "1965", "1969", "1972"], "a": 2 },
+      { "q": "In which year did the Berlin Wall fall?", "o": ["1979", "1985", "1989", "1991"], "a": 2 },
+      { "q": "In which year was the United Nations founded?", "o": ["1919", "1939", "1945", "1955"], "a": 2 },
+      { "q": "Which famous ship sank in 1912?", "o": ["Lusitania", "Titanic", "Bismarck", "Queen Mary"], "a": 1 },
+      { "q": "Which country launched Sputnik, the first artificial satellite?", "o": ["United States", "Soviet Union", "China", "France"], "a": 1 },
+      { "q": "In which year did the Second World War begin?", "o": ["1914", "1929", "1939", "1941"], "a": 2 }
+    ]
+  },
+  {
+    "slug": "en-science-human-body", "title": "The Human Body", "category": "science", "art": "body", "color": "#7a1f3d", "channel": "en-curiosity", "tags": ["science", "biology"],
+    "description": "Heart, bones and cells: how well do you know the body you live in?",
+    "questions": [
+      { "q": "Which organ pumps blood around the body?", "o": ["Liver", "Heart", "Lung", "Kidney"], "a": 1 },
+      { "q": "How many bones does an adult human have?", "o": ["106", "206", "306", "406"], "a": 1 },
+      { "q": "Which is the largest organ of the human body?", "o": ["Liver", "Brain", "Skin", "Lungs"], "a": 2 },
+      { "q": "How many chambers does the heart have?", "o": ["2", "3", "4", "5"], "a": 2 },
+      { "q": "Where is most digested food absorbed?", "o": ["Stomach", "Small intestine", "Oesophagus", "Large intestine"], "a": 1 },
+      { "q": "Which blood cells carry oxygen?", "o": ["Red blood cells", "White blood cells", "Platelets", "Plasma cells"], "a": 0 },
+      { "q": "What is the hardest substance in the human body?", "o": ["Bone", "Cartilage", "Tooth enamel", "Nail"], "a": 2 },
+      { "q": "Which organs filter the blood and make urine?", "o": ["Liver", "Spleen", "Kidneys", "Pancreas"], "a": 2 },
+      { "q": "Which organs exchange gases when we breathe?", "o": ["Lungs", "Heart", "Stomach", "Larynx"], "a": 0 }
+    ]
+  },
+  {
+    "slug": "en-science-space", "title": "Space and the Solar System", "category": "science", "art": "space", "color": "#1b1f4b", "channel": "en-curiosity", "tags": ["science", "space"],
+    "description": "Planets, stars and galaxies: a short trip off the Earth.",
+    "questions": [
+      { "q": "Which planet is closest to the Sun?", "o": ["Venus", "Mercury", "Mars", "Earth"], "a": 1 },
+      { "q": "Which planet is called the Red Planet?", "o": ["Jupiter", "Saturn", "Mars", "Mercury"], "a": 2 },
+      { "q": "Which planet is famous for its bright rings?", "o": ["Saturn", "Uranus", "Neptune", "Mars"], "a": 0 },
+      { "q": "What kind of object is the Sun?", "o": ["A planet", "A moon", "A star", "A comet"], "a": 2 },
+      { "q": "What is the name of our galaxy?", "o": ["Andromeda", "The Milky Way", "Triangulum", "Sombrero"], "a": 1 },
+      { "q": "About how many days does the Earth take to go around the Sun?", "o": ["30", "180", "365", "730"], "a": 2 },
+      { "q": "How many natural moons does the Earth have?", "o": ["1", "2", "4", "None"], "a": 0 },
+      { "q": "Which is the hottest planet in the Solar System?", "o": ["Mercury", "Venus", "Mars", "Jupiter"], "a": 1 }
+    ]
+  },
+  {
+    "slug": "en-science-chemistry", "title": "Chemistry Around Us", "category": "science", "art": "chemistry", "color": "#1f5a3a", "channel": "en-curiosity", "tags": ["science", "chemistry"],
+    "description": "Water, salt and air: chemistry at its simplest.",
+    "questions": [
+      { "q": "What is the chemical formula of water?", "o": ["CO2", "H2O", "O2", "NaCl"], "a": 1 },
+      { "q": "What is the chemical symbol for gold?", "o": ["Ag", "Go", "Au", "Fe"], "a": 2 },
+      { "q": "Which gas do we need to breathe to stay alive?", "o": ["Oxygen", "Helium", "Nitrogen", "Hydrogen"], "a": 0 },
+      { "q": "Which gas makes up most of the Earth's atmosphere?", "o": ["Oxygen", "Carbon dioxide", "Nitrogen", "Argon"], "a": 2 },
+      { "q": "What is the chemical symbol for sodium?", "o": ["S", "So", "Na", "Sd"], "a": 2 },
+      { "q": "What is the chemical name of table salt?", "o": ["Sodium chloride", "Calcium carbonate", "Sodium hydroxide", "Magnesium sulphate"], "a": 0 },
+      { "q": "What is the pH of pure water?", "o": ["0", "5", "7", "14"], "a": 2 },
+      { "q": "Which gas do plants take in for photosynthesis?", "o": ["Oxygen", "Carbon dioxide", "Nitrogen", "Hydrogen"], "a": 1 }
+    ]
+  },
+  {
+    "slug": "en-science-physics", "title": "Everyday Physics", "category": "science", "art": "physics", "color": "#40306e", "channel": "en-curiosity", "tags": ["science", "physics"],
+    "description": "Force, light, sound and energy: the basics you meet every day.",
+    "questions": [
+      { "q": "What is the unit of force?", "o": ["Joule", "Newton", "Watt", "Ampere"], "a": 1 },
+      { "q": "About how fast does light travel in a vacuum?", "o": ["300 km/s", "3,000 km/s", "300,000 km/s", "3 million km/s"], "a": 2 },
+      { "q": "Which force pulls objects towards the Earth?", "o": ["Magnetism", "Friction", "Gravity", "Buoyancy"], "a": 2 },
+      { "q": "What is the unit of electric current?", "o": ["Ampere", "Volt", "Ohm", "Watt"], "a": 0 },
+      { "q": "At what temperature in Celsius does water freeze?", "o": ["-10", "0", "4", "10"], "a": 1 },
+      { "q": "Who set out the three laws of motion?", "o": ["Galileo", "Einstein", "Isaac Newton", "Kepler"], "a": 2 },
+      { "q": "Through which of these can sound not travel?", "o": ["Water", "Air", "A vacuum", "Steel"], "a": 2 },
+      { "q": "What is the unit of energy?", "o": ["Joule", "Newton", "Hertz", "Pascal"], "a": 0 }
+    ]
+  },
+  {
+    "slug": "en-animals-kingdom", "title": "The Animal Kingdom", "category": "animals", "art": "animal", "color": "#5c3a12", "channel": "en-curiosity", "tags": ["animals", "occ:earth"],
+    "description": "Fastest, biggest, tallest: records from the animal world.",
+    "questions": [
+      { "q": "Which is the fastest land animal?", "o": ["Lion", "Cheetah", "Gazelle", "Horse"], "a": 1 },
+      { "q": "Which is the largest animal on Earth?", "o": ["African elephant", "Whale shark", "Blue whale", "Giraffe"], "a": 2 },
+      { "q": "Which is the tallest land animal?", "o": ["Giraffe", "Elephant", "Camel", "Ostrich"], "a": 0 },
+      { "q": "Which animal is called the ship of the desert?", "o": ["Horse", "Camel", "Donkey", "Goat"], "a": 1 },
+      { "q": "Which is the largest land animal?", "o": ["Rhinoceros", "Hippopotamus", "African elephant", "Polar bear"], "a": 2 },
+      { "q": "What is a baby lion called?", "o": ["Pup", "Cub", "Foal", "Lamb"], "a": 1 },
+      { "q": "Which animal is famous for changing its skin colour?", "o": ["Chameleon", "Tortoise", "Crocodile", "Frog"], "a": 0 },
+      { "q": "How many legs does a spider have?", "o": ["6", "8", "10", "12"], "a": 1 }
+    ]
+  },
+  {
+    "slug": "en-animals-ocean", "title": "Life in the Ocean", "category": "animals", "art": "ocean", "color": "#0e3f66", "channel": "en-curiosity", "tags": ["animals", "ocean"],
+    "description": "An octopus with three hearts and a fish the size of a bus: wonders under water.",
+    "questions": [
+      { "q": "How many arms does an octopus have?", "o": ["6", "8", "10", "12"], "a": 1 },
+      { "q": "To which group do dolphins belong?", "o": ["Fish", "Reptiles", "Mammals", "Amphibians"], "a": 2 },
+      { "q": "Which is the largest fish in the world?", "o": ["Great white shark", "Whale shark", "Tuna", "Manta ray"], "a": 1 },
+      { "q": "How many hearts does an octopus have?", "o": ["1", "2", "3", "4"], "a": 2 },
+      { "q": "In which sea animal does the male carry the eggs until they hatch?", "o": ["Seahorse", "Dolphin", "Sea turtle", "Crab"], "a": 0 },
+      { "q": "What do fish use to breathe?", "o": ["Lungs", "Skin", "Gills", "Fins"], "a": 2 },
+      { "q": "Which sea animal usually has five arms?", "o": ["Jellyfish", "Starfish", "Squid", "Shrimp"], "a": 1 },
+      { "q": "What are coral reefs built by?", "o": ["Volcanic rock", "Sea plants", "Tiny animals called corals", "Hardened sand"], "a": 2 }
+    ]
+  },
+  {
+    "slug": "en-animals-birds", "title": "The World of Birds", "category": "animals", "art": "bird", "color": "#3a5a1a", "channel": "en-curiosity", "tags": ["animals", "birds"],
+    "description": "From the ostrich to the hummingbird: birds you know and birds that surprise.",
+    "questions": [
+      { "q": "Which is the largest bird in the world?", "o": ["Eagle", "Ostrich", "Swan", "Stork"], "a": 1 },
+      { "q": "Which flightless bird lives in the far south, around Antarctica?", "o": ["Penguin", "Seagull", "Duck", "Goose"], "a": 0 },
+      { "q": "Which is the smallest bird in the world?", "o": ["Sparrow", "Hummingbird", "Canary", "Swallow"], "a": 1 },
+      { "q": "Which bird is famous for copying human speech?", "o": ["Crow", "Hoopoe", "Parrot", "Dove"], "a": 2 },
+      { "q": "Which bird is a symbol of peace?", "o": ["Dove", "Falcon", "Owl", "Peacock"], "a": 0 },
+      { "q": "Which bird hunts at night and can turn its head very far round?", "o": ["Eagle", "Owl", "Rooster", "Stork"], "a": 1 },
+      { "q": "Which is the fastest bird when it dives?", "o": ["Golden eagle", "Swallow", "Peregrine falcon", "Osprey"], "a": 2 },
+      { "q": "What covers a bird's body?", "o": ["Fur", "Scales", "Feathers", "Wool"], "a": 2 }
+    ]
+  },
+  {
+    "slug": "en-sports-football", "title": "Football", "category": "sports", "art": "football", "color": "#14532d", "channel": "en-niro-studio", "tags": ["sports", "football", "occ:worldcup"],
+    "description": "The laws of the game and the World Cup winners in eight questions.",
+    "questions": [
+      { "q": "How many minutes is normal time in a football match?", "o": ["60", "80", "90", "120"], "a": 2 },
+      { "q": "How often is the World Cup held?", "o": ["Every 2 years", "Every 3 years", "Every 4 years", "Every 5 years"], "a": 2 },
+      { "q": "Which national team has won the most World Cups?", "o": ["Germany", "Brazil", "Italy", "Argentina"], "a": 1 },
+      { "q": "Which country hosted the 2022 World Cup?", "o": ["Russia", "Qatar", "Brazil", "South Africa"], "a": 1 },
+      { "q": "Which team won the 2022 World Cup?", "o": ["France", "Croatia", "Argentina", "Morocco"], "a": 2 },
+      { "q": "Which card sends a player off?", "o": ["Yellow", "Red", "Green", "Blue"], "a": 1 },
+      { "q": "From what distance is a penalty kick taken?", "o": ["9 metres", "11 metres", "16 metres", "18 metres"], "a": 1 },
+      { "q": "How many players does each team start a match with?", "o": ["9", "10", "11", "12"], "a": 2 }
+    ]
+  },
+  {
+    "slug": "en-sports-olympics", "title": "The Olympic Games", "category": "sports", "art": "olympics", "color": "#1f3f7a", "channel": "en-niro-studio", "tags": ["sports", "olympics"],
+    "description": "Five rings and a long story: what do you know about the Olympics?",
+    "questions": [
+      { "q": "How many rings are in the Olympic symbol?", "o": ["3", "4", "5", "6"], "a": 2 },
+      { "q": "How often are the Summer Olympics held?", "o": ["Every 2 years", "Every 4 years", "Every 5 years", "Every 6 years"], "a": 1 },
+      { "q": "In which country did the ancient Olympic Games begin?", "o": ["Italy", "Egypt", "Greece", "France"], "a": 2 },
+      { "q": "About how long is a marathon?", "o": ["10 km", "21 km", "42 km", "50 km"], "a": 2 },
+      { "q": "Which medal does the winner receive?", "o": ["Gold", "Silver", "Bronze", "Platinum"], "a": 0 },
+      { "q": "Which city hosted the 2024 Summer Olympics?", "o": ["Tokyo", "Paris", "London", "Los Angeles"], "a": 1 },
+      { "q": "In which city were the first modern Olympics held, in 1896?", "o": ["Athens", "Paris", "Rome", "London"], "a": 0 },
+      { "q": "How many metres is the shortest Olympic sprint?", "o": ["50", "60", "100", "200"], "a": 2 }
+    ]
+  }
+]

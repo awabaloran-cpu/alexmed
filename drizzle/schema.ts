@@ -3812,12 +3812,172 @@ export const studyRoomInvites = pgTable(
   })
 );
 
+// 🧭 Discover: ready-made quizzes anyone can study alone or play with
+// friends in a room (lib/discover). Every row belongs to one language —
+// "ar" or "en" — and a page only ever shows its own language's rows.
+//
+// A channel is a shelf of quizzes with a name and a look. `art` names one
+// of the drawn covers (components/discover/Cover.tsx); `color` is the
+// cover's own dark shade, worked out once when the row is written.
+export const discoverChannels = pgTable(
+  "discover_channels",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    slug: varchar("slug", { length: 64 }).notNull().unique(),
+    language: varchar("language", { length: 2 }).notNull(),
+    name: text("name").notNull(),
+    description: text("description").default("").notNull(),
+    // A picture for the logo or the cover when there is one; the drawn art
+    // otherwise.
+    logo: text("logo"),
+    cover: text("cover"),
+    art: varchar("art", { length: 24 }).default("general").notNull(),
+    color: varchar("color", { length: 9 }).default("#2440c7").notNull(),
+    verified: boolean("verified").default(false).notNull(),
+    orderIndex: integer("orderIndex").default(0).notNull(),
+    isActive: boolean("isActive").default(true).notNull(),
+    createdAt: timestamp("createdAt", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  table => ({
+    languageIdx: index("discover_channels_language_idx").on(
+      table.language,
+      table.orderIndex
+    ),
+  })
+);
+
+export const discoverQuizzes = pgTable(
+  "discover_quizzes",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    slug: varchar("slug", { length: 64 }).notNull().unique(),
+    language: varchar("language", { length: 2 }).notNull(),
+    title: text("title").notNull(),
+    description: text("description").default("").notNull(),
+    coverImage: text("coverImage"),
+    art: varchar("art", { length: 24 }).default("general").notNull(),
+    color: varchar("color", { length: 9 }).default("#1b2340").notNull(),
+    category: varchar("category", { length: 24 }).notNull(),
+    tags: jsonb("tags").$type<string[]>().default([]).notNull(),
+    isFree: boolean("isFree").default(true).notNull(),
+    channelId: uuid("channelId").references(() => discoverChannels.id, {
+      onDelete: "set null",
+    }),
+    creatorName: text("creatorName").notNull(),
+    creatorVerified: boolean("creatorVerified").default(false).notNull(),
+    playsCount: integer("playsCount").default(0).notNull(),
+    questionsCount: integer("questionsCount").default(0).notNull(),
+    isActive: boolean("isActive").default(true).notNull(),
+    createdAt: timestamp("createdAt", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  table => ({
+    languageIdx: index("discover_quizzes_language_idx").on(
+      table.language,
+      table.category
+    ),
+    channelIdx: index("discover_quizzes_channel_idx").on(table.channelId),
+  })
+);
+
+export const discoverQuestions = pgTable(
+  "discover_questions",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    quizId: uuid("quizId")
+      .notNull()
+      .references(() => discoverQuizzes.id, { onDelete: "cascade" }),
+    orderIndex: integer("orderIndex").notNull(),
+    text: text("text").notNull(),
+    image: text("image"),
+    // Exactly four.
+    options: jsonb("options").$type<string[]>().notNull(),
+    correctIndex: integer("correctIndex").notNull(),
+    // Seconds, for the game in a room.
+    timeLimit: integer("timeLimit").default(20).notNull(),
+  },
+  table => ({
+    quizOrder: uniqueIndex("discover_questions_quiz_order_idx").on(
+      table.quizId,
+      table.orderIndex
+    ),
+  })
+);
+
+// What the Discover page is made of, top to bottom — changed here, on the
+// server, without a new build. `type`: banner | partners | ranked_list |
+// horizontal_cards | learn_cards | channel_block | featured_collections.
+// `filter` says what fills it (lib/discover/sections.ts). A null language
+// shows the section in both.
+export type DiscoverSectionFilter = {
+  category?: string;
+  tag?: string;
+  channelSlug?: string;
+  quizSlugs?: string[];
+  sort?: "popular" | "newest";
+  limit?: number;
+  banners?: {
+    title: string;
+    subtitle?: string;
+    art: string;
+    color: string;
+    quizSlug?: string;
+    channelSlug?: string;
+  }[];
+  collections?: { category: string; art: string; color: string }[];
+};
+
+export const discoverSections = pgTable(
+  "discover_sections",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    key: varchar("key", { length: 48 }).notNull().unique(),
+    type: varchar("type", { length: 24 }).notNull(),
+    language: varchar("language", { length: 2 }),
+    titleAr: text("titleAr").default("").notNull(),
+    titleEn: text("titleEn").default("").notNull(),
+    subtitleAr: text("subtitleAr").default("").notNull(),
+    subtitleEn: text("subtitleEn").default("").notNull(),
+    orderIndex: integer("orderIndex").notNull(),
+    filter: jsonb("filter").$type<DiscoverSectionFilter>().default({}).notNull(),
+    isActive: boolean("isActive").default(true).notNull(),
+  },
+  table => ({
+    orderIdx: index("discover_sections_order_idx").on(table.orderIndex),
+  })
+);
+
+export const discoverChannelFollows = pgTable(
+  "discover_channel_follows",
+  {
+    channelId: uuid("channelId")
+      .notNull()
+      .references(() => discoverChannels.id, { onDelete: "cascade" }),
+    userId: uuid("userId")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    createdAt: timestamp("createdAt", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  table => ({
+    pk: primaryKey({ columns: [table.channelId, table.userId] }),
+    userIdx: index("discover_channel_follows_user_idx").on(table.userId),
+  })
+);
+
 export type StudySection = typeof studySections.$inferSelect;
 export type StudySubject = typeof studySubjects.$inferSelect;
 export type StudyRoomProfile = typeof studyRoomProfiles.$inferSelect;
 export type StudyRoom = typeof studyRooms.$inferSelect;
 export type StudyRoomMember = typeof studyRoomMembers.$inferSelect;
 export type StudyConnection = typeof studyConnections.$inferSelect;
+export type DiscoverQuiz = typeof discoverQuizzes.$inferSelect;
+export type DiscoverChannel = typeof discoverChannels.$inferSelect;
+export type DiscoverSection = typeof discoverSections.$inferSelect;
 export type StudyRoomInvite = typeof studyRoomInvites.$inferSelect;
 
 export type TelegramAccount = typeof telegramAccounts.$inferSelect;

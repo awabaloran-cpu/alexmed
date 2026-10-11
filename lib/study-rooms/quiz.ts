@@ -12,6 +12,8 @@
 import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import {
   books,
+  discoverQuestions,
+  discoverQuizzes,
   extractedQuestions,
   studyRoomMembers,
   studyRoomQuizAnswers,
@@ -51,6 +53,78 @@ const correctIndexOf = (question: {
   extractedAnswerIndex: number | null;
   aiInferredAnswerIndex: number | null;
 }) => question.extractedAnswerIndex ?? question.aiInferredAnswerIndex;
+
+// One question of a running quiz, wherever it comes from: a student's own
+// question file, or — for a quiz with no file (`bookId` null) — a ready
+// quiz of the Discover catalogue (lib/discover).
+type QuizQuestion = {
+  text: string;
+  options: string[];
+  textAr: string | null;
+  optionsAr: string[] | null;
+  correctIndex: number | null;
+  explanation: string | null;
+  explanationAr: string | null;
+  sourcePage: number | null;
+};
+
+async function loadQuestion(
+  db: Db,
+  quiz: { bookId: string | null },
+  questionId: string
+): Promise<QuizQuestion | null> {
+  if (quiz.bookId === null) {
+    // A quiz whose file was deleted also has no `bookId`: not finding the
+    // question in the catalogue (or the catalogue itself) is not an error,
+    // the file's own table is asked next.
+    const [row] = await db
+      .select({
+        text: discoverQuestions.text,
+        options: discoverQuestions.options,
+        correctIndex: discoverQuestions.correctIndex,
+      })
+      .from(discoverQuestions)
+      .where(eq(discoverQuestions.id, questionId))
+      .limit(1)
+      .catch(() => []);
+    if (row) {
+      return {
+        ...row,
+        textAr: null,
+        optionsAr: null,
+        explanation: null,
+        explanationAr: null,
+        sourcePage: null,
+      };
+    }
+  }
+  const [row] = await db
+    .select({
+      questionText: extractedQuestions.questionText,
+      options: extractedQuestions.options,
+      questionTextAr: extractedQuestions.questionTextAr,
+      optionsAr: extractedQuestions.optionsAr,
+      extractedAnswerIndex: extractedQuestions.extractedAnswerIndex,
+      aiInferredAnswerIndex: extractedQuestions.aiInferredAnswerIndex,
+      explanationText: extractedQuestions.explanationText,
+      aiExplanationAr: extractedQuestions.aiExplanationAr,
+      sourcePage: extractedQuestions.sourcePage,
+    })
+    .from(extractedQuestions)
+    .where(eq(extractedQuestions.id, questionId))
+    .limit(1);
+  if (!row) return null;
+  return {
+    text: row.questionText,
+    options: row.options ?? [],
+    textAr: row.questionTextAr,
+    optionsAr: row.optionsAr,
+    correctIndex: correctIndexOf(row),
+    explanation: row.explanationText,
+    explanationAr: row.aiExplanationAr,
+    sourcePage: row.sourcePage,
+  };
+}
 
 export async function startQuiz(
   viewer: Viewer,
@@ -105,6 +179,63 @@ export async function startQuiz(
     .sort((a, b) => a.index - b.index)
     .map(question => question.id);
 
+  return openQuiz(db, viewer, roomId, {
+    bookId: input.bookId,
+    questionIds,
+    seconds: input.seconds,
+  });
+}
+
+// A ready quiz from the Discover catalogue, played by the room: all of its
+// questions, in its own order. Anyone who may start a quiz may start it —
+// the catalogue is open to every student.
+export async function startCatalogQuiz(
+  viewer: Viewer,
+  roomId: string,
+  input: { slug: string; seconds: number }
+) {
+  const db = requireDb();
+  await requireAction(db, roomId, viewer.userId, "start_quiz");
+  const [quiz] = await db
+    .select({ id: discoverQuizzes.id })
+    .from(discoverQuizzes)
+    .where(
+      and(
+        eq(discoverQuizzes.slug, input.slug),
+        eq(discoverQuizzes.isActive, true)
+      )
+    )
+    .limit(1);
+  if (!quiz) throw new RoomError("book_not_allowed");
+  const questions = await db
+    .select({ id: discoverQuestions.id })
+    .from(discoverQuestions)
+    .where(eq(discoverQuestions.quizId, quiz.id))
+    .orderBy(asc(discoverQuestions.orderIndex))
+    .limit(QUIZ_COUNT_MAX);
+  if (questions.length < QUIZ_MIN_QUESTIONS) {
+    throw new RoomError("quiz_too_few");
+  }
+  const opened = await openQuiz(db, viewer, roomId, {
+    bookId: null,
+    questionIds: questions.map(question => question.id),
+    seconds: input.seconds,
+  });
+  // One more play of this quiz.
+  await db
+    .update(discoverQuizzes)
+    .set({ playsCount: sql`${discoverQuizzes.playsCount} + 1` })
+    .where(eq(discoverQuizzes.id, quiz.id));
+  return opened;
+}
+
+async function openQuiz(
+  db: Db,
+  viewer: Viewer,
+  roomId: string,
+  input: { bookId: string | null; questionIds: string[]; seconds: number }
+) {
+  const { questionIds } = input;
   const [running] = await db
     .select({ id: studyRoomQuizzes.id })
     .from(studyRoomQuizzes)
@@ -254,21 +385,7 @@ export async function quizCurrent(viewer: Viewer, roomId: string) {
   if (!found) return null;
   const quiz = await settle(db, found);
   const questionId = quiz.questionIds[quiz.currentIndex];
-  const [question] = await db
-    .select({
-      id: extractedQuestions.id,
-      questionText: extractedQuestions.questionText,
-      options: extractedQuestions.options,
-      questionTextAr: extractedQuestions.questionTextAr,
-      optionsAr: extractedQuestions.optionsAr,
-      extractedAnswerIndex: extractedQuestions.extractedAnswerIndex,
-      aiInferredAnswerIndex: extractedQuestions.aiInferredAnswerIndex,
-      explanationText: extractedQuestions.explanationText,
-      aiExplanationAr: extractedQuestions.aiExplanationAr,
-    })
-    .from(extractedQuestions)
-    .where(eq(extractedQuestions.id, questionId))
-    .limit(1);
+  const question = await loadQuestion(db, quiz, questionId);
   const answers = await db
     .select({
       userId: studyRoomQuizAnswers.userId,
@@ -299,22 +416,22 @@ export async function quizCurrent(viewer: Viewer, roomId: string) {
     canAdvance: revealed && sinceMs >= REVEAL_SECONDS * 1000,
     question: {
       id: questionId,
-      text: question?.questionText ?? "",
+      text: question?.text ?? "",
       options,
-      textAr: question?.questionTextAr ?? null,
+      textAr: question?.textAr ?? null,
       optionsAr: question?.optionsAr ?? null,
     },
     answeredUserIds: answers.map(answer => answer.userId),
     mySelectedIndex: mine?.selectedIndex ?? null,
     ...(revealed && question
       ? {
-          correctIndex: correctIndexOf(question),
+          correctIndex: question.correctIndex,
           distribution: options.map(
             (_, i) =>
               answers.filter(answer => answer.selectedIndex === i).length
           ),
-          explanation: question.explanationText,
-          explanationAr: question.aiExplanationAr,
+          explanation: question.explanation,
+          explanationAr: question.explanationAr,
           leaderboard: await leaderboard(db, quiz.id),
         }
       : {}),
@@ -342,16 +459,8 @@ export async function answerQuiz(
   ) {
     throw new RoomError("quiz_closed");
   }
-  const [question] = await db
-    .select({
-      options: extractedQuestions.options,
-      extractedAnswerIndex: extractedQuestions.extractedAnswerIndex,
-      aiInferredAnswerIndex: extractedQuestions.aiInferredAnswerIndex,
-    })
-    .from(extractedQuestions)
-    .where(eq(extractedQuestions.id, input.questionId))
-    .limit(1);
-  const optionCount = question?.options?.length ?? 0;
+  const question = await loadQuestion(db, quiz, input.questionId);
+  const optionCount = question?.options.length ?? 0;
   if (
     !question ||
     input.selectedIndex < 0 ||
@@ -359,7 +468,7 @@ export async function answerQuiz(
   ) {
     throw new RoomError("quiz_closed");
   }
-  const correct = correctIndexOf(question) === input.selectedIndex;
+  const correct = question.correctIndex === input.selectedIndex;
   const inserted = await db
     .insert(studyRoomQuizAnswers)
     .values({
@@ -498,16 +607,9 @@ export async function quizResults(viewer: Viewer, quizId: string) {
         Number(a.correct) / Number(a.answers) -
         Number(b.correct) / Number(b.answers)
     )[0];
-  const [hardestQuestion] = hardest
-    ? await db
-        .select({
-          text: extractedQuestions.questionText,
-          sourcePage: extractedQuestions.sourcePage,
-        })
-        .from(extractedQuestions)
-        .where(eq(extractedQuestions.id, hardest.questionId))
-        .limit(1)
-    : [];
+  const hardestQuestion = hardest
+    ? await loadQuestion(db, quiz, hardest.questionId)
+    : null;
   const me = ranking.find(row => row.userId === viewer.userId);
   return {
     total: quiz.questionIds.length,

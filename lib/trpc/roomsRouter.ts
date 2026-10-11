@@ -46,6 +46,7 @@ import {
   QUIZ_SECONDS_MIN,
   quizCurrent,
   quizResults,
+  startCatalogQuiz,
   startQuiz,
 } from "../study-rooms/quiz";
 import {
@@ -541,6 +542,26 @@ export const roomsRouter = router({
     )
     .mutation(({ ctx, input: { roomId, ...quiz } }) =>
       guard(async () => startQuiz(await getViewer(ctx.user.id), roomId, quiz))
+    ),
+
+  // A ready quiz of the Discover catalogue (lib/discover), by its slug.
+  startCatalogQuiz: roomsProcedure
+    .input(
+      z.object({
+        roomId: uuid,
+        slug: z.string().min(3).max(64),
+        seconds: z
+          .number()
+          .int()
+          .min(QUIZ_SECONDS_MIN)
+          .max(QUIZ_SECONDS_MAX)
+          .default(20),
+      })
+    )
+    .mutation(({ ctx, input: { roomId, ...quiz } }) =>
+      guard(async () =>
+        startCatalogQuiz(await getViewer(ctx.user.id), roomId, quiz)
+      )
     ),
 
   quizCurrent: roomsProcedure

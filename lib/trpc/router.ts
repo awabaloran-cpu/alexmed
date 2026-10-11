@@ -29,6 +29,7 @@ import { examFocusRouter } from "./examFocusRouter";
 import { mirrorRouter } from "./mirrorRouter";
 import { questionFilesRouter } from "./questionFilesRouter";
 import { colleaguesRouter } from "./colleaguesRouter";
+import { discoverRouter } from "./discoverRouter";
 import { roomsRouter } from "./roomsRouter";
 import { sharingRouter } from "./sharingRouter";
 import { studentMaterialsRouter } from "./studentMaterialsRouter";
@@ -117,6 +118,9 @@ export const appRouter = router({
   // 🤝 Colleagues (lib/colleagues.ts): who may send whom files and room
   // invitations.
   colleagues: colleaguesRouter,
+  // 🧭 Discover (lib/discover): ready quizzes to study alone or play in a
+  // room.
+  discover: discoverRouter,
   // 👥 Study Rooms (docs/study-rooms) — off behind STUDY_ROOMS_ENABLED.
   rooms: roomsRouter,
   brainGames: brainGamesRouter,
