@@ -1639,3 +1639,33 @@
   font-size: 0.84rem;
   font-variant-numeric: tabular-nums;
 }
+
+/* ── the room's voice ── */
+.voice {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--rule);
+  border-radius: 16px;
+  background: var(--sheet);
+  color: var(--ink);
+}
+.voiceRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.voice .field {
+  max-width: 360px;
+}
+.seatSpeaking > :first-child {
+  box-shadow:
+    0 0 0 3px var(--sheet),
+    0 0 0 6px var(--marker);
+  border-radius: 999px;
+}
+.seatVoice {
+  font-style: normal;
+}

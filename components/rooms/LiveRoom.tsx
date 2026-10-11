@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   Ban,
@@ -25,6 +25,7 @@ import RoomChat, { useRoomChat } from "./RoomChat";
 import { InviteBox } from "./RoomCreate";
 import RoomDesk from "./RoomDesk";
 import RoomFilePicker from "./RoomFilePicker";
+import RoomVoice, { type VoicePresence } from "./RoomVoice";
 import {
   QuizPanel,
   QuizResults,
@@ -100,6 +101,15 @@ export default function LiveRoom({ roomId }: { roomId: string }) {
   const onPage = useCallback((page: number) => setMyPage(page), []);
   const chat = useRoomChat(roomId, state.data?.room.seq ?? 0, wide || chatOpen);
   const quiz = useRoomQuiz(roomId, state.data?.room.seq ?? 0);
+  const [voice, setVoice] = useState<VoicePresence>({
+    inVoice: new Set(),
+    speaking: new Set(),
+  });
+  const memberList = state.data?.members;
+  const names = useMemo(
+    () => new Map((memberList ?? []).map(m => [m.userId, m.name])),
+    [memberList]
+  );
 
   const leave = trpc.rooms.leave.useMutation({
     onSuccess: () => router.replace(`/rooms/${roomId}/summary`),
@@ -254,7 +264,9 @@ export default function LiveRoom({ roomId }: { roomId: string }) {
             <motion.button
               key={member.userId}
               type="button"
-              className={s.seat}
+              className={`${s.seat} ${
+                voice.speaking.has(member.userId) ? s.seatSpeaking : ""
+              }`}
               layout
               initial={{ scale: 0.6, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
@@ -273,11 +285,30 @@ export default function LiveRoom({ roomId }: { roomId: string }) {
               <small>
                 {roleLabel(member.role)}
                 {member.mutedByHost ? " 🔇" : ""}
+                {voice.inVoice.has(member.userId) ? (
+                  <span
+                    className={s.seatVoice}
+                    title={
+                      voice.speaking.has(member.userId)
+                        ? t("voice.speaking")
+                        : t("voice.inVoice")
+                    }
+                  >
+                    {" 🎧"}
+                  </span>
+                ) : null}
               </small>
             </motion.button>
           ))}
         </AnimatePresence>
       </div>
+
+      <RoomVoice
+        roomId={roomId}
+        canGrant={me.can.edit_room}
+        names={names}
+        onPresence={setVoice}
+      />
 
       <div className={s.work}>
         {quiz.active ? (

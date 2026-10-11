@@ -50,6 +50,7 @@ import {
 } from "../study-rooms/moderation";
 import { adminSetProfile, getViewer, setProfile } from "../study-rooms/profile";
 import { roomHistory, roomSummary } from "../study-rooms/summary";
+import { syncVoiceSoon, voicePass } from "../study-rooms/voice";
 import {
   createRoom,
   createRoomForBook,
@@ -75,6 +76,14 @@ import {
   roomsProcedure,
   router,
 } from "./trpc";
+
+// After anything that changes who may be heard in a room, the voice room
+// is brought into line (lib/study-rooms/voice.ts). Never waited for.
+async function thenVoice<T>(roomId: string, run: Promise<T>): Promise<T> {
+  const result = await run;
+  syncVoiceSoon(roomId);
+  return result;
+}
 
 function asTrpcError(error: unknown): never {
   if (error instanceof RoomError) {
@@ -236,7 +245,10 @@ export const roomsRouter = router({
   leave: roomsProcedure
     .input(z.object({ roomId: uuid }))
     .mutation(({ ctx, input }) =>
-      guard(() => leaveRoom(ctx.user.id, input.roomId))
+      thenVoice(
+        input.roomId,
+        guard(() => leaveRoom(ctx.user.id, input.roomId))
+      )
     ),
 
   state: roomsProcedure
@@ -267,8 +279,11 @@ export const roomsRouter = router({
       })
     )
     .mutation(({ ctx, input: { roomId, ...changes } }) =>
-      guard(async () =>
-        updateRoom(await getViewer(ctx.user.id), roomId, changes)
+      thenVoice(
+        roomId,
+        guard(async () =>
+          updateRoom(await getViewer(ctx.user.id), roomId, changes)
+        )
       )
     ),
 
@@ -294,20 +309,26 @@ export const roomsRouter = router({
       })
     )
     .mutation(({ ctx, input: { roomId, userId, ...changes } }) =>
-      guard(async () =>
-        setMember(await getViewer(ctx.user.id), roomId, userId, changes)
+      thenVoice(
+        roomId,
+        guard(async () =>
+          setMember(await getViewer(ctx.user.id), roomId, userId, changes)
+        )
       )
     ),
 
   remove: roomsProcedure
     .input(z.object({ roomId: uuid, userId: uuid, ban: z.boolean() }))
     .mutation(({ ctx, input }) =>
-      guard(async () =>
-        removeMember(
-          await getViewer(ctx.user.id),
-          input.roomId,
-          input.userId,
-          input.ban
+      thenVoice(
+        input.roomId,
+        guard(async () =>
+          removeMember(
+            await getViewer(ctx.user.id),
+            input.roomId,
+            input.userId,
+            input.ban
+          )
         )
       )
     ),
@@ -315,15 +336,21 @@ export const roomsRouter = router({
   transferHost: roomsProcedure
     .input(z.object({ roomId: uuid, userId: uuid }))
     .mutation(({ ctx, input }) =>
-      guard(async () =>
-        transferHost(await getViewer(ctx.user.id), input.roomId, input.userId)
+      thenVoice(
+        input.roomId,
+        guard(async () =>
+          transferHost(await getViewer(ctx.user.id), input.roomId, input.userId)
+        )
       )
     ),
 
   end: roomsProcedure
     .input(z.object({ roomId: uuid }))
     .mutation(({ ctx, input }) =>
-      guard(async () => endRoom(await getViewer(ctx.user.id), input.roomId))
+      thenVoice(
+        input.roomId,
+        guard(async () => endRoom(await getViewer(ctx.user.id), input.roomId))
+      )
     ),
 
   report: roomsProcedure
@@ -489,6 +516,15 @@ export const roomsRouter = router({
     .input(z.object({ quizId: uuid }))
     .query(({ ctx, input }) =>
       guard(async () => quizResults(await getViewer(ctx.user.id), input.quizId))
+    ),
+
+  // ── Voice ──
+  // A pass into the room's voice, for a member, saying whether they may
+  // speak or only listen. null while voice is not set up on the server.
+  voice: roomsProcedure
+    .input(z.object({ roomId: uuid }))
+    .mutation(({ ctx, input }) =>
+      guard(async () => voicePass(await getViewer(ctx.user.id), input.roomId))
     ),
 
   // ── After the sitting ──
