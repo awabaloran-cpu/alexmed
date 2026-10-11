@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
@@ -119,6 +119,22 @@ export default function LiveRoom({ roomId }: { roomId: string }) {
   const onPage = useCallback((page: number) => setMyPage(page), []);
   const chat = useRoomChat(roomId, state.data?.room.seq ?? 0, wide || chatOpen);
   const quiz = useRoomQuiz(roomId, state.data?.room.seq ?? 0);
+  // 🧭 A quiz of the Discover catalogue brought to this room ("play with
+  // friends" there lands here with ?quiz=<slug>): it waits, named, until
+  // the one who brought it starts it — friends first get the link.
+  const readySlug = useSearchParams().get("quiz");
+  const readyQuiz = trpc.discover.quiz.useQuery(
+    { slug: readySlug ?? "" },
+    { enabled: !!readySlug, retry: false, staleTime: Infinity }
+  );
+  const dropReady = () => router.replace(`/rooms/${roomId}/live`);
+  const startCatalog = trpc.rooms.startCatalogQuiz.useMutation({
+    onSuccess: () => {
+      dropReady();
+      void quiz.refetch();
+      return utils.rooms.state.invalidate({ roomId });
+    },
+  });
   // 🎬 The room's video: where the player is (for a chat message to
   // carry), "go to this second" from the chat, and the side panel folded
   // away to give the video the width.
@@ -146,7 +162,10 @@ export default function LiveRoom({ roomId }: { roomId: string }) {
   useEffect(() => {
     setFocus(true);
   }, [contentKey]);
-  const presenting = focus && !!live && (liveVideo || !!live.room.bookId);
+  // A quiz waiting to start is shown on the room's own page, with the
+  // seats and the invite beside it.
+  const presenting =
+    focus && !readySlug && !!live && (liveVideo || !!live.room.bookId);
   // The page behind does not scroll under the presentation.
   useEffect(() => {
     if (!presenting) return;
@@ -458,7 +477,50 @@ export default function LiveRoom({ roomId }: { roomId: string }) {
         </div>
       ) : null}
 
-      {!presenting && (watching || room.bookId) ? (
+      {readySlug && !quiz.active ? (
+        <section className={s.ready} aria-label={t("catalog.readyTitle")}>
+          <ListChecks size={26} aria-hidden="true" />
+          <div>
+            <small>{t("catalog.readyTitle")}</small>
+            <b dir="auto">
+              {readyQuiz.data?.title ??
+                (readyQuiz.isError ? t("catalog.gone") : "…")}
+            </b>
+            <p>{t("catalog.readyHint")}</p>
+          </div>
+          {startCatalog.error ? (
+            <p className={s.errorNote} role="alert">
+              {tError(startCatalog.error)}
+            </p>
+          ) : null}
+          <div className={s.readyActions}>
+            {me.can.start_quiz && readyQuiz.data ? (
+              <button
+                type="button"
+                className={`${s.btn} ${s.primary}`}
+                disabled={startCatalog.isPending}
+                onClick={() => startCatalog.mutate({ roomId, slug: readySlug })}
+              >
+                {t("catalog.start")}
+              </button>
+            ) : null}
+            {room.visibility === "public" || me.can.invite ? (
+              <button
+                type="button"
+                className={s.btn}
+                onClick={() => setSheet({ kind: "invite", code: null })}
+              >
+                <UserPlus size={17} aria-hidden="true" /> {t("live.invite")}
+              </button>
+            ) : null}
+            <button type="button" className={s.btn} onClick={dropReady}>
+              {t("catalog.dismiss")}
+            </button>
+          </div>
+        </section>
+      ) : null}
+
+      {!presenting && !readySlug && (watching || room.bookId) ? (
         <button
           type="button"
           className={`${s.btn} ${s.primary} ${s.wide}`}

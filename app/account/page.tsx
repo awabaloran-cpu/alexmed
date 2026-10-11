@@ -6,6 +6,7 @@ import { signOut, useSession } from "next-auth/react";
 import {
   BarChart3,
   BookOpen,
+  Compass,
   ChevronLeft,
   CreditCard,
   FileText,
@@ -44,6 +45,7 @@ const STUDY_LINKS: LinkRow[] = [
   { href: "/?view=library", label: "ملفات الأسئلة", icon: BookOpen },
   { href: "/books/stats", label: "إحصائياتي", icon: BarChart3 },
   { href: "/shared", label: "الزملاء", icon: Users },
+  { href: "/discover", label: "اكتشف: اختبارات جاهزة", icon: Compass },
 ];
 
 const HELP_LINKS: LinkRow[] = [

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { RotateCcw } from "lucide-react";
+import { Compass, RotateCcw } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 
 // 🧠 ألعاب الذاكرة — the bottom bar's "ألعاب" tab: every game with the
@@ -48,11 +48,22 @@ export default function BrainGamesHome() {
   }
 
   const games = overview.data;
+  // 🧭 Ready quizzes to study or play with friends live next door.
+  const discoverLink = (
+    <Link href="/discover" className="bg-discover">
+      <Compass size={22} aria-hidden="true" />
+      <span>
+        <strong>اكتشف اختبارات جاهزة</strong>
+        <small>معلومات عامة، علوم، جغرافيا وأكثر — وحدك أو مع أصدقائك.</small>
+      </span>
+    </Link>
+  );
   const isNewPlayer = games.every(game => !game.progress);
 
   return (
     <section className="bg-page">
       {header}
+      {discoverLink}
 
       {isNewPlayer && (
         <div className="bg-welcome">

@@ -468,6 +468,23 @@ export function QuizResults({
           <p>{t("quiz.noResult")}</p>
         )}
       </div>
+      {ranking.length > 1 ? (
+        <ol className={s.podium} aria-label={t("quiz.podium")}>
+          {ranking.slice(0, 3).map((row, position) => (
+            <li
+              key={row.userId}
+              className={s[`podium${position + 1}`]}
+              style={{ order: [2, 1, 3][position] }}
+            >
+              <b dir="auto">
+                {row.userId === myUserId ? t("live.you") : row.name}
+              </b>
+              <i>{t("quiz.points", { n: row.points })}</i>
+              <span aria-hidden="true">{position + 1}</span>
+            </li>
+          ))}
+        </ol>
+      ) : null}
       <ol className={s.board}>
         {ranking.map((row, position) => (
           <li

@@ -30,6 +30,8 @@ const ar = {
   "rooms.minorNote": "غرفك خاصة بالدعوة فقط، مع من تختارهم أنت.",
   "rooms.minorWhy":
     "تظهر لك غرف مرحلتك. عند بلوغ ١٨ تُفتح لك أقسام الجامعات تلقائيًا.",
+  "rooms.discover": "اكتشف اختبارات جاهزة",
+  "rooms.discoverHint": "اختر اختبارًا والعبه مع أصدقائك في غرفة.",
   "rooms.inviteFriends": "ادعُ زملاءك لغرفة جديدة",
   "rooms.inviteFriendsHint": "برابط دعوة تشاركه مع من تختار.",
   "rooms.emptyTitle": "كن أول من يفتح غرفة هنا",
@@ -313,6 +315,13 @@ const ar = {
   "quiz.waitHost": "القائد ينتقل إلى السؤال التالي.",
   "quiz.cancel": "ألغِ الاختبار",
   "quiz.resultsTitle": "نتيجة الاختبار",
+  "quiz.podium": "منصة الفائزين",
+  "catalog.readyTitle": "اختبار جاهز للّعب",
+  "catalog.readyHint":
+    "ادعُ أصدقاءك، وحين يدخلون ابدأ: نفس السؤال للجميع في نفس اللحظة، والنقاط للأصح والأسرع.",
+  "catalog.start": "ابدأ اللعب الآن",
+  "catalog.dismiss": "ليس الآن",
+  "catalog.gone": "هذا الاختبار لم يعد متاحًا.",
   "quiz.myResult": "ترتيبك {rank}: {correct} صحيحة من {total}.",
   "quiz.noResult": "لم تُجب على أي سؤال في هذا الاختبار.",
   "quiz.correctOf": "{n} من {total}",
@@ -484,6 +493,8 @@ const en: Record<RoomsKey, string> = {
     "Your rooms are private, by invitation, with people you choose.",
   "rooms.minorWhy":
     "You see the rooms for your stage. University sections open on your 18th birthday.",
+  "rooms.discover": "Discover ready quizzes",
+  "rooms.discoverHint": "Pick a quiz and play it with your friends in a room.",
   "rooms.inviteFriends": "Invite classmates to a new room",
   "rooms.inviteFriendsHint":
     "With an invite link you share with whoever you choose.",
@@ -775,6 +786,13 @@ const en: Record<RoomsKey, string> = {
   "quiz.waitHost": "The host is moving to the next question.",
   "quiz.cancel": "Cancel the quiz",
   "quiz.resultsTitle": "Quiz result",
+  "quiz.podium": "Winners' podium",
+  "catalog.readyTitle": "A quiz is ready to play",
+  "catalog.readyHint":
+    "Invite your friends, and start when they are in: the same question for everyone at the same moment, points for right and fast.",
+  "catalog.start": "Start playing now",
+  "catalog.dismiss": "Not now",
+  "catalog.gone": "This quiz is no longer available.",
   "quiz.myResult": "You came {rank}: {correct} right out of {total}.",
   "quiz.noResult": "You didn't answer any question in this quiz.",
   "quiz.correctOf": "{n} of {total}",

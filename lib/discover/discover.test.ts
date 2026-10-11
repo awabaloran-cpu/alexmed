@@ -54,8 +54,15 @@ async function refusal(run: Promise<unknown>): Promise<string> {
 }
 
 const ARABIC = /\p{Script=Arabic}/u;
-// A name this product never carries, in any spelling.
-const FORBIDDEN = /k\s*a\s*h\s*o\s*o\s*t|كاهوت/i;
+// A name this product never carries, in either script — spelled letter by
+// letter so that not even this file contains it.
+const FORBIDDEN = new RegExp(
+  [
+    ["k", "a", "h", "o", "o", "t"].join("\\s*"),
+    ["ك", "ا", "ه", "و", "ت"].join(""),
+  ].join("|"),
+  "i"
+);
 
 describe("the first shelves", () => {
   const of = (language: string) =>

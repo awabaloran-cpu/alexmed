@@ -11071,3 +11071,30 @@ a.book-mode-row:active {
   }
 }
 /* @nl-design:end */
+
+/* 🧭 The way from the games to Discover (app/games/page.tsx). */
+.bg-discover {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+  padding: 14px 16px;
+  border: 1px solid var(--nl-rule);
+  border-radius: 16px;
+  background: var(--nl-niro-soft);
+  color: var(--nl-ink);
+  text-decoration: none;
+}
+.bg-discover svg {
+  flex: none;
+  color: var(--nl-niro-deep);
+}
+.bg-discover span {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.bg-discover small {
+  color: var(--nl-ink-2);
+  font-size: 13px;
+}

@@ -2302,3 +2302,121 @@ body:has(.present) :global(.student-bottom-nav) {
     border-radius: 0;
   }
 }
+
+/* 🧭 A catalogue quiz waiting to start (LiveRoom), and the winners'
+   podium at the end of a game (RoomQuiz). */
+.ready {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px 12px;
+  padding: 14px;
+  border: 2px solid var(--niro);
+  border-radius: 16px;
+  background: var(--niro-soft);
+  color: var(--ink);
+}
+.ready > svg {
+  color: var(--niro-deep);
+}
+.ready small {
+  color: var(--niro-deep);
+  font-weight: 600;
+}
+.ready b {
+  display: block;
+  font-size: 1.1rem;
+  line-height: 1.4;
+}
+.ready p {
+  margin: 4px 0 0;
+  color: var(--ink2);
+  font-size: 13.5px;
+  line-height: 1.6;
+}
+.ready > .errorNote,
+.readyActions {
+  grid-column: 1 / -1;
+}
+.readyActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.podium {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 8px;
+  margin: 4px 0 8px;
+  padding: 0;
+  list-style: none;
+}
+.podium li {
+  display: grid;
+  flex: 1 1 0;
+  justify-items: center;
+  gap: 2px;
+  min-width: 0;
+  max-width: 130px;
+  text-align: center;
+}
+.podium b {
+  max-width: 100%;
+  overflow: hidden;
+  font-size: 0.92rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.podium i {
+  color: var(--ink3);
+  font-size: 0.78rem;
+  font-style: normal;
+  font-variant-numeric: tabular-nums;
+}
+.podium span {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  margin-top: 4px;
+  border-radius: 10px 10px 0 0;
+  background: var(--rule);
+  color: var(--ink);
+  font-size: 1.3rem;
+  font-weight: 700;
+}
+.podium1 span {
+  height: 84px;
+  background: var(--marker);
+  /* On the yellow itself the ink is dark in both looks. */
+  color: var(--nl-ink);
+}
+.podium2 span {
+  height: 60px;
+}
+.podium3 span {
+  height: 42px;
+}
+.promo {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--rule);
+  border-radius: 14px;
+  background: var(--niro-soft);
+  color: var(--ink);
+  text-decoration: none;
+}
+.promo svg {
+  flex: none;
+  color: var(--niro-deep);
+}
+.promo span {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.promo small {
+  color: var(--ink2);
+  font-size: 12.5px;
+}
