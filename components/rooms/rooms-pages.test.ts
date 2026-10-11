@@ -308,6 +308,15 @@ describe("inside a room", () => {
         },
         seq: 3,
       },
+      // No video in this room: it shows its file.
+      video: {
+        contentType: "pdf",
+        videoId: null,
+        title: null,
+        thumbnail: null,
+        state: null,
+        serverNow: Date.now(),
+      },
       me: {
         userId: "u1",
         role,

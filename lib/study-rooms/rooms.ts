@@ -18,6 +18,7 @@ import {
 } from "../../drizzle/schema";
 import { requireDb } from "../db";
 import { mayEnterRoom, mayOpenPublicRoom, mayUseSection } from "./age";
+import { videoOf } from "./video-view";
 import {
   EMPTY_ROOM_MINUTES,
   REPORTS_TO_HIDE,
@@ -922,6 +923,7 @@ export async function roomState(viewer: Viewer, roomId: string) {
     "end_room",
     "start_quiz",
     "invite",
+    "control_video",
   ];
   return {
     room: {
@@ -943,6 +945,8 @@ export async function roomState(viewer: Viewer, roomId: string) {
       seq: room.seq,
       createdAt: room.createdAt,
     },
+    // 🎬 The room's video and where it is (lib/study-rooms/video.ts).
+    video: videoOf(room),
     me: {
       userId: viewer.userId,
       role: member.role as RoomRole,

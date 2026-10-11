@@ -344,6 +344,13 @@
       "when": 1791618632549,
       "tag": "0048_study_rooms_live",
       "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "7",
+      "when": 1791682319954,
+      "tag": "0049_study_rooms_video",
+      "breakpoints": true
     }
   ]
 }

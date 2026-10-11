@@ -7,15 +7,19 @@ import { AnimatePresence, motion } from "framer-motion";
 import {
   Ban,
   Crown,
+  FileText,
   Flag,
   ListChecks,
   LogOut,
   MessageCircle,
   MicOff,
+  PanelLeftClose,
+  PanelLeftOpen,
   Settings,
   ShieldCheck,
   UserMinus,
   UserPlus,
+  Video,
 } from "lucide-react";
 import { REPORT_REASONS, type ReportReason } from "@/lib/study-rooms/config";
 import type { RoomsKey } from "@/lib/study-rooms/i18n";
@@ -25,6 +29,8 @@ import RoomChat, { useRoomChat } from "./RoomChat";
 import { InviteBox } from "./RoomCreate";
 import RoomDesk from "./RoomDesk";
 import RoomFilePicker from "./RoomFilePicker";
+import RoomVideo from "./RoomVideo";
+import RoomVideoAdd from "./RoomVideoAdd";
 import RoomVoice, { type VoicePresence } from "./RoomVoice";
 import {
   QuizPanel,
@@ -82,6 +88,8 @@ export default function LiveRoom({ roomId }: { roomId: string }) {
     | { kind: "end" }
     | { kind: "file" }
     | { kind: "quiz" }
+    | { kind: "video" }
+    | { kind: "videoRemove" }
     | null
   >(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -101,6 +109,21 @@ export default function LiveRoom({ roomId }: { roomId: string }) {
   const onPage = useCallback((page: number) => setMyPage(page), []);
   const chat = useRoomChat(roomId, state.data?.room.seq ?? 0, wide || chatOpen);
   const quiz = useRoomQuiz(roomId, state.data?.room.seq ?? 0);
+  // 🎬 The room's video: where the player is (for a chat message to
+  // carry), "go to this second" from the chat, and the side panel folded
+  // away to give the video the width.
+  const videoTimeRef = useRef<number | null>(null);
+  const [videoSeek, setVideoSeek] = useState<{ seconds: number } | null>(null);
+  const [sideOpen, setSideOpen] = useState(true);
+  const setContent = trpc.rooms.setContent.useMutation({
+    onSuccess: () => utils.rooms.state.invalidate({ roomId }),
+  });
+  const clearContent = trpc.rooms.clearContent.useMutation({
+    onSuccess: () => {
+      setSheet(null);
+      return utils.rooms.state.invalidate({ roomId });
+    },
+  });
   const [voice, setVoice] = useState<VoicePresence>({
     inVoice: new Set(),
     speaking: new Set(),
@@ -126,6 +149,7 @@ export default function LiveRoom({ roomId }: { roomId: string }) {
     onSuccess: result => setSheet({ kind: "invite", code: result.inviteCode }),
   });
   const mutationError =
+    setContent.error ??
     setMember.error ??
     remove.error ??
     transfer.error ??
@@ -202,7 +226,10 @@ export default function LiveRoom({ roomId }: { roomId: string }) {
     );
   }
 
-  const { room, me, members } = data;
+  const { room, me, members, video } = data;
+  const watching =
+    video.contentType === "youtube" && !!video.videoId && !!video.state;
+  const videoTime = () => (watching ? videoTimeRef.current : null);
   const target =
     sheet?.kind === "member"
       ? members.find(member => member.userId === sheet.userId)
@@ -310,7 +337,90 @@ export default function LiveRoom({ roomId }: { roomId: string }) {
         onPresence={setVoice}
       />
 
-      <div className={s.work}>
+      {me.can.edit_room || video.videoId ? (
+        <div className={s.contentBar}>
+          {/* Which of the two the room looks at. Members see what was
+              chosen; only who may edit the room chooses. */}
+          <div
+            className={s.segment}
+            role="group"
+            aria-label={t("video.contentChoice")}
+          >
+            <button
+              type="button"
+              className={`${s.segmentBtn} ${watching ? "" : s.segmentOn}`}
+              aria-pressed={!watching}
+              disabled={!me.can.edit_room || setContent.isPending}
+              onClick={() =>
+                watching && setContent.mutate({ roomId, contentType: "pdf" })
+              }
+            >
+              <FileText size={16} aria-hidden="true" /> {t("video.tabFile")}
+            </button>
+            <button
+              type="button"
+              className={`${s.segmentBtn} ${watching ? s.segmentOn : ""}`}
+              aria-pressed={watching}
+              disabled={!me.can.edit_room || setContent.isPending}
+              onClick={() => {
+                if (watching) return;
+                if (video.videoId) {
+                  setContent.mutate({ roomId, contentType: "youtube" });
+                } else {
+                  setSheet({ kind: "video" });
+                }
+              }}
+            >
+              <Video size={16} aria-hidden="true" /> {t("video.tabVideo")}
+            </button>
+          </div>
+          {me.can.edit_room ? (
+            <>
+              <button
+                type="button"
+                className={s.btn}
+                onClick={() => setSheet({ kind: "video" })}
+              >
+                <Video size={16} aria-hidden="true" />
+                {video.videoId ? t("video.change") : t("video.addButton")}
+              </button>
+              {video.videoId ? (
+                <button
+                  type="button"
+                  className={s.btn}
+                  onClick={() => setSheet({ kind: "videoRemove" })}
+                >
+                  {t("video.remove")}
+                </button>
+              ) : null}
+            </>
+          ) : null}
+          {wide ? (
+            <button
+              type="button"
+              className={`${s.btn} ${s.sideToggle}`}
+              aria-pressed={sideOpen}
+              onClick={() => setSideOpen(open => !open)}
+            >
+              {sideOpen ? (
+                <PanelLeftClose size={16} aria-hidden="true" />
+              ) : (
+                <PanelLeftOpen size={16} aria-hidden="true" />
+              )}
+              {sideOpen ? t("video.hideSide") : t("video.showSide")}
+              {!sideOpen && chat.unread ? (
+                <span className={s.badge}>{chat.unread}</span>
+              ) : null}
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+
+      <div
+        className={`${s.work} ${wide && !sideOpen ? s.workWide : ""} ${
+          watching ? s.workVideo : ""
+        }`}
+      >
         {quiz.active ? (
           <QuizPanel
             roomId={roomId}
@@ -328,23 +438,40 @@ export default function LiveRoom({ roomId }: { roomId: string }) {
           />
         ) : null}
         <div hidden={!!quiz.active || !!quiz.finishedId}>
-          <RoomDesk
-            roomId={roomId}
-            bookId={room.bookId}
-            sharedPage={room.sharedPage}
-            canLead={me.can.lead_page}
-            canMoveFreely={me.can.free_nav}
-            canChoose={me.can.edit_room}
-            onChoose={() => setSheet({ kind: "file" })}
-            onPage={onPage}
-            jump={jump}
-            roomSeq={room.seq}
-            myUserId={me.userId}
-            canMark={me.can.mark}
-            canDeleteAnyMark={me.can.delete_any_mark}
-          />
+          {watching ? (
+            <RoomVideo
+              roomId={roomId}
+              video={{
+                videoId: video.videoId!,
+                title: video.title,
+                state: video.state!,
+                serverNow: video.serverNow,
+              }}
+              canControl={me.can.control_video}
+              online={!state.isRefetchError}
+              timeRef={videoTimeRef}
+              localSeek={videoSeek}
+            />
+          ) : null}
+          <div hidden={watching}>
+            <RoomDesk
+              roomId={roomId}
+              bookId={room.bookId}
+              sharedPage={room.sharedPage}
+              canLead={me.can.lead_page}
+              canMoveFreely={me.can.free_nav}
+              canChoose={me.can.edit_room}
+              onChoose={() => setSheet({ kind: "file" })}
+              onPage={onPage}
+              jump={jump}
+              roomSeq={room.seq}
+              myUserId={me.userId}
+              canMark={me.can.mark}
+              canDeleteAnyMark={me.can.delete_any_mark}
+            />
+          </div>
         </div>
-        {wide ? (
+        {wide && sideOpen ? (
           <aside className={s.side} aria-label={t("chat.title")}>
             <h2>{t("live.chat")}</h2>
             <RoomChat
@@ -354,6 +481,10 @@ export default function LiveRoom({ roomId }: { roomId: string }) {
               page={room.bookId ? myPage : null}
               canChat={me.can.chat}
               canDeleteAny={me.can.delete_any_message}
+              videoTime={videoTime}
+              onGoToVideoTime={
+                watching ? seconds => setVideoSeek({ seconds }) : undefined
+              }
               onGoToPage={page => setJump({ page })}
             />
           </aside>
@@ -438,11 +569,50 @@ export default function LiveRoom({ roomId }: { roomId: string }) {
             page={room.bookId ? myPage : null}
             canChat={me.can.chat}
             canDeleteAny={me.can.delete_any_message}
+            videoTime={videoTime}
+            onGoToVideoTime={
+              watching ? seconds => setVideoSeek({ seconds }) : undefined
+            }
             onGoToPage={page => {
               setJump({ page });
               setChatOpen(false);
             }}
           />
+        </Sheet>
+      ) : null}
+
+      {sheet?.kind === "video" ? (
+        <RoomVideoAdd
+          roomId={roomId}
+          replacing={!!video.videoId}
+          othersPresent={members.length > 1}
+          onClose={close}
+        />
+      ) : null}
+
+      {sheet?.kind === "videoRemove" ? (
+        <Sheet title={t("video.removeConfirm")} onClose={close}>
+          <p className={s.meta}>{t("video.removeHint")}</p>
+          {clearContent.error ? (
+            <p className={s.errorNote} role="alert">
+              {tError(clearContent.error)}
+            </p>
+          ) : null}
+          <button
+            type="button"
+            className={`${s.btn} ${s.danger} ${s.wide}`}
+            disabled={clearContent.isPending}
+            onClick={() => clearContent.mutate({ roomId })}
+          >
+            {t("video.remove")}
+          </button>
+          <button
+            type="button"
+            className={`${s.btn} ${s.wide}`}
+            onClick={close}
+          >
+            {t("live.cancel")}
+          </button>
         </Sheet>
       ) : null}
 
@@ -594,6 +764,17 @@ export default function LiveRoom({ roomId }: { roomId: string }) {
             on={room.settings.chat}
             label={t("perm.chat")}
             onChange={chat => update.mutate({ roomId, settings: { chat } })}
+          />
+          <Toggle
+            on={room.settings.videoControl === "members"}
+            label={t("perm.videoControl")}
+            hint={t("perm.videoControlHint")}
+            onChange={members =>
+              update.mutate({
+                roomId,
+                settings: { videoControl: members ? "members" : "host" },
+              })
+            }
           />
           <label className={s.field}>
             {t("perm.speak")}

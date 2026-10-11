@@ -26,7 +26,8 @@ export type RoomAction =
   | "end_room"
   | "start_quiz"
   | "invite"
-  | "report";
+  | "report"
+  | "control_video"; // play, pause and seek the room's video for everyone
 
 export const DEFAULT_SETTINGS: Record<"public" | "private", StudyRoomSettings> =
   {
@@ -84,6 +85,14 @@ export function can(
     case "mute_member":
     case "kick_member":
       return staff;
+    case "control_video":
+      // Whoever leads the page leads the video; everyone, if the room says
+      // so. A room made before the setting existed is "host only".
+      return (
+        host ||
+        actor.grants.lead === true ||
+        settings.videoControl === "members"
+      );
     case "start_quiz":
       return (
         host || (actor.role === "cohost" && settings.quizStart === "cohost")

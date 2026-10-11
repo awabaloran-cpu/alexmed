@@ -3375,6 +3375,25 @@ export type StudyRoomSettings = {
   speak: "open" | "request" | "host";
   quizStart: "host" | "cohost";
   invite: "host" | "anyone";
+  // Who may play, pause and seek the room's video. Absent = "host" (rooms
+  // made before the video existed).
+  videoControl?: "host" | "members";
+};
+
+// 🎬 The room's shared YouTube video, as of its last change. The position
+// is NOT written while the video plays: `positionSeconds` is where it was
+// at `stateChangedAt`, and while "playing" every screen works out where it
+// is now from the two (lib/study-rooms/video.ts). `revision` goes up by one
+// with every change, so a change made against an older state is refused.
+export type StudyRoomVideoState = {
+  status: "playing" | "paused" | "ended";
+  positionSeconds: number;
+  // ISO time, the server's clock.
+  stateChangedAt: string;
+  controlledBy: string | null;
+  revision: number;
+  // Told by the player once it knows; null until then.
+  durationSeconds: number | null;
 };
 
 export const studyRooms = pgTable(
@@ -3416,6 +3435,13 @@ export const studyRooms = pgTable(
     countries: jsonb("countries").$type<string[]>().default([]).notNull(),
     bookId: uuid("bookId").references(() => books.id, { onDelete: "set null" }),
     sharedPage: integer("sharedPage").default(1).notNull(),
+    // 🎬 What the room is looking at: its file ("pdf") or a YouTube video.
+    // The video sits beside the file — choosing one never removes the other.
+    contentType: varchar("contentType", { length: 8 }).default("pdf").notNull(),
+    // The id only (11 characters), never a link as typed.
+    youtubeVideoId: varchar("youtubeVideoId", { length: 16 }),
+    youtubeTitle: text("youtubeTitle"),
+    youtubeState: jsonb("youtubeState").$type<StudyRoomVideoState>(),
     pageLeaderId: uuid("pageLeaderId"),
     settings: jsonb("settings").$type<StudyRoomSettings>().notNull(),
     // sha256 of the invite code; the code itself is never stored.
@@ -3581,6 +3607,8 @@ export const studyRoomMessages = pgTable(
     userId: uuid("userId").references(() => users.id, { onDelete: "set null" }),
     body: text("body").notNull(),
     page: integer("page"),
+    // Where the room's video was when this was written (whole seconds).
+    videoSeconds: integer("videoSeconds"),
     clientId: varchar("clientId", { length: 40 }).notNull(),
     seq: bigint("seq", { mode: "number" }).notNull(),
     deletedAt: timestamp("deletedAt", { withTimezone: true }),

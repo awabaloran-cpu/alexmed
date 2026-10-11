@@ -50,6 +50,16 @@ import {
 } from "../study-rooms/moderation";
 import { adminSetProfile, getViewer, setProfile } from "../study-rooms/profile";
 import { roomHistory, roomSummary } from "../study-rooms/summary";
+import {
+  checkYoutubeLink,
+  clearRoomVideo,
+  requireRoomAction,
+  resyncVideo,
+  roomVideo,
+  setRoomContent,
+  setRoomVideo,
+  updateVideoState,
+} from "../study-rooms/video";
 import { syncVoiceSoon, voicePass } from "../study-rooms/voice";
 import {
   createRoom,
@@ -110,8 +120,11 @@ const settings = z
     speak: z.enum(["open", "request", "host"]),
     quizStart: z.enum(["host", "cohost"]),
     invite: z.enum(["host", "anyone"]),
+    videoControl: z.enum(["host", "members"]),
   })
   .partial();
+// A YouTube video id: exactly eleven of these characters, nothing else.
+const videoId = z.string().regex(/^[A-Za-z0-9_-]{11}$/);
 const grants = z
   .object({
     chat: z.boolean(),
@@ -406,6 +419,7 @@ export const roomsRouter = router({
           .min(1)
           .max(MESSAGE_MAX * 2),
         page: z.number().int().min(1).max(100_000).nullish(),
+        videoSeconds: z.number().min(0).max(86_400).nullish(),
         clientId: z.string().regex(/^[\w-]{8,40}$/),
       })
     )
@@ -516,6 +530,88 @@ export const roomsRouter = router({
     .input(z.object({ quizId: uuid }))
     .query(({ ctx, input }) =>
       guard(async () => quizResults(await getViewer(ctx.user.id), input.quizId))
+    ),
+
+  // ── 🎬 Watching a YouTube video together (lib/study-rooms/video.ts) ──
+  // A link as typed is checked before anything is saved: is it YouTube,
+  // does the video exist, may it be played inside another site.
+  checkYoutube: roomsProcedure
+    .input(z.object({ roomId: uuid, link: z.string().trim().min(1).max(300) }))
+    .mutation(({ ctx, input }) =>
+      guard(async () => {
+        // Only someone who could add it may ask about it.
+        await requireRoomAction(
+          await getViewer(ctx.user.id),
+          input.roomId,
+          "edit_room"
+        );
+        return checkYoutubeLink(input.link);
+      })
+    ),
+
+  // What the room looks at: a YouTube video (given by its id — put in the
+  // room and shown), or simply which of its file and its video to show.
+  setContent: roomsProcedure
+    .input(
+      z.discriminatedUnion("contentType", [
+        z.object({
+          roomId: uuid,
+          contentType: z.literal("youtube"),
+          // Absent: show the video the room already has.
+          videoId: videoId.optional(),
+        }),
+        z.object({ roomId: uuid, contentType: z.literal("pdf") }),
+      ])
+    )
+    .mutation(({ ctx, input }) =>
+      guard(async () => {
+        const viewer = await getViewer(ctx.user.id);
+        return input.contentType === "youtube" && input.videoId
+          ? setRoomVideo(viewer, input.roomId, { videoId: input.videoId })
+          : setRoomContent(viewer, input.roomId, input.contentType);
+      })
+    ),
+
+  // The video is taken out of the room; the room's file is untouched.
+  clearContent: roomsProcedure
+    .input(z.object({ roomId: uuid }))
+    .mutation(({ ctx, input }) =>
+      guard(async () =>
+        clearRoomVideo(await getViewer(ctx.user.id), input.roomId)
+      )
+    ),
+
+  youtubeState: roomsProcedure
+    .input(z.object({ roomId: uuid }))
+    .query(({ ctx, input }) =>
+      guard(async () => roomVideo(await getViewer(ctx.user.id), input.roomId))
+    ),
+
+  // Play, pause, seek, the end. Applied only on top of the revision the
+  // caller saw, for the video the caller means; otherwise `applied` is
+  // false and the answer is the state as it is.
+  updateYoutubeState: roomsProcedure
+    .input(
+      z.object({
+        roomId: uuid,
+        videoId,
+        status: z.enum(["playing", "paused", "ended"]),
+        positionSeconds: z.number().finite().min(0).max(86_400),
+        baseRevision: z.number().int().min(0),
+        durationSeconds: z.number().finite().min(0).max(86_400).nullish(),
+      })
+    )
+    .mutation(({ ctx, input: { roomId, ...change } }) =>
+      guard(async () =>
+        updateVideoState(await getViewer(ctx.user.id), roomId, change)
+      )
+    ),
+
+  // "Bring everyone here", by whoever controls the video.
+  syncYoutube: roomsProcedure
+    .input(z.object({ roomId: uuid }))
+    .mutation(({ ctx, input }) =>
+      guard(async () => resyncVideo(await getViewer(ctx.user.id), input.roomId))
     ),
 
   // ── Voice ──

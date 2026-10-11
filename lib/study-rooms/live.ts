@@ -161,7 +161,13 @@ async function countRecent(
 export async function sendMessage(
   viewer: Viewer,
   roomId: string,
-  input: { body: string; page?: number | null; clientId: string }
+  input: {
+    body: string;
+    page?: number | null;
+    // Where the room's video was when this was written.
+    videoSeconds?: number | null;
+    clientId: string;
+  }
 ) {
   const db = requireDb();
   await requireAction(db, roomId, viewer.userId, "chat");
@@ -201,6 +207,12 @@ export async function sendMessage(
         userId: viewer.userId,
         body,
         page: input.page ?? null,
+        videoSeconds:
+          typeof input.videoSeconds === "number" &&
+          Number.isFinite(input.videoSeconds) &&
+          input.videoSeconds >= 0
+            ? Math.floor(input.videoSeconds)
+            : null,
         clientId: input.clientId,
         seq,
       })
@@ -223,6 +235,7 @@ export async function listMessages(
       name: users.name,
       body: studyRoomMessages.body,
       page: studyRoomMessages.page,
+      videoSeconds: studyRoomMessages.videoSeconds,
       seq: studyRoomMessages.seq,
       deleted: sql<boolean>`${studyRoomMessages.deletedAt} is not null`,
       createdAt: studyRoomMessages.createdAt,

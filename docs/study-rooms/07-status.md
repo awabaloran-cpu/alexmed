@@ -112,3 +112,24 @@
 7. الصقل، اختبار الحمل، ثم Flutter.
 
 التقدير الأصلي 64–79 يوم عمل؛ المنجز يغطي السيرفر كله وواجهة المرحلة 1.
+
+## 🎬 YouTube في الغرفة (2026-10-11)
+
+مبنيّ على نفس آلية الغرف (استطلاع `rooms.state` + `seq`)، بلا خدمة جديدة.
+
+- **قاعدة البيانات:** migration `0049_study_rooms_video` — إضافات فقط:
+  `study_rooms.contentType / youtubeVideoId / youtubeTitle / youtubeState`
+  و`study_room_messages.videoSeconds`. **يجب تطبيقها على الإنتاج قبل نشر
+  الكود**: الكود يقرأ صفّ الغرفة كاملًا، وبدون الأعمدة تتعطل الغرف كلها.
+- **الخادم:** `lib/study-rooms/youtube.ts` (قراءة الرابط، الوقت المتوقع،
+  بلا I/O) و`video.ts` (الحالة المشتركة؛ كل تغيير UPDATE شرطي على
+  `videoId` + `revision`). الإجراءات: `checkYoutube`, `setContent`,
+  `clearContent`, `youtubeState`, `updateYoutubeState`, `syncYoutube`.
+  الصلاحية الجديدة `control_video` والإعداد `settings.videoControl`.
+- **الواجهة:** `RoomVideo.tsx` (YouTube IFrame Player API الرسمية عبر
+  `youtube-nocookie.com`)، `RoomVideoAdd.tsx`، تبديل «الملف / YouTube»،
+  لوحة جانبية تُطوى، ووقت الفيديو على رسائل المحادثة.
+- **لم يُتحقق منه:** لم يُشغَّل فيديو حقيقي في متصفح بعد، ولا شاشتان معًا.
+  الاختبارات تغطي الخادم والمنطق الخالص فقط؛ مشغّل YouTube نفسه غير مختبر
+  آليًا. مدة الفيديو تأتي من المشغّل بعد التحميل لا عند الإضافة.
+- **غير مبنيّ:** طلب التحكم، تطبيق Flutter.

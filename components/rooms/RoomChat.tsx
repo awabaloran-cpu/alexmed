@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { RotateCw, Send, Trash2 } from "lucide-react";
+import { formatVideoTime } from "@/lib/study-rooms/youtube";
 import { trpc } from "@/lib/trpc-client";
 import { useRooms } from "./RoomsProvider";
 import s from "./rooms.module.css";
@@ -15,6 +16,7 @@ type Message = {
   name: string | null;
   body: string;
   page: number | null;
+  videoSeconds: number | null;
   seq: number;
   deleted: boolean;
 };
@@ -24,6 +26,7 @@ type Outgoing = {
   clientId: string;
   body: string;
   page: number | null;
+  videoSeconds: number | null;
   failed: boolean;
   // The server's id once it has the message.
   sentId?: string;
@@ -112,6 +115,8 @@ export default function RoomChat({
   canChat,
   canDeleteAny,
   onGoToPage,
+  videoTime,
+  onGoToVideoTime,
 }: {
   roomId: string;
   chat: ReturnType<typeof useRoomChat>;
@@ -121,6 +126,10 @@ export default function RoomChat({
   canChat: boolean;
   canDeleteAny: boolean;
   onGoToPage: (page: number) => void;
+  // While the room watches a video: where it is now (null: no video), and
+  // "go to this second".
+  videoTime?: () => number | null;
+  onGoToVideoTime?: (seconds: number) => void;
 }) {
   const { t, tError } = useRooms();
   const utils = trpc.useUtils();
@@ -145,6 +154,7 @@ export default function RoomChat({
         roomId,
         body: message.body,
         page: message.page,
+        videoSeconds: message.videoSeconds,
         clientId: message.clientId,
       },
       {
@@ -194,6 +204,7 @@ export default function RoomChat({
       clientId: newClientId(),
       body,
       page,
+      videoSeconds: videoTime?.() ?? null,
       failed: false,
     };
     setOutgoing(list => [...list.slice(-20), message]);
@@ -234,6 +245,20 @@ export default function RoomChat({
                     onClick={() => onGoToPage(message.page!)}
                   >
                     {t("chat.page", { page: message.page })}
+                  </button>
+                ) : null}
+                {message.videoSeconds !== null &&
+                !message.deleted &&
+                onGoToVideoTime ? (
+                  <button
+                    type="button"
+                    className={s.msgPage}
+                    aria-label={t("chat.videoTime", {
+                      time: formatVideoTime(message.videoSeconds),
+                    })}
+                    onClick={() => onGoToVideoTime(message.videoSeconds!)}
+                  >
+                    <bdi dir="ltr">{formatVideoTime(message.videoSeconds)}</bdi>
                   </button>
                 ) : null}
                 {!message.deleted && (mine || canDeleteAny) ? (

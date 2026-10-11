@@ -42,7 +42,13 @@ export type RoomErrorReason =
   | "quiz_too_few"
   | "quiz_not_active"
   | "quiz_closed"
-  | "already_answered";
+  | "already_answered"
+  // 🎬 the room's video (lib/study-rooms/video.ts)
+  | "video_invalid" // not a YouTube link / no video id in it
+  | "video_unavailable" // no such video (deleted, mistyped)
+  | "video_no_embed" // private, or its owner forbids playing it elsewhere
+  | "video_bad_position"
+  | "no_video";
 
 const CODES: Record<RoomErrorReason, RoomErrorCode> = {
   not_available: "NOT_FOUND",
@@ -76,6 +82,11 @@ const CODES: Record<RoomErrorReason, RoomErrorCode> = {
   quiz_not_active: "PRECONDITION_FAILED",
   quiz_closed: "PRECONDITION_FAILED",
   already_answered: "CONFLICT",
+  video_invalid: "BAD_REQUEST",
+  video_unavailable: "BAD_REQUEST",
+  video_no_embed: "BAD_REQUEST",
+  video_bad_position: "BAD_REQUEST",
+  no_video: "PRECONDITION_FAILED",
 };
 
 export class RoomError extends Error {
