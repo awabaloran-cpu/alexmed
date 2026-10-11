@@ -5,13 +5,15 @@
 // The page is assembled here, on the server, from `discover_sections`:
 // which blocks, in what order, filled with what. Changing a row changes
 // the page for everyone without a new build.
-import { and, asc, count, eq, sql } from "drizzle-orm";
+import { and, asc, count, eq, inArray, isNull, sql } from "drizzle-orm";
 import {
   discoverChannelFollows,
   discoverChannels,
   discoverQuestions,
   discoverQuizzes,
   discoverSections,
+  studyRoomMembers,
+  studyRoomQuizzes,
   type DiscoverSectionFilter,
 } from "../../drizzle/schema";
 import { requireDb } from "../db";
@@ -381,11 +383,17 @@ export async function quizDetail(slug: string) {
 
 // The questions with their answers: self-study is judged on the student's
 // own screen (there is nobody to race). The game in a room never uses
-// this — there the answer stays on the server (lib/study-rooms/quiz.ts).
-export async function quizQuestions(slug: string) {
+// this — there the answer comes from the server at the reveal
+// (lib/study-rooms/quiz.ts). So that this is not the game's answer sheet:
+// a student in a room where this very quiz is being played is refused it
+// until the game is over ("playing"), and the rows carry no id that could
+// be matched to the game's. The catalogue is open, so someone who studied
+// a quiz beforehand knows it — that is studying, not a leak.
+export async function quizQuestions(slug: string, userId: string) {
   const quiz = await quizBySlug(slug);
   if (!quiz) return null;
-  const questions = await requireDb()
+  const db = requireDb();
+  const rows = await db
     .select({
       id: discoverQuestions.id,
       text: discoverQuestions.text,
@@ -396,6 +404,27 @@ export async function quizQuestions(slug: string) {
     .from(discoverQuestions)
     .where(eq(discoverQuestions.quizId, quiz.id))
     .orderBy(asc(discoverQuestions.orderIndex));
+  const games = await db
+    .select({ questionIds: studyRoomQuizzes.questionIds })
+    .from(studyRoomQuizzes)
+    .innerJoin(
+      studyRoomMembers,
+      and(
+        eq(studyRoomMembers.roomId, studyRoomQuizzes.roomId),
+        eq(studyRoomMembers.userId, userId),
+        eq(studyRoomMembers.state, "joined")
+      )
+    )
+    .where(
+      and(
+        inArray(studyRoomQuizzes.state, ["question", "reveal"]),
+        isNull(studyRoomQuizzes.bookId)
+      )
+    );
+  const own = new Set(rows.map(row => row.id));
+  if (games.some(game => game.questionIds.some(id => own.has(id)))) {
+    return "playing" as const;
+  }
   return {
     slug: quiz.slug,
     language: quiz.language as DiscoverLanguage,
@@ -403,7 +432,11 @@ export async function quizQuestions(slug: string) {
     art: quiz.art,
     color: quiz.color,
     coverImage: quiz.coverImage,
-    questions,
+    questions: rows.map(({ id: _id, ...question }, index) => ({
+      // Its place in the quiz, for the screen's own bookkeeping.
+      key: `q${index}`,
+      ...question,
+    })),
   };
 }
 
@@ -412,24 +445,30 @@ export async function quizQuestions(slug: string) {
 const PLAY_EVERY_MS = 30 * 60 * 1000;
 const lastPlay = new Map<string, number>();
 
+const MAX_REMEMBERED = 20_000;
+
 export async function recordPlay(userId: string, slug: string) {
-  const key = `${userId}:${slug}`;
+  // Only a quiz that exists is remembered: a made-up slug costs a lookup
+  // and leaves nothing behind.
+  const quiz = await quizBySlug(slug);
+  if (!quiz) return { counted: false };
+  const key = `${userId}:${quiz.id}`;
   const now = Date.now();
   if (now - (lastPlay.get(key) ?? 0) < PLAY_EVERY_MS) return { counted: false };
-  lastPlay.set(key, now);
-  if (lastPlay.size > 20_000) {
+  if (lastPlay.size >= MAX_REMEMBERED) {
     for (const [entry, time] of lastPlay) {
       if (now - time >= PLAY_EVERY_MS) lastPlay.delete(entry);
     }
+    // Still full of recent plays: forgetting them all only means a few
+    // plays may count twice, never that memory grows.
+    if (lastPlay.size >= MAX_REMEMBERED) lastPlay.clear();
   }
-  const updated = await requireDb()
+  lastPlay.set(key, now);
+  await requireDb()
     .update(discoverQuizzes)
     .set({ playsCount: sql`${discoverQuizzes.playsCount} + 1` })
-    .where(
-      and(eq(discoverQuizzes.slug, slug), eq(discoverQuizzes.isActive, true))
-    )
-    .returning({ id: discoverQuizzes.id });
-  return { counted: updated.length > 0 };
+    .where(eq(discoverQuizzes.id, quiz.id));
+  return { counted: true };
 }
 
 export async function channelPage(slug: string, userId: string) {

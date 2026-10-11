@@ -550,12 +550,13 @@ export const roomsRouter = router({
       z.object({
         roomId: uuid,
         slug: z.string().min(3).max(64),
+        // Left out: the quiz's own pace.
         seconds: z
           .number()
           .int()
           .min(QUIZ_SECONDS_MIN)
           .max(QUIZ_SECONDS_MAX)
-          .default(20),
+          .optional(),
       })
     )
     .mutation(({ ctx, input: { roomId, ...quiz } }) =>

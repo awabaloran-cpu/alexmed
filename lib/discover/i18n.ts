@@ -52,6 +52,7 @@ const ar = {
   "state.empty": "لا اختبارات هنا بعد",
   "state.emptyHint": "نضيف اختبارات جديدة باستمرار. عُد قريبًا.",
   "state.notFound": "هذا المحتوى غير موجود",
+  "state.playing": "هذا الاختبار يُلعب الآن في غرفتك. أكمل اللعبة هناك أولًا.",
   "state.offline": "لا يوجد اتصال بالإنترنت",
   "sheet.close": "إغلاق",
   "sheet.options": "خيارات",
@@ -156,6 +157,8 @@ const en: Record<DiscoverKey, string> = {
   "state.empty": "No quizzes here yet",
   "state.emptyHint": "New quizzes are added all the time. Come back soon.",
   "state.notFound": "This content does not exist",
+  "state.playing":
+    "This quiz is being played in your room right now. Finish the game there first.",
   "state.offline": "No internet connection",
   "sheet.close": "Close",
   "sheet.options": "Options",

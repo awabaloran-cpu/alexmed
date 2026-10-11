@@ -53,7 +53,9 @@ export type RoomErrorReason =
   | "invite_not_colleague"
   | "invite_refused" // this room is not one the colleague can be invited to
   | "invite_already_here"
-  | "already_invited";
+  | "already_invited"
+  // 🧭 a quiz of the Discover catalogue that is not there (any more)
+  | "quiz_not_found";
 
 const CODES: Record<RoomErrorReason, RoomErrorCode> = {
   not_available: "NOT_FOUND",
@@ -96,6 +98,7 @@ const CODES: Record<RoomErrorReason, RoomErrorCode> = {
   invite_refused: "FORBIDDEN",
   invite_already_here: "CONFLICT",
   already_invited: "CONFLICT",
+  quiz_not_found: "NOT_FOUND",
 };
 
 export class RoomError extends Error {

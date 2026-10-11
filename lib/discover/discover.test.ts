@@ -329,6 +329,10 @@ describe("the catalogue on a real database", () => {
     expect(
       await discover(AHMED).search({ language: "en", query: "%" })
     ).toEqual([]);
+    // A subject this build has no name for is searched like any other.
+    expect(
+      await discover(AHMED).search({ language: "en", category: "poetry" })
+    ).toEqual([]);
   });
 
   it("a quiz's sheet and its questions; a quiz that is off is not found", async () => {
@@ -338,6 +342,10 @@ describe("the catalogue on a real database", () => {
     const learn = await discover(AHMED).questions({ slug: "en-science-space" });
     expect(learn.questions.length).toBe(8);
     expect(learn.questions[0].options.length).toBe(4);
+    // Nothing that could be matched to a question of a room's game.
+    expect(Object.keys(learn.questions[0]).sort()).toEqual(
+      ["correctIndex", "image", "key", "options", "text"].sort()
+    );
     await test.client.query(
       `UPDATE discover_quizzes SET "isActive" = false WHERE slug = 'en-sports-olympics'`
     );
@@ -368,6 +376,12 @@ describe("the catalogue on a real database", () => {
     expect(
       (await discover(AHMED).quiz({ slug: "en-geo-continents" })).playsCount
     ).toBe(before + 2);
+  });
+
+  it("a play of a quiz that does not exist is not counted, or remembered", async () => {
+    expect(
+      (await discover(AHMED).played({ slug: "no-such-quiz" })).counted
+    ).toBe(false);
   });
 
   it("following a channel is one's own, once, and can be undone", async () => {
@@ -404,7 +418,7 @@ describe("the catalogue on a real database", () => {
       await refusal(
         rooms(AHMED).startCatalogQuiz({ roomId: room.roomId, slug: "no-quiz" })
       )
-    ).toBe("BAD_REQUEST:book_not_allowed");
+    ).toBe("NOT_FOUND:quiz_not_found");
     const started = await rooms(AHMED).startCatalogQuiz({
       roomId: room.roomId,
       slug: "ar-science-space",
@@ -415,6 +429,28 @@ describe("the catalogue on a real database", () => {
     expect(current?.question.text).toBe("ما أقرب الكواكب إلى الشمس؟");
     expect(current?.question.options.length).toBe(4);
     expect(current && "correctIndex" in current).toBe(false);
+
+    // While the game runs, the study screens of this very quiz are shut to
+    // the players — they are its answer sheet. Another quiz is not.
+    expect(
+      await refusal(discover(AHMED).questions({ slug: "ar-science-space" }))
+    ).toBe("PRECONDITION_FAILED:playing");
+    expect(
+      (await discover(AHMED).questions({ slug: "ar-science-physics" }))
+        .questions.length
+    ).toBe(8);
+    // Someone who is not in the room is studying, not playing.
+    expect(
+      (await discover(SARA).questions({ slug: "ar-science-space" })).questions
+        .length
+    ).toBe(8);
+
+    // The catalogue reseeded in the middle of the game: the questions keep
+    // their ids, so the game goes on.
+    await seedDiscover(test.db as never);
+    const after = await rooms(AHMED).quizCurrent({ roomId: room.roomId });
+    expect(after?.question.id).toBe(current!.question.id);
+    expect(after?.question.text).toBe(current!.question.text);
 
     // Right (index 1), and one answer only.
     await rooms(AHMED).quizAnswer({

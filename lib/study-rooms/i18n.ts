@@ -322,6 +322,7 @@ const ar = {
   "catalog.start": "ابدأ اللعب الآن",
   "catalog.dismiss": "ليس الآن",
   "catalog.gone": "هذا الاختبار لم يعد متاحًا.",
+  "catalog.loadFailed": "تعذّر تحميل الاختبار.",
   "quiz.myResult": "ترتيبك {rank}: {correct} صحيحة من {total}.",
   "quiz.noResult": "لم تُجب على أي سؤال في هذا الاختبار.",
   "quiz.correctOf": "{n} من {total}",
@@ -437,6 +438,7 @@ const ar = {
   "error.invite_refused": "لا يمكن دعوة هذا الزميل إلى هذه الغرفة.",
   "error.invite_already_here": "زميلك موجود في الغرفة.",
   "error.already_invited": "وصلته دعوة لهذه الغرفة وهي بانتظار ردّه.",
+  "error.quiz_not_found": "هذا الاختبار لم يعد متاحًا.",
   "invite.colleagues": "ادعُ من زملائك",
   "invite.none": "لا زملاء لديك بعد. أضف زميلًا من بطاقته داخل الغرفة.",
   "invite.send": "ادعُ",
@@ -793,6 +795,7 @@ const en: Record<RoomsKey, string> = {
   "catalog.start": "Start playing now",
   "catalog.dismiss": "Not now",
   "catalog.gone": "This quiz is no longer available.",
+  "catalog.loadFailed": "The quiz could not be loaded.",
   "quiz.myResult": "You came {rank}: {correct} right out of {total}.",
   "quiz.noResult": "You didn't answer any question in this quiz.",
   "quiz.correctOf": "{n} of {total}",
@@ -911,6 +914,7 @@ const en: Record<RoomsKey, string> = {
   "error.invite_already_here": "Your colleague is already in the room.",
   "error.already_invited":
     "They already have an invitation to this room, waiting for their answer.",
+  "error.quiz_not_found": "This quiz is no longer available.",
   "invite.colleagues": "Invite from your colleagues",
   "invite.none":
     "You have no colleagues yet. Add one from their card inside the room.",
@@ -1013,4 +1017,5 @@ export const REASON_KEYS: Record<RoomErrorReason, RoomsKey> = {
   invite_refused: "error.invite_refused",
   invite_already_here: "error.invite_already_here",
   already_invited: "error.already_invited",
+  quiz_not_found: "error.quiz_not_found",
 };

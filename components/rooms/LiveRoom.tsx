@@ -125,7 +125,13 @@ export default function LiveRoom({ roomId }: { roomId: string }) {
   const readySlug = useSearchParams().get("quiz");
   const readyQuiz = trpc.discover.quiz.useQuery(
     { slug: readySlug ?? "" },
-    { enabled: !!readySlug, retry: false, staleTime: Infinity }
+    {
+      enabled: !!readySlug,
+      // A quiz that is not there will not be there next time either; a
+      // dropped request is tried again.
+      retry: (count, error) => error.message !== "not_found" && count < 2,
+      staleTime: Infinity,
+    }
   );
   const dropReady = () => router.replace(`/rooms/${roomId}/live`);
   const startCatalog = trpc.rooms.startCatalogQuiz.useMutation({
@@ -484,7 +490,11 @@ export default function LiveRoom({ roomId }: { roomId: string }) {
             <small>{t("catalog.readyTitle")}</small>
             <b dir="auto">
               {readyQuiz.data?.title ??
-                (readyQuiz.isError ? t("catalog.gone") : "…")}
+                (readyQuiz.error?.message === "not_found"
+                  ? t("catalog.gone")
+                  : readyQuiz.isError
+                    ? t("catalog.loadFailed")
+                    : "…")}
             </b>
             <p>{t("catalog.readyHint")}</p>
           </div>
@@ -511,6 +521,15 @@ export default function LiveRoom({ roomId }: { roomId: string }) {
                 onClick={() => setSheet({ kind: "invite", code: null })}
               >
                 <UserPlus size={17} aria-hidden="true" /> {t("live.invite")}
+              </button>
+            ) : null}
+            {readyQuiz.isError && readyQuiz.error.message !== "not_found" ? (
+              <button
+                type="button"
+                className={s.btn}
+                onClick={() => readyQuiz.refetch()}
+              >
+                {t("rooms.retry")}
               </button>
             ) : null}
             <button type="button" className={s.btn} onClick={dropReady}>

@@ -5,7 +5,6 @@ import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import {
   channelPage,
-  DISCOVER_CATEGORIES,
   discoverPage,
   followChannel,
   quizDetail,
@@ -39,7 +38,11 @@ export const discoverRouter = router({
       z.object({
         language,
         query: z.string().trim().max(64).optional(),
-        category: z.enum(DISCOVER_CATEGORIES).optional(),
+        // Any subject the catalogue names — it may run ahead of this build.
+        category: z
+          .string()
+          .regex(/^[a-z0-9_-]{1,24}$/)
+          .optional(),
         tag: z.string().max(48).optional(),
       })
     )
@@ -53,7 +56,17 @@ export const discoverRouter = router({
 
   questions: protectedProcedure
     .input(z.object({ slug }))
-    .query(async ({ input }) => found(await quizQuestions(input.slug))),
+    .query(async ({ ctx, input }) => {
+      const quiz = found(await quizQuestions(input.slug, ctx.user.id));
+      if (quiz === "playing") {
+        // This quiz is being played in the student's room right now.
+        throw new TRPCError({
+          code: "PRECONDITION_FAILED",
+          message: "playing",
+        });
+      }
+      return quiz;
+    }),
 
   played: protectedProcedure
     .input(z.object({ slug }))

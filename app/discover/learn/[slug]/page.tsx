@@ -237,7 +237,7 @@ function Learn({ quiz }: { quiz: StudyQuiz }) {
       >
         {quiz.questions.map((item, segment) => (
           <i
-            key={item.id}
+            key={item.key}
             className={
               segment < index
                 ? answers[segment]
@@ -258,7 +258,7 @@ function Learn({ quiz }: { quiz: StudyQuiz }) {
         className={s.questionArt}
       />
 
-      <div className={s.questionBox} key={question.id}>
+      <div className={s.questionBox} key={question.key}>
         <small>{t("learn.question", { n: index + 1, total })}</small>
         <h1 dir="auto">{question.text}</h1>
       </div>

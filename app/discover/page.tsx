@@ -64,11 +64,16 @@ function BannerCarousel({
   const held = useRef(false);
 
   const goTo = useCallback((next: number) => {
-    const slide = track.current?.children[next] as HTMLElement | undefined;
-    slide?.scrollIntoView({
+    const node = track.current;
+    const slide = node?.children[next];
+    if (!node || !slide) return;
+    // Sideways only, by the distance between the two centres: this never
+    // moves the page itself, and reads the same in Arabic and English.
+    const a = slide.getBoundingClientRect();
+    const b = node.getBoundingClientRect();
+    node.scrollBy({
+      left: a.left + a.width / 2 - (b.left + b.width / 2),
       behavior: "smooth",
-      inline: "center",
-      block: "nearest",
     });
   }, []);
 
@@ -243,8 +248,8 @@ function Home() {
   const debounced = useDebounced(query.trim(), 250);
   const searching = debounced.length > 0 || filter !== null;
 
-  // The open quiz is in the address, so a shared link opens its sheet and
-  // "back" closes it.
+  // The open quiz is in the address: a shared link opens its sheet, and
+  // opening one is a step in the history, so the phone's "back" closes it.
   const open = params.get("quiz");
   const setOpen = useCallback(
     (slug: string | null) => {
@@ -252,9 +257,9 @@ function Home() {
       if (slug) next.set("quiz", slug);
       else next.delete("quiz");
       const search = next.toString();
-      router.replace(search ? `${pathname}?${search}` : pathname, {
-        scroll: false,
-      });
+      const href = search ? `${pathname}?${search}` : pathname;
+      if (slug) router.push(href, { scroll: false });
+      else router.replace(href, { scroll: false });
     },
     [params, pathname, router]
   );
@@ -283,8 +288,7 @@ function Home() {
     {
       language,
       query: debounced || undefined,
-      category:
-        filter?.kind === "category" ? (filter.value as "general") : undefined,
+      category: filter?.kind === "category" ? filter.value : undefined,
       tag: filter?.kind === "tag" ? filter.value : undefined,
     },
     { enabled: searching, placeholderData: previous => previous }

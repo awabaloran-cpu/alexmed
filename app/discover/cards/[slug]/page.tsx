@@ -59,12 +59,12 @@ function Cards({ quiz }: { quiz: StudyQuiz }) {
     setLeaving(knew ? "know" : "later");
     play("swipe");
     buzz();
+    // No second card is sorted while this one leaves, so the round as it
+    // is now is the round this card leaves.
+    const next = sortCard(round, knew);
     timer.current = window.setTimeout(() => {
-      setRound(current => {
-        const next = sortCard(current, knew);
-        if (roundDone(next)) play("finish");
-        return next;
-      });
+      setRound(next);
+      if (roundDone(next)) play("finish");
       setFlipped(false);
       setDrag(0);
       setLeaving(null);
@@ -179,7 +179,7 @@ function Cards({ quiz }: { quiz: StudyQuiz }) {
         {behind > 0 ? <span className={s.ghost} /> : null}
         <button
           ref={cardRef}
-          key={card.id}
+          key={card.key}
           type="button"
           className={`${s.flash} ${flipped ? s.flashFlipped : ""} ${
             leaning === "know"

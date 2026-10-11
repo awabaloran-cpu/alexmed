@@ -7,7 +7,7 @@
 // run updates the text and leaves the play counts and followers alone.
 // The tests run it on PGlite; production gets the same three files from
 // the owner's own script.
-import { eq } from "drizzle-orm";
+import { and, eq, gte } from "drizzle-orm";
 import {
   discoverChannels,
   discoverQuestions,
@@ -86,20 +86,32 @@ export async function seedDiscover(db: Db) {
         .values(values)
         .onConflictDoUpdate({ target: discoverQuizzes.slug, set: values })
         .returning({ id: discoverQuizzes.id });
-      // The questions are replaced whole: their order is their identity.
-      await tx
-        .delete(discoverQuestions)
-        .where(eq(discoverQuestions.quizId, row.id));
-      await tx.insert(discoverQuestions).values(
-        quiz.questions.map((question, orderIndex) => ({
-          quizId: row.id,
-          orderIndex,
+      // A question is its place in its quiz: the row at that place is
+      // rewritten, never replaced, so its id stays the one a room in the
+      // middle of a game (or a finished one) remembers.
+      for (const [orderIndex, question] of quiz.questions.entries()) {
+        const values = {
           text: question.q,
           options: question.o,
           correctIndex: question.a,
           timeLimit: QUESTION_SECONDS,
-        }))
-      );
+        };
+        await tx
+          .insert(discoverQuestions)
+          .values({ quizId: row.id, orderIndex, ...values })
+          .onConflictDoUpdate({
+            target: [discoverQuestions.quizId, discoverQuestions.orderIndex],
+            set: values,
+          });
+      }
+      await tx
+        .delete(discoverQuestions)
+        .where(
+          and(
+            eq(discoverQuestions.quizId, row.id),
+            gte(discoverQuestions.orderIndex, quiz.questions.length)
+          )
+        );
     }
     for (const section of SEED_SECTIONS) {
       const values = {

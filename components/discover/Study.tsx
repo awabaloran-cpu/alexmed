@@ -54,17 +54,20 @@ function Loader({
   }
   if (!quiz.data || !quiz.data.questions.length) {
     const missing = quiz.error?.message === "not_found";
+    const playing = quiz.error?.message === "playing";
     return (
       <div className={s.study}>
         <div className={s.state} role="alert">
           <b>
             {missing
               ? t("state.notFound")
-              : quiz.data
-                ? t("state.empty")
-                : t("state.loadFailed")}
+              : playing
+                ? t("state.playing")
+                : quiz.data
+                  ? t("state.empty")
+                  : t("state.loadFailed")}
           </b>
-          {quiz.error && !missing ? (
+          {quiz.error && !missing && !playing ? (
             <button
               type="button"
               className={s.button}
@@ -118,6 +121,15 @@ export function SoundControls() {
     const resume = () => startMusic();
     window.addEventListener("pointerdown", resume, { once: true });
     return () => window.removeEventListener("pointerdown", resume);
+  }, []);
+  // Hidden is silence; back on screen with the switch still on, it plays
+  // again — so the button never says "on" over silence.
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === "visible" && musicOn()) startMusic();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
   }, []);
   return (
     <>

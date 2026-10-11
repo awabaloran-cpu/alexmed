@@ -22,6 +22,7 @@ import {
   users,
 } from "../../drizzle/schema";
 import { requireDb } from "../db";
+import { recordPlay } from "../discover/data";
 import { RoomError } from "./errors";
 import { can } from "./permissions";
 import type { Viewer } from "./profile";
@@ -53,6 +54,16 @@ const correctIndexOf = (question: {
   extractedAnswerIndex: number | null;
   aiInferredAnswerIndex: number | null;
 }) => question.extractedAnswerIndex ?? question.aiInferredAnswerIndex;
+
+const UNDEFINED_TABLE = "42P01";
+function isUndefinedTable(error: unknown): boolean {
+  for (let at = error, depth = 0; at && depth < 4; depth++) {
+    const { code, cause } = at as { code?: unknown; cause?: unknown };
+    if (code === UNDEFINED_TABLE) return true;
+    at = cause;
+  }
+  return false;
+}
 
 // One question of a running quiz, wherever it comes from: a student's own
 // question file, or — for a quiz with no file (`bookId` null) — a ready
@@ -86,7 +97,14 @@ async function loadQuestion(
       .from(discoverQuestions)
       .where(eq(discoverQuestions.id, questionId))
       .limit(1)
-      .catch(() => []);
+      .catch((error: unknown) => {
+        // Only "the catalogue's table is not there" (a database that has
+        // not had its migration yet) is nothing found; anything else — a
+        // dropped connection — is an error to be tried again, not a
+        // closed question.
+        if (isUndefinedTable(error)) return [];
+        throw error;
+      });
     if (row) {
       return {
         ...row,
@@ -192,7 +210,7 @@ export async function startQuiz(
 export async function startCatalogQuiz(
   viewer: Viewer,
   roomId: string,
-  input: { slug: string; seconds: number }
+  input: { slug: string; seconds?: number }
 ) {
   const db = requireDb();
   await requireAction(db, roomId, viewer.userId, "start_quiz");
@@ -206,9 +224,12 @@ export async function startCatalogQuiz(
       )
     )
     .limit(1);
-  if (!quiz) throw new RoomError("book_not_allowed");
+  if (!quiz) throw new RoomError("quiz_not_found");
   const questions = await db
-    .select({ id: discoverQuestions.id })
+    .select({
+      id: discoverQuestions.id,
+      timeLimit: discoverQuestions.timeLimit,
+    })
     .from(discoverQuestions)
     .where(eq(discoverQuestions.quizId, quiz.id))
     .orderBy(asc(discoverQuestions.orderIndex))
@@ -219,13 +240,21 @@ export async function startCatalogQuiz(
   const opened = await openQuiz(db, viewer, roomId, {
     bookId: null,
     questionIds: questions.map(question => question.id),
-    seconds: input.seconds,
+    // The quiz's own pace unless the host chose one: the room runs one
+    // clock for the whole game, so it is the longest any question asks.
+    seconds:
+      input.seconds ??
+      Math.min(
+        QUIZ_SECONDS_MAX,
+        Math.max(
+          QUIZ_SECONDS_MIN,
+          ...questions.map(question => question.timeLimit)
+        )
+      ),
   });
-  // One more play of this quiz.
-  await db
-    .update(discoverQuizzes)
-    .set({ playsCount: sql`${discoverQuizzes.playsCount} + 1` })
-    .where(eq(discoverQuizzes.id, quiz.id));
+  // One more play — counted like any other, once in a while per student,
+  // so starting and stopping a game does not run the number up.
+  await recordPlay(viewer.userId, input.slug);
   return opened;
 }
 
