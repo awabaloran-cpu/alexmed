@@ -139,15 +139,27 @@ function Board({ data }: { data: Data }) {
         <Figure
           label="متوسط زمن ملف الأسئلة"
           value={
-            files.avgReadMinutes === null ? "—" : `${files.avgReadMinutes} د`
+            files.avgReadMinutes === null
+              ? "—"
+              : files.avgReadMinutes < 1
+                ? "أقل من دقيقة"
+                : `${files.avgReadMinutes} د`
           }
-          note="من الرفع حتى آخر تحديث، آخر 24 ساعة"
+          note="قراءة الملف واستخراج أسئلته، آخر 24 ساعة"
         />
       </dl>
 
       <h2>شرح الأسئلة والفصول</h2>
       <dl className={s.figures}>
-        <Figure label="أسئلة تنتظر الشرح" value={questions.waiting} />
+        <Figure
+          label="أسئلة تنتظر الشرح الآن"
+          value={questions.waiting}
+          note={
+            questions.deferred
+              ? `و${questions.deferred} مؤجَّلة عمدًا حتى يصلها طالب`
+              : undefined
+          }
+        />
         <Figure label="يُكتب شرحها الآن" value={questions.writing} />
         <Figure
           label="ملفات توقف شرحها"
@@ -158,7 +170,11 @@ function Board({ data }: { data: Data }) {
         <Figure
           label="أسئلة فشل شرحها (7 أيام)"
           value={questions.failed7d}
-          note="استنفدت محاولاتها"
+          note={
+            questions.stoppedByAdmin7d
+              ? `استنفدت محاولاتها · غير ${questions.stoppedByAdmin7d} أوقفها الأدمن يدويًا`
+              : "استنفدت محاولاتها"
+          }
           alarm={questions.failed7d > 0}
         />
         <Figure label="فصول تنتظر التحليل" value={chapters.waiting} />

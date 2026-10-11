@@ -16,10 +16,32 @@
 // measured.
 import { sql } from "drizzle-orm";
 import { getDb } from "./db";
+import { WINDOW_AHEAD, WINDOW_FIRST_QUESTIONS } from "./question-file-window";
 
 export const STUCK_MINUTES = 20;
 const REASON_MAX = 160;
 const LIST_LIMIT = 15;
+
+// A long question file is explained as it is studied
+// (lib/question-file-window.ts): past its first questions, a question
+// waits ON PURPOSE until a student gets near it. Counting those as "stuck"
+// would cry wolf over every long file (seen on the first live reading: two
+// healthy banks listed as stopped for 54 hours). So a waiting question is
+// "owed now" only when the file is short enough to be explained whole, is
+// a doctor's set (always whole), or the question is among the first ones.
+// The stretch a student has reached is not counted — a stall there shows
+// one answer later than it could.
+const WHOLE_FILE_MAX = WINDOW_FIRST_QUESTIONS + WINDOW_AHEAD;
+const owedNow = sql`(
+  q."orderIndex" < ${WINDOW_FIRST_QUESTIONS}
+  or (select count(*) from "extracted_questions" x
+        where x."bookId" = q."bookId") <= ${WHOLE_FILE_MAX}
+  or exists (select 1 from "question_sets" s where s."bookId" = q."bookId")
+)`;
+
+// What an admin wrote on work they stopped by hand (a runaway file): not a
+// failure of the system, and counted apart.
+const STOPPED_BY_ADMIN = "stopped_by_admin";
 
 const cut = (text: string | null | undefined) =>
   !text
@@ -52,10 +74,15 @@ export type AdminMonitor = {
   };
   chapters: { waiting: number; analyzing: number; failed: number };
   questions: {
+    // Owed an explanation now.
     waiting: number;
+    // Waiting on purpose, until a student gets near them (long files).
+    deferred: number;
     writing: number;
     // Used up every attempt, in files uploaded in the last 7 days.
     failed7d: number;
+    // Stopped by an admin's own hand, in the same 7 days — not failures.
+    stoppedByAdmin7d: number;
     stalledFiles: number;
   };
   sets: {
@@ -90,7 +117,14 @@ const EMPTY: AdminMonitor = {
     failureRate24h: null,
   },
   chapters: { waiting: 0, analyzing: 0, failed: 0 },
-  questions: { waiting: 0, writing: 0, failed7d: 0, stalledFiles: 0 },
+  questions: {
+    waiting: 0,
+    deferred: 0,
+    writing: 0,
+    failed7d: 0,
+    stoppedByAdmin7d: 0,
+    stalledFiles: 0,
+  },
   sets: { drafts: 0, draftsPreparing: 0, needsReview: 0, published: 0 },
   rooms: { active: 0, present: 0, ended24h: 0, endedEmpty24h: 0 },
   reasons: { files: [], questions: [], pages: [] },
@@ -122,6 +156,7 @@ const stalledQuestionFile = sql`
     select 1 from "extracted_questions" q
     where q."bookId" = b."id" and q."aiStatus" = 'pending'
       and q."reviewStatus" is distinct from 'needs_review'
+      and ${owedNow}
   )
   and not exists (
     select 1 from "extracted_questions" q
@@ -168,16 +203,39 @@ export async function getAdminMonitor(): Promise<AdminMonitor> {
     from "book_chapters"
   `);
 
+  // Every question once, against its file's size (worked out once per
+  // file, not once per question).
   const [questions] = await db.execute<Record<string, unknown>>(sql`
+    with sizes as (
+      select x."bookId", count(*) as total,
+        exists (
+          select 1 from "question_sets" s where s."bookId" = x."bookId"
+        ) as whole
+      from "extracted_questions" x
+      group by x."bookId"
+    ),
+    marked as (
+      select q."aiStatus", q."aiAttemptCount", q."aiError", q."createdAt",
+        (q."orderIndex" < ${WINDOW_FIRST_QUESTIONS}
+          or t.total <= ${WHOLE_FILE_MAX} or t.whole) as owed
+      from "extracted_questions" q
+      join sizes t on t."bookId" = q."bookId"
+      where q."reviewStatus" is distinct from 'needs_review'
+    )
     select
-      count(*) filter (where q."aiStatus" = 'pending')::int as waiting,
-      count(*) filter (where q."aiStatus" = 'processing')::int as writing,
+      count(*) filter (where "aiStatus" = 'pending' and owed)::int as waiting,
+      count(*) filter (where "aiStatus" = 'pending' and not owed)::int as deferred,
+      count(*) filter (where "aiStatus" = 'processing')::int as writing,
       count(*) filter (
-        where q."aiStatus" = 'failed' and q."aiAttemptCount" >= 3
-          and q."createdAt" > now() - interval '7 days'
-      )::int as failed_7d
-    from "extracted_questions" q
-    where q."reviewStatus" is distinct from 'needs_review'
+        where "aiStatus" = 'failed' and "aiAttemptCount" >= 3
+          and "aiError" is distinct from ${STOPPED_BY_ADMIN}
+          and "createdAt" > now() - interval '7 days'
+      )::int as failed_7d,
+      count(*) filter (
+        where "aiStatus" = 'failed' and "aiError" = ${STOPPED_BY_ADMIN}
+          and "createdAt" > now() - interval '7 days'
+      )::int as stopped_7d
+    from marked
   `);
   const [stalled] = await db.execute<Record<string, unknown>>(sql`
     select count(*)::int as files from "books" b where ${stalledQuestionFile}
@@ -237,6 +295,7 @@ export async function getAdminMonitor(): Promise<AdminMonitor> {
         select left(reason, ${REASON_MAX + 1}) as reason, count(*)::int as count
         from (${table}) failures
         where reason is not null and reason <> ''
+          and reason <> ${STOPPED_BY_ADMIN}
         group by 1 order by 2 desc limit 5
       `)
     ).map(row => ({ reason: cut(row.reason), count: n(row.count) }));
@@ -267,7 +326,8 @@ export async function getAdminMonitor(): Promise<AdminMonitor> {
     select b."id", b."fileName",
       floor(extract(epoch from (now() - b."updatedAt")) / 60)::int as minutes,
       (select count(*)::int from "extracted_questions" q
-        where q."bookId" = b."id" and q."aiStatus" = 'pending') as waiting
+        where q."bookId" = b."id" and q."aiStatus" = 'pending'
+          and ${owedNow}) as waiting
     from "books" b
     where ${stalledQuestionFile}
     order by b."updatedAt" asc
@@ -298,8 +358,10 @@ export async function getAdminMonitor(): Promise<AdminMonitor> {
     },
     questions: {
       waiting: n(questions?.waiting),
+      deferred: n(questions?.deferred),
       writing: n(questions?.writing),
       failed7d: n(questions?.failed_7d),
+      stoppedByAdmin7d: n(questions?.stopped_7d),
       stalledFiles: n(stalled?.files),
     },
     sets: {

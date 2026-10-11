@@ -28,6 +28,8 @@ const STUCK_READING = id(103); // "being read" for an hour
 const FAILED = id(104);
 const STALLED = id(105); // questions waiting, nothing moving
 const BUSY = id(106); // questions waiting, one being written
+const LONG = id(107); // a long bank: its first questions done, the rest deferred
+const STOPPED = id(108); // stopped by an admin's hand
 
 let test: TestDb;
 
@@ -45,6 +47,8 @@ beforeAll(async () => {
     [FAILED, 0],
     [STALLED, 4],
     [BUSY, 4],
+    [LONG, 90],
+    [STOPPED, 3],
   ] as const) {
     await insertQuestionFile(test.client, {
       id: bookId,
@@ -87,6 +91,27 @@ beforeAll(async () => {
      WHERE id = (SELECT id FROM extracted_questions WHERE "bookId" = $1 LIMIT 1)`,
     [BUSY]
   );
+  // A long file, quiet for hours: its first 40 are explained, the other 50
+  // wait until a student gets near them. That is how it is meant to be.
+  await sqlRun(
+    `UPDATE books SET "updatedAt" = now() - interval '2 hours' WHERE id = $1`,
+    [LONG]
+  );
+  await sqlRun(
+    `UPDATE question_file_pages SET "updatedAt" = now() - interval '2 hours' WHERE "bookId" = $1`,
+    [LONG]
+  );
+  await sqlRun(
+    `UPDATE extracted_questions
+     SET "aiStatus" = CASE WHEN "orderIndex" < 40 THEN 'complete' ELSE 'pending' END::extracted_question_ai_status
+     WHERE "bookId" = $1`,
+    [LONG]
+  );
+  await sqlRun(
+    `UPDATE extracted_questions SET "aiStatus" = 'failed', "aiAttemptCount" = 3,
+       "aiError" = 'stopped_by_admin' WHERE "bookId" = $1`,
+    [STOPPED]
+  );
   // Two questions that used up every attempt, with the same reason.
   await sqlRun(
     `UPDATE extracted_questions SET "aiStatus" = 'failed', "aiAttemptCount" = 3,
@@ -109,8 +134,12 @@ describe("what the admin sees of the system", () => {
     expect(monitor.questions).toMatchObject({
       // STALLED's four and BUSY's other three.
       waiting: 7,
+      // LONG's fifty wait on purpose.
+      deferred: 50,
       writing: 1,
+      // An admin's stop is not a failure.
       failed7d: 2,
+      stoppedByAdmin7d: 3,
       stalledFiles: 1,
     });
     expect(STUCK_MINUTES).toBeGreaterThan(0);
@@ -124,8 +153,10 @@ describe("what the admin sees of the system", () => {
     ]);
     expect(stuck[0].minutes).toBeGreaterThanOrEqual(59);
     expect(stuck[1]).toMatchObject({ waiting: 4, kind: "question_file" });
-    // A file with a question being written is working, not stuck.
+    // A file with a question being written is working, not stuck — and
+    // neither is a long file whose later questions wait for a student.
     expect(stuck.some(file => file.id === BUSY)).toBe(false);
+    expect(stuck.some(file => file.id === LONG)).toBe(false);
   });
 
   it("groups the reasons things failed, most frequent first", async () => {
@@ -140,6 +171,8 @@ describe("what the admin sees of the system", () => {
       },
     ]);
     expect(reasons.pages).toEqual([]);
+    // An admin's own stop is not listed among the reasons things failed.
+    expect(JSON.stringify(reasons)).not.toContain("stopped_by_admin");
   });
 
   it("gives away no file key, no text of a file and no student's name", async () => {
