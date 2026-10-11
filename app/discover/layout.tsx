@@ -18,7 +18,8 @@ export default async function DiscoverLayout({
 
   return (
     <div className="app-shell">
-      <main className="main-content">{children}</main>
+      {/* The pages run edge to edge and keep their own gutters. */}
+      <main className="main-content discover-main">{children}</main>
       <BottomNav />
     </div>
   );

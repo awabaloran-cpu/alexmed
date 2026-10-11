@@ -1538,3 +1538,9 @@ body:has(.study) :global(.student-bottom-nav) {
     transition: none;
   }
 }
+
+/* In a channel's block the shelf is narrow: its cards keep a width of
+   their own instead of a share of it. */
+.channelBlock .wide {
+  flex-basis: 210px;
+}

@@ -11098,3 +11098,10 @@ a.book-mode-row:active {
   color: var(--nl-ink-2);
   font-size: 13px;
 }
+
+/* 🧭 Discover's pages (app/discover) run edge to edge: their shelves
+   scroll sideways from one side of the screen to the other, and each
+   block keeps its own gutter. */
+.main-content.discover-main {
+  padding-inline: 0;
+}
