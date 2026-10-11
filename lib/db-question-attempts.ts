@@ -20,8 +20,18 @@ export async function saveQuestionAttempt(
   userId: string,
   input: { bookId: string; questionId: string; selectedIndex: number }
 ): Promise<SavedAttempt | null> {
-  const db = requireDb();
   if (!(await getQuestionFileAccess(userId, input.bookId))) return null;
+  return saveAttemptInBook(userId, input);
+}
+
+// The answer is checked and stored. The CALLER has already decided that
+// this student may read this file (their own file, one shared with them, or
+// a doctor's set they hold an entitlement to — lib/question-set-attempts.ts).
+export async function saveAttemptInBook(
+  userId: string,
+  input: { bookId: string; questionId: string; selectedIndex: number }
+): Promise<SavedAttempt | null> {
+  const db = requireDb();
   const [question] = await db
     .select({
       options: extractedQuestions.options,
@@ -84,5 +94,28 @@ export async function listQuestionAttempts(
         eq(questionAttempts.bookId, bookId)
       )
     );
-  return Object.fromEntries(rows.map(row => [row.questionId, row.selectedIndex]));
+  return Object.fromEntries(
+    rows.map(row => [row.questionId, row.selectedIndex])
+  );
+}
+
+// Starting again: the student's answers in one file are removed — all of
+// them, or only the wrong ones (to go through those again). Returns how
+// many were removed.
+export async function clearQuestionAttempts(
+  userId: string,
+  bookId: string,
+  onlyWrong: boolean
+): Promise<number> {
+  const removed = await requireDb()
+    .delete(questionAttempts)
+    .where(
+      and(
+        eq(questionAttempts.userId, userId),
+        eq(questionAttempts.bookId, bookId),
+        onlyWrong ? eq(questionAttempts.isCorrect, false) : undefined
+      )
+    )
+    .returning({ id: questionAttempts.id });
+  return removed.length;
 }

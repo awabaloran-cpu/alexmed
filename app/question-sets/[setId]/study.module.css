@@ -1,0 +1,209 @@
+/* A student's course through a doctor's set (page.tsx): progress, which
+   questions to show, the student's own marks, the result. Tokens from
+   app/base.css. */
+.study {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+
+.progress {
+  display: grid;
+  gap: 6px;
+}
+
+.bar {
+  height: 8px;
+  border-radius: 999px;
+  background: var(--nl-rule);
+  overflow: hidden;
+}
+
+.bar i {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--nl-niro);
+  transition: width 0.25s var(--nl-ease);
+}
+
+.progress p {
+  margin: 0;
+  color: var(--nl-ink-2);
+  font-size: 0.92rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.progress b {
+  color: var(--nl-ink);
+  font-weight: 700;
+}
+
+.filters {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-block: 2px;
+  scrollbar-width: none;
+}
+
+.filter {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 0 14px;
+  border: 1px solid var(--nl-rule-strong);
+  border-radius: 999px;
+  background: var(--nl-sheet);
+  color: var(--nl-ink);
+  font: inherit;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.filter span {
+  min-width: 22px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--nl-paper);
+  color: var(--nl-ink-2);
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+  line-height: 20px;
+  text-align: center;
+}
+
+.filter:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.filter:focus-visible,
+.markBtn:focus-visible,
+.link:focus-visible {
+  outline: 2px solid var(--nl-niro);
+  outline-offset: 2px;
+}
+
+.filterOn {
+  border-color: var(--nl-ink);
+  background: var(--nl-ink);
+  color: var(--nl-sheet);
+}
+
+.filterOn span {
+  background: var(--nl-marker);
+  color: var(--nl-ink);
+}
+
+.marks {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.marks small {
+  color: var(--nl-ink-3);
+  font-size: 0.78rem;
+}
+
+.markBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--nl-rule-strong);
+  border-radius: var(--nl-r-md);
+  background: var(--nl-sheet);
+  color: var(--nl-ink);
+  font: inherit;
+  font-size: 0.88rem;
+  cursor: pointer;
+}
+
+.markOn {
+  border-color: transparent;
+  background: var(--nl-marker-soft);
+  font-weight: 600;
+}
+
+.warn {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: var(--nl-r-md);
+  background: var(--nl-wrong-soft);
+  color: var(--nl-ink);
+  font-size: 0.88rem;
+}
+
+.empty {
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+  padding: 28px 16px;
+  border: 1px dashed var(--nl-rule-strong);
+  border-radius: var(--nl-r-lg);
+  color: var(--nl-ink-2);
+  text-align: center;
+}
+
+.result {
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  margin-top: 14px;
+  padding: 20px 16px;
+  border: 1px solid var(--nl-rule);
+  border-radius: var(--nl-r-lg);
+  background: var(--nl-sheet);
+  text-align: center;
+}
+
+.result strong {
+  color: var(--nl-ink);
+  font-size: 1.15rem;
+}
+
+.result p {
+  margin: 0;
+  color: var(--nl-ink-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.resultActions {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.restart {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  color: var(--nl-ink-2);
+  font-size: 0.88rem;
+}
+
+.link {
+  min-height: 44px;
+  padding: 0 4px;
+  border: 0;
+  background: none;
+  color: var(--nl-ink-3);
+  font: inherit;
+  font-size: 0.86rem;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bar i {
+    transition: none;
+  }
+}

@@ -20,10 +20,27 @@ import {
   getQuestionSetAccess,
   questionSetImageUrl,
 } from "../question-set-access";
+import {
+  clearSetAttempts,
+  listSetAttempts,
+  saveSetAttempt,
+} from "../question-set-attempts";
 import { doctorSetsProcedure, protectedProcedure, router } from "./trpc";
 
 export const REDEEM_INVALID_MESSAGE =
   "هذا الكود غير صالح أو غير متاح. تأكد منه أو اطلب كودًا جديدًا من دكتورك.";
+
+const viewerOf = (user: { id: string; role?: string | null }) => ({
+  id: user.id,
+  role: user.role,
+});
+
+function notAvailable(): never {
+  throw new TRPCError({
+    code: "NOT_FOUND",
+    message: "هذه المجموعة غير متاحة حاليًا.",
+  });
+}
 
 export const questionSetsRouter = router({
   // Lets shared UI (the "+" sheet, the question-files page) show the entry
@@ -98,5 +115,43 @@ export const questionSetsRouter = router({
             ? await watermarkFor(ctx.user.id, access.entitlementId)
             : null,
       };
+    }),
+
+  // ── The student's own answers in a set (lib/question-set-attempts.ts) ──
+  // Kept on the server, so progress follows the student across devices.
+  // Each call re-checks that the student may still open the set.
+  attempts: doctorSetsProcedure
+    .input(z.object({ setId: z.string().uuid() }))
+    .query(async ({ ctx, input }) => {
+      const answers = await listSetAttempts(viewerOf(ctx.user), input.setId);
+      if (!answers) notAvailable();
+      return answers;
+    }),
+
+  saveAttempt: doctorSetsProcedure
+    .input(
+      z.object({
+        setId: z.string().uuid(),
+        questionId: z.string().uuid(),
+        selectedIndex: z.number().int().min(0).max(25),
+      })
+    )
+    .mutation(async ({ ctx, input: { setId, ...answer } }) => {
+      const saved = await saveSetAttempt(viewerOf(ctx.user), setId, answer);
+      if (!saved) notAvailable();
+      return saved;
+    }),
+
+  // Start again: every answer, or only the wrong ones.
+  clearAttempts: doctorSetsProcedure
+    .input(z.object({ setId: z.string().uuid(), onlyWrong: z.boolean() }))
+    .mutation(async ({ ctx, input }) => {
+      const removed = await clearSetAttempts(
+        viewerOf(ctx.user),
+        input.setId,
+        input.onlyWrong
+      );
+      if (removed === null) notAvailable();
+      return { removed };
     }),
 });
