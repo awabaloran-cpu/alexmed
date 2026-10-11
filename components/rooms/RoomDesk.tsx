@@ -219,6 +219,9 @@ export default function RoomDesk({
   useEffect(() => {
     const stage = stageRef.current;
     if (!stage) return;
+    // Measured at once, then watched: the first page is drawn without
+    // waiting for the observer's first report.
+    setWidth(Math.floor(stage.clientWidth));
     const observer = new ResizeObserver(entries => {
       setWidth(Math.floor(entries[0].contentRect.width));
     });

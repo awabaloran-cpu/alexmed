@@ -2290,3 +2290,15 @@ body:has(.present) :global(.student-bottom-nav) {
   padding: 0;
   overflow: hidden;
 }
+/* In the presentation the video's card has no edges to bleed past. */
+.present .video {
+  margin-inline: 0;
+}
+@media (max-width: 640px) {
+  .present .video {
+    padding-inline: 0;
+  }
+  .present .videoFrame {
+    border-radius: 0;
+  }
+}

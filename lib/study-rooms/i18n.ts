@@ -174,7 +174,7 @@ const ar = {
   "desk.following": "القائد يقود الصفحة، وأنت تتابع معه.",
   "present.open": "وضع العرض",
   "present.back": "واجهة الغرفة",
-  "present.backHint": "الأعضاء، الصوت وباقي الغرفة. الملف يبقى مفتوحًا.",
+  "present.backHint": "الأعضاء، الصوت وباقي الغرفة. العرض يبقى كما هو للجميع.",
   "present.more": "المزيد",
   "present.synced": "مع الغرفة",
   "present.away": "خارج صفحة الغرفة",
@@ -628,7 +628,7 @@ const en: Record<RoomsKey, string> = {
   "present.open": "Presentation view",
   "present.back": "Room view",
   "present.backHint":
-    "Members, voice and the rest of the room. The file stays open.",
+    "Members, voice and the rest of the room. Nothing changes for the others.",
   "present.more": "More",
   "present.synced": "With the room",
   "present.away": "Off the room's page",
