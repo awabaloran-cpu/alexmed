@@ -281,7 +281,15 @@ export default function SharedWithMePage() {
           ) : (
             <ul className="sh-notes">
               {notifications.data.map(note => {
-                const data = note.data as { bookTitle?: string; text?: string };
+                const data = note.data as {
+                  bookTitle?: string;
+                  text?: string;
+                  // question_set_ready (lib/db-question-sets.ts)
+                  setId?: string;
+                  title?: string;
+                  needsReview?: number;
+                  failed?: number;
+                };
                 const who = ownerLabel(note.actorName, note.actorUsername);
                 const title = data.bookTitle ?? "";
                 const text =
@@ -293,13 +301,27 @@ export default function SharedWithMePage() {
                         ? `${who} رفض طلب مشاركة «${title}»`
                         : note.type === "billing"
                           ? (data.text ?? "")
-                          : title;
+                          : note.type === "question_set_ready"
+                            ? `مجموعتك «${data.title ?? ""}» جاهزة للمراجعة والنشر${
+                                data.needsReview
+                                  ? ` · ${data.needsReview} سؤالًا يحتاج مراجعتك`
+                                  : ""
+                              }${
+                                data.failed ? ` · تعذّر شرح ${data.failed}` : ""
+                              }`
+                            : title;
                 return (
                   <li
                     key={note.id}
                     className={note.readAt ? "sh-note" : "sh-note is-unread"}
                   >
-                    <span dir="auto">{text}</span>
+                    {note.type === "question_set_ready" && data.setId ? (
+                      <Link href={`/doctor/sets/${data.setId}`} dir="auto">
+                        {text}
+                      </Link>
+                    ) : (
+                      <span dir="auto">{text}</span>
+                    )}
                     <small>{dateFormat.format(new Date(note.createdAt))}</small>
                   </li>
                 );

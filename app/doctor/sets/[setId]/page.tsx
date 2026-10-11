@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { Copy, Download, Loader2 } from "lucide-react";
 import type { inferRouterOutputs } from "@trpc/server";
 import type { AppRouter } from "@/lib/trpc/router";
@@ -31,6 +31,9 @@ const TABS: { id: Tab; label: string }[] = [
 ];
 
 const POLL_MS = 4000;
+// No step forward for this long while a draft is being prepared: the run
+// has probably stopped, and the doctor is offered "resume".
+const STALLED_AFTER_MS = 3 * 60_000;
 
 export default function QuestionSetPage() {
   const { setId } = useParams<{ setId: string }>();
@@ -170,6 +173,33 @@ function QuestionsTab({
   const retry = trpc.doctor.sets.retryProcessing.useMutation({
     onSuccess: onPublished,
   });
+  const router = useRouter();
+  const resume = trpc.doctor.sets.resume.useMutation({
+    onSuccess: onPublished,
+  });
+  const cancel = trpc.doctor.sets.cancel.useMutation({
+    onSuccess: () => router.replace("/doctor"),
+  });
+  const [confirmCancel, setConfirmCancel] = useState(false);
+
+  // Has anything moved? The numbers are read every few seconds; when they
+  // have stood still for a while the preparation has probably stopped.
+  const preparing =
+    set.status === "draft" &&
+    set.bookStatus !== "failed" &&
+    !set.processingDone;
+  const progress = `${set.bookStatus}:${coverage.questionsTotal}:${coverage.questionsAiComplete}:${coverage.imagePagesProcessed}`;
+  const [movedAt, setMovedAt] = useState(() => Date.now());
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    setMovedAt(Date.now());
+  }, [progress]);
+  useEffect(() => {
+    if (!preparing) return;
+    const timer = window.setInterval(() => setNow(Date.now()), 15_000);
+    return () => window.clearInterval(timer);
+  }, [preparing]);
+  const stalled = preparing && now - movedAt > STALLED_AFTER_MS;
 
   return (
     <div className={s.section}>
@@ -196,9 +226,54 @@ function QuestionsTab({
             {coverage.questionsTotal
               ? `الشرح ${coverage.questionsAiComplete}/${coverage.questionsTotal}، الصور ${coverage.imagePagesProcessed}/${coverage.imagePagesTotal} صفحة`
               : "استخراج الأسئلة"}
-            . تقدر تسكّر الصفحة وترجع.
+            . تقدر تسكّر الصفحة وترجع، وسيصلك إشعار عند الاكتمال.
           </div>
         )}
+
+      {stalled && set.bookStatus === "complete" && (
+        <div className="inline-alert error wide" role="alert">
+          <span>
+            لم يتقدّم التجهيز منذ بضع دقائق. قد يكون توقف بسبب عطل مؤقت.
+            الاستئناف يكمل ما بقي فقط ولا يعيد ما اكتمل.
+          </span>
+          <button
+            type="button"
+            className="secondary-button"
+            disabled={resume.isPending}
+            onClick={() => {
+              setMovedAt(Date.now());
+              resume.mutate({ setId });
+            }}
+          >
+            {resume.isPending ? "جاري الاستئناف..." : "استئناف"}
+          </button>
+        </div>
+      )}
+
+      {set.status === "draft" &&
+        set.processingDone &&
+        set.aiFailedCount > 0 && (
+          <div className="inline-alert warning wide" role="status">
+            <span>
+              تعذّر كتابة الشرح لـ {set.aiFailedCount} سؤالًا. الأسئلة نفسها
+              سليمة وتُنشر بدون شرح، أو أعد المحاولة لها الآن.
+            </span>
+            <button
+              type="button"
+              className="secondary-button"
+              disabled={resume.isPending}
+              onClick={() => resume.mutate({ setId })}
+            >
+              {resume.isPending ? "جاري الإرسال..." : "أعد المحاولة للشرح"}
+            </button>
+          </div>
+        )}
+
+      {resume.error ? (
+        <p className={s.error} role="alert">
+          {resume.error.message}
+        </p>
+      ) : null}
 
       {set.status === "draft" && set.processingDone && (
         <div className={s.freshCodes}>
@@ -222,6 +297,47 @@ function QuestionsTab({
               {publish.isPending ? "جاري النشر..." : "انشر المجموعة"}
             </button>
           </div>
+        </div>
+      )}
+
+      {set.status === "draft" && (
+        <div className={s.actions}>
+          {confirmCancel ? (
+            <>
+              <span className={s.note} role="alert">
+                تُحذف المسودة وملفها نهائيًا، ويتوقف تجهيزها. لا يمكن التراجع.
+              </span>
+              <button
+                type="button"
+                className="secondary-button"
+                disabled={cancel.isPending}
+                onClick={() => cancel.mutate({ setId })}
+              >
+                {cancel.isPending ? "جاري الحذف..." : "نعم، احذف المسودة"}
+              </button>
+              <button
+                type="button"
+                className="secondary-button"
+                disabled={cancel.isPending}
+                onClick={() => setConfirmCancel(false)}
+              >
+                تراجع
+              </button>
+            </>
+          ) : (
+            <button
+              type="button"
+              className="secondary-button"
+              onClick={() => setConfirmCancel(true)}
+            >
+              {preparing ? "إلغاء المعالجة وحذف الملف" : "حذف المسودة"}
+            </button>
+          )}
+          {cancel.error ? (
+            <p className={s.error} role="alert">
+              {cancel.error.message}
+            </p>
+          ) : null}
         </div>
       )}
 

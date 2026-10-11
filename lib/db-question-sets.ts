@@ -146,6 +146,9 @@ const setSummaryColumns = {
   bookStatus: books.status,
   extractionError: books.extractionError,
   processingDone,
+  // Questions whose explanation could not be written after every attempt
+  // (the doctor may send them round again — resumeDraftProcessing).
+  aiFailedCount: sql<number>`(select count(*)::int from extracted_questions q where q."bookId" = ${questionSets.bookId} and q."aiStatus" = 'failed' and q."reviewStatus" is distinct from 'needs_review')`,
   windowOpen: questionSetWindowOpen,
   // Valid questions only; needs-review blocks are counted apart.
   extractedQuestions: sql<number>`(select count(*)::int from extracted_questions q where q."bookId" = ${questionSets.bookId} and q."reviewStatus" is distinct from 'needs_review')`,
@@ -418,6 +421,128 @@ export async function resetDraftProcessing(
     )
     .returning({ id: books.id });
   return rows[0]?.id ?? null;
+}
+
+// ▶️ A draft whose preparation has stopped short — the AI service was down
+// for hours, a restart killed the run, or some questions used up their
+// attempts — is sent round again. Only what is still owed: a page or a
+// question that succeeded is never done twice. Returns what the caller
+// must queue, or null when this is not the owner's draft with a read file.
+export async function resumeDraftProcessing(
+  ownerId: string,
+  setId: string
+): Promise<{ bookId: string; questions: number; pages: number } | null> {
+  const db = requireDb();
+  return db.transaction(async tx => {
+    const [set] = await tx
+      .select({ bookId: questionSets.bookId })
+      .from(questionSets)
+      .innerJoin(books, eq(books.id, questionSets.bookId))
+      .where(
+        and(
+          eq(questionSets.id, setId),
+          eq(questionSets.ownerId, ownerId),
+          eq(questionSets.status, "draft"),
+          eq(books.status, "complete")
+        )
+      )
+      .limit(1);
+    if (!set) return null;
+    const questions = await tx.execute<{ id: string }>(sql`
+      update "extracted_questions"
+      set "aiStatus" = 'pending', "aiAttemptCount" = 0, "aiError" = null
+      where "bookId" = ${set.bookId} and "aiStatus" = 'failed'
+      returning "id"
+    `);
+    // A page left "processing" by a run that died counts as owed too.
+    const pages = await tx.execute<{ id: string }>(sql`
+      update "question_file_pages"
+      set "status" = 'pending', "attemptCount" = 0, "errorMessage" = null,
+        "updatedAt" = now()
+      where "bookId" = ${set.bookId}
+        and ("status" = 'failed'
+          or ("status" = 'processing' and "updatedAt" < now() - interval '10 minutes'))
+      returning "id"
+    `);
+    return {
+      bookId: set.bookId,
+      questions: questions.length,
+      pages: pages.length,
+    };
+  });
+}
+
+// 🗑️ The doctor uploaded the wrong file: the draft and its file are removed
+// whole, whatever state the preparation is in (lib/trpc/doctorRouter.ts
+// deletes the file this names; the set goes with it). Every worker looks
+// the file up first and stops when it is gone, so nothing more is spent on
+// it. Null for a set that was published — students may hold its questions.
+export async function draftQuestionSetBook(
+  ownerId: string,
+  setId: string
+): Promise<string | null> {
+  const db = requireDb();
+  const [set] = await db
+    .select({ bookId: questionSets.bookId })
+    .from(questionSets)
+    .where(
+      and(
+        eq(questionSets.id, setId),
+        eq(questionSets.ownerId, ownerId),
+        eq(questionSets.status, "draft")
+      )
+    )
+    .limit(1);
+  return set?.bookId ?? null;
+}
+
+// 🔔 The draft behind this file has just finished preparing: its doctor is
+// told once, in the app's notifications, with the way straight to it.
+// Called by the last stage when it finds nothing left to do; a file that is
+// not a doctor's draft, or one already announced, is left alone.
+export async function notifyDraftReady(bookId: string): Promise<boolean> {
+  const db = getDb();
+  if (!db) return false;
+  try {
+    const [set] = await db
+      .select({
+        id: questionSets.id,
+        ownerId: questionSets.ownerId,
+        title: questionSets.title,
+        done: processingDone,
+        needsReview: sql<number>`(select count(*)::int from extracted_questions q where q."bookId" = ${questionSets.bookId} and q."reviewStatus" = 'needs_review')`,
+        failed: sql<number>`(select count(*)::int from extracted_questions q where q."bookId" = ${questionSets.bookId} and q."aiStatus" = 'failed' and q."reviewStatus" is distinct from 'needs_review')`,
+      })
+      .from(questionSets)
+      .innerJoin(books, eq(books.id, questionSets.bookId))
+      .where(
+        and(eq(questionSets.bookId, bookId), eq(questionSets.status, "draft"))
+      )
+      .limit(1);
+    if (!set || !set.done) return false;
+    const told = await db.execute<{ id: string }>(sql`
+      insert into "notifications" ("userId", "type", "data")
+      select ${set.ownerId}, 'question_set_ready', ${JSON.stringify({
+        setId: set.id,
+        title: set.title,
+        needsReview: Number(set.needsReview),
+        failed: Number(set.failed),
+      })}::jsonb
+      where not exists (
+        select 1 from "notifications" n
+        where n."userId" = ${set.ownerId}
+          and n."type" = 'question_set_ready'
+          and n."data"->>'setId' = ${set.id}
+      )
+      returning "id"
+    `);
+    return told.length > 0;
+  } catch (error) {
+    if (!isMissingTable(error)) {
+      console.error("[QuestionSets] Could not announce a ready draft", error);
+    }
+    return false;
+  }
 }
 
 // ── Guards used by existing flows ────────────────────────────────────────

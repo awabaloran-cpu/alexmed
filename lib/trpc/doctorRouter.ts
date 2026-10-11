@@ -35,11 +35,14 @@ import {
   MAX_CODES_PER_BATCH,
   publishQuestionSet,
   QuestionSetWindowError,
+  draftQuestionSetBook,
   resetDraftProcessing,
+  resumeDraftProcessing,
   revokeAccessCode,
   revokeStudentAccess,
   updateQuestionSetSettings,
 } from "../db-question-sets";
+import { deleteBook } from "../db-books";
 import { getQuestionFileCoverage } from "../db-question-file-images";
 import { AccessCodeKeyMissingError } from "../question-set-codes";
 import {
@@ -225,6 +228,58 @@ const setsRouter = router({
         });
       }
       await publishMessage({ type: "extract_question_file_job", bookId });
+      return { success: true } as const;
+    }),
+
+  // ▶️ A draft whose preparation stopped short is sent round again — only
+  // what is still owed (lib/db-question-sets.ts).
+  resume: doctorProcedure
+    .input(z.object({ setId: id }))
+    .mutation(async ({ ctx, input }) => {
+      const owed = await resumeDraftProcessing(ctx.user.id, input.setId);
+      if (!owed) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "الاستئناف متاح لمسودة قُرئ ملفها ولم تكتمل معالجتها.",
+        });
+      }
+      // One start per file every two minutes, however often it is pressed.
+      const bucket = Math.floor(Date.now() / 120_000);
+      await publishMessage(
+        { type: "extract_question_file_images", bookId: owed.bookId },
+        {
+          flowControl: {
+            key: `question-file-images-${owed.bookId}`,
+            parallelism: 1,
+          },
+          deduplicationId: `qs-resume-images-${owed.bookId}-${bucket}`,
+        }
+      );
+      await publishMessage(
+        { type: "generate_question_file_content", bookId: owed.bookId },
+        {
+          flowControl: {
+            key: `question-file-content-${owed.bookId}`,
+            parallelism: 1,
+          },
+          deduplicationId: `qs-resume-content-${owed.bookId}-${bucket}`,
+        }
+      );
+      return { questions: owed.questions, pages: owed.pages };
+    }),
+
+  // 🗑️ The wrong file: the draft and its file go, and the preparation stops.
+  cancel: doctorProcedure
+    .input(z.object({ setId: id }))
+    .mutation(async ({ ctx, input }) => {
+      const bookId = await draftQuestionSetBook(ctx.user.id, input.setId);
+      if (!bookId || !(await deleteBook(ctx.user.id, bookId))) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message:
+            "الحذف متاح للمسودة فقط. المجموعة المنشورة تُؤرشف ولا تُحذف.",
+        });
+      }
       return { success: true } as const;
     }),
 

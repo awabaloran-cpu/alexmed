@@ -1,4 +1,5 @@
 import { getQuestionFileBookById } from "@/lib/db-question-files";
+import { notifyDraftReady } from "@/lib/db-question-sets";
 import {
   getExtractedQuestionImages,
   getNextPendingExtractedQuestion,
@@ -302,6 +303,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ bookId, status: "waiting_for_pages" });
     }
 
+    // 🔔 A doctor's draft that has just finished is announced to its doctor
+    // (once; any other file is left alone). Never in the way of the run.
+    await notifyDraftReady(bookId).catch(() => false);
     return NextResponse.json({ bookId, status: "done" });
   } catch (error) {
     console.error("[QuestionFiles] Content pipeline failed", error);
