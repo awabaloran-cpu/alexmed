@@ -3732,11 +3732,93 @@ export const studyRoomQuizAnswers = pgTable(
   })
 );
 
+// 🤝 Colleagues: two students who agreed to study together. One row per
+// request; `requesterId` asked, `addresseeId` answers. A pair has at most
+// one live row (pending or accepted) whichever of them asked — the unique
+// index below. Blocking stays in `user_blocks`, notices in `notifications`.
+export const studyConnections = pgTable(
+  "study_connections",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    requesterId: uuid("requesterId")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    addresseeId: uuid("addresseeId")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    // "pending" | "accepted" | "declined" | "cancelled" | "removed"
+    status: varchar("status", { length: 10 }).default("pending").notNull(),
+    createdAt: timestamp("createdAt", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    respondedAt: timestamp("respondedAt", { withTimezone: true }),
+    updatedAt: timestamp("updatedAt", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  table => ({
+    livePair: uniqueIndex("study_connections_live_pair_idx")
+      .on(
+        sql`least(${table.requesterId}, ${table.addresseeId})`,
+        sql`greatest(${table.requesterId}, ${table.addresseeId})`
+      )
+      .where(sql`${table.status} in ('pending', 'accepted')`),
+    requesterIdx: index("study_connections_requester_idx").on(
+      table.requesterId,
+      table.status
+    ),
+    addresseeIdx: index("study_connections_addressee_idx").on(
+      table.addresseeId,
+      table.status
+    ),
+  })
+);
+
+// An invitation to one room, addressed to one colleague. It opens nothing
+// by itself: entering still goes through `joinRoom` and every rule there.
+export const studyRoomInvites = pgTable(
+  "study_room_invites",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    roomId: uuid("roomId")
+      .notNull()
+      .references(() => studyRooms.id, { onDelete: "cascade" }),
+    inviterId: uuid("inviterId")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    inviteeId: uuid("inviteeId")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    // "pending" | "accepted" | "declined" | "cancelled"
+    status: varchar("status", { length: 10 }).default("pending").notNull(),
+    createdAt: timestamp("createdAt", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    respondedAt: timestamp("respondedAt", { withTimezone: true }),
+    expiresAt: timestamp("expiresAt", { withTimezone: true }).notNull(),
+  },
+  table => ({
+    liveUnique: uniqueIndex("study_room_invites_live_idx")
+      .on(table.roomId, table.inviteeId)
+      .where(sql`${table.status} = 'pending'`),
+    inviteeIdx: index("study_room_invites_invitee_idx").on(
+      table.inviteeId,
+      table.status
+    ),
+    inviterIdx: index("study_room_invites_inviter_idx").on(
+      table.inviterId,
+      table.createdAt
+    ),
+  })
+);
+
 export type StudySection = typeof studySections.$inferSelect;
 export type StudySubject = typeof studySubjects.$inferSelect;
 export type StudyRoomProfile = typeof studyRoomProfiles.$inferSelect;
 export type StudyRoom = typeof studyRooms.$inferSelect;
 export type StudyRoomMember = typeof studyRoomMembers.$inferSelect;
+export type StudyConnection = typeof studyConnections.$inferSelect;
+export type StudyRoomInvite = typeof studyRoomInvites.$inferSelect;
 
 export type TelegramAccount = typeof telegramAccounts.$inferSelect;
 export type TelegramUpload = typeof telegramUploads.$inferSelect;

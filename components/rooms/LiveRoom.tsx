@@ -26,6 +26,7 @@ import type { RoomsKey } from "@/lib/study-rooms/i18n";
 import { trpc } from "@/lib/trpc-client";
 import { Avatar, Sheet, SubjectLine } from "./parts";
 import RoomChat, { useRoomChat } from "./RoomChat";
+import { ColleagueItems, InviteColleagues } from "./RoomColleagues";
 import { InviteBox } from "./RoomCreate";
 import RoomDesk from "./RoomDesk";
 import RoomFilePicker from "./RoomFilePicker";
@@ -84,7 +85,7 @@ export default function LiveRoom({ roomId }: { roomId: string }) {
     | { kind: "member"; userId: string }
     | { kind: "report"; userId: string | null }
     | { kind: "settings" }
-    | { kind: "invite"; code: string }
+    | { kind: "invite"; code: string | null }
     | { kind: "end" }
     | { kind: "file" }
     | { kind: "quiz" }
@@ -524,12 +525,11 @@ export default function LiveRoom({ roomId }: { roomId: string }) {
             <ListChecks size={17} aria-hidden="true" /> {t("quiz.open")}
           </button>
         ) : null}
-        {room.visibility === "private" && me.can.invite ? (
+        {room.visibility === "public" || me.can.invite ? (
           <button
             type="button"
             className={s.btn}
-            disabled={rotate.isPending}
-            onClick={() => rotate.mutate({ roomId })}
+            onClick={() => setSheet({ kind: "invite", code: null })}
           >
             <UserPlus size={17} aria-hidden="true" /> {t("live.invite")}
           </button>
@@ -711,6 +711,7 @@ export default function LiveRoom({ roomId }: { roomId: string }) {
                 </span>
               </button>
             ) : null}
+            <ColleagueItems userId={target.userId} onBlocked={close} />
             <button
               type="button"
               className={`${s.item} ${s.danger}`}
@@ -735,7 +736,27 @@ export default function LiveRoom({ roomId }: { roomId: string }) {
 
       {sheet?.kind === "invite" ? (
         <Sheet title={t("live.invite")} onClose={close}>
-          <InviteBox roomId={roomId} code={sheet.code} />
+          <InviteColleagues roomId={roomId} />
+          {room.visibility !== "private" ? null : sheet.code ? (
+            <InviteBox roomId={roomId} code={sheet.code} />
+          ) : (
+            <>
+              <p className={s.sub}>{t("invite.link")}</p>
+              {rotate.error ? (
+                <p className={s.errorNote} role="alert">
+                  {tError(rotate.error)}
+                </p>
+              ) : null}
+              <button
+                type="button"
+                className={`${s.btn} ${s.wide}`}
+                disabled={rotate.isPending}
+                onClick={() => rotate.mutate({ roomId })}
+              >
+                {t("invite.makeLink")}
+              </button>
+            </>
+          )}
         </Sheet>
       ) : null}
 

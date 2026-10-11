@@ -83,6 +83,15 @@ describe.skipIf(!live)(
           .returning({ id: schema.users.id });
         ids[key] = user.id;
       }
+      // Files go to colleagues only (lib/colleagues.ts): A knows B and C.
+      await db.insert(schema.studyConnections).values(
+        (["b", "c"] as const).map(key => ({
+          requesterId: ids.a,
+          addresseeId: ids[key],
+          status: "accepted",
+          respondedAt: new Date(),
+        }))
+      );
       const [book] = await db
         .insert(schema.books)
         .values({

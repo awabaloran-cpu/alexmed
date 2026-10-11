@@ -1,38 +1,31 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import {
   Check,
   Loader2,
   Search,
   Send,
   UserMinus,
+  UserPlus,
   Users,
   X,
 } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { StudentAvatar } from "./StudentAvatar";
 
-// 📤 Owner-side sharing sheet for one Study Pack: find a student by
-// username / name (never email), confirm, send a request — plus the
-// "👥 تمت المشاركة مع" list with revoke. Every rule (ownership, duplicates,
-// blocks, cooldown) is enforced by the server; this only shows its answer.
+// 📤 Owner-side sharing sheet for one Study Pack: pick one of your
+// colleagues (app/shared is where they are added), confirm, send — plus the
+// "👥 تمت المشاركة مع" list with revoke. Every rule (ownership, colleagues
+// only, duplicates, blocks, cooldown) is enforced by the server; this only
+// shows its answer.
 
 type Student = {
   id: string;
-  username: string;
   name: string | null;
   image: string | null;
 };
-
-function useDebounced<T>(value: T, delayMs: number) {
-  const [debounced, setDebounced] = useState(value);
-  useEffect(() => {
-    const timer = setTimeout(() => setDebounced(value), delayMs);
-    return () => clearTimeout(timer);
-  }, [value, delayMs]);
-  return debounced;
-}
 
 const STATUS_LABEL: Record<string, string> = {
   pending: "بانتظار الرد",
@@ -51,16 +44,10 @@ export function ShareStudyPackModal({
 }) {
   const utils = trpc.useUtils();
   const [query, setQuery] = useState("");
-  const [offset, setOffset] = useState(0);
   const [selected, setSelected] = useState<Student | null>(null);
   const [sentTo, setSentTo] = useState<Student | null>(null);
-  const debounced = useDebounced(query.trim(), 300);
-  const searchEnabled = debounced.length >= 2 && !selected && !sentTo;
 
-  const search = trpc.sharing.searchUsers.useQuery(
-    { query: debounced, offset },
-    { enabled: searchEnabled, placeholderData: previous => previous }
-  );
+  const colleagues = trpc.colleagues.list.useQuery();
   const shares = trpc.sharing.sharesForBook.useQuery({ bookId });
   const send = trpc.sharing.sendRequest.useMutation({
     onSuccess: () => {
@@ -74,7 +61,6 @@ export function ShareStudyPackModal({
     onSuccess: () => utils.sharing.sharesForBook.invalidate({ bookId }),
   });
 
-  useEffect(() => setOffset(0), [debounced]);
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") onClose();
@@ -83,8 +69,21 @@ export function ShareStudyPackModal({
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
-  const results = searchEnabled ? (search.data?.items ?? []) : [];
   const sharedWith = shares.data ?? [];
+  // A colleague who already has the file (or a request waiting) is in the
+  // list below, not offered again.
+  const taken = new Set(
+    sharedWith
+      .filter(share => share.status !== "declined")
+      .map(share => share.recipientId)
+  );
+  const wanted = query.trim().toLowerCase();
+  const everyone = colleagues.data ?? [];
+  const results = everyone.filter(
+    student =>
+      !taken.has(student.id) &&
+      (!wanted || (student.name ?? "").toLowerCase().includes(wanted))
+  );
 
   return (
     <div className="upload-chooser-backdrop sh-backdrop" onClick={onClose}>
@@ -98,7 +97,7 @@ export function ShareStudyPackModal({
         <div className="upload-chooser-handle" />
         <div className="sh-head">
           <div>
-            <h2 id="sh-title">مشاركة الملف مع طالب</h2>
+            <h2 id="sh-title">أرسل الملف لزميل</h2>
             <p className="sh-sub" dir="auto">
               {bookTitle}
             </p>
@@ -120,27 +119,23 @@ export function ShareStudyPackModal({
             </span>
             <strong>✓ تم إرسال الطلب</strong>
             <span>
-              سيظهر الملف عند {sentTo.name || `@${sentTo.username}`} بعد قبوله
-              الطلب.
+              سيظهر الملف عند <bdi>{sentTo.name || "زميلك"}</bdi> بعد قبوله.
             </span>
             <button
               type="button"
               className="secondary-button"
               onClick={() => setSentTo(null)}
             >
-              مشاركة مع طالب آخر
+              إرسال لزميل آخر
             </button>
           </div>
         ) : selected ? (
           <div className="sh-confirm">
             <div className="sh-student is-selected">
-              <StudentAvatar
-                name={selected.name}
-                username={selected.username}
-              />
+              <StudentAvatar name={selected.name} username={selected.id} />
               <span className="sh-student-text">
-                <strong dir="auto">{selected.name || selected.username}</strong>
-                <span dir="ltr">@{selected.username}</span>
+                <strong dir="auto">{selected.name || "زميل"}</strong>
+                <span>من زملائك</span>
               </span>
             </div>
             <p className="sh-explain">
@@ -167,7 +162,7 @@ export function ShareStudyPackModal({
                 ) : (
                   <Send size={16} />
                 )}
-                إرسال طلب المشاركة
+                إرسال الملف
               </button>
               <button
                 type="button"
@@ -184,28 +179,33 @@ export function ShareStudyPackModal({
           </div>
         ) : (
           <>
-            <label className="sh-search">
-              <Search size={16} aria-hidden="true" />
-              <input
-                type="search"
-                autoFocus
-                value={query}
-                onChange={event => setQuery(event.target.value)}
-                placeholder="ابحث باسم المستخدم أو الاسم"
-                aria-label="ابحث عن طالب"
-                dir="auto"
-                maxLength={64}
-              />
-              {search.isFetching && <Loader2 size={16} className="spin" />}
-            </label>
+            {everyone.length > 6 && (
+              <label className="sh-search">
+                <Search size={16} aria-hidden="true" />
+                <input
+                  type="search"
+                  value={query}
+                  onChange={event => setQuery(event.target.value)}
+                  placeholder="ابحث في زملائك"
+                  aria-label="ابحث في زملائك"
+                  dir="auto"
+                  maxLength={64}
+                />
+              </label>
+            )}
             <div className="sh-results" aria-live="polite">
-              {debounced.length < 2 ? (
+              {colleagues.isLoading ? (
+                <Loader2 size={16} className="spin" />
+              ) : everyone.length === 0 ? (
                 <p className="sh-hint">
-                  اكتب حرفين على الأقل. يظهر فقط الطلاب الذين اختاروا اسم
-                  مستخدم.
+                  الملفات تُرسل لزملائك فقط، ولا زملاء لديك بعد.
                 </p>
-              ) : search.isLoading ? null : results.length === 0 ? (
-                <p className="sh-hint">لا يوجد طالب بهذا الاسم.</p>
+              ) : results.length === 0 ? (
+                <p className="sh-hint">
+                  {wanted
+                    ? "لا زميل بهذا الاسم."
+                    : "كل زملائك لديهم هذا الملف أو طلب بانتظارهم."}
+                </p>
               ) : (
                 results.map(student => (
                   <button
@@ -214,37 +214,16 @@ export function ShareStudyPackModal({
                     className="sh-student"
                     onClick={() => setSelected(student)}
                   >
-                    <StudentAvatar
-                      name={student.name}
-                      username={student.username}
-                    />
+                    <StudentAvatar name={student.name} username={student.id} />
                     <span className="sh-student-text">
-                      <strong dir="auto">
-                        {student.name || student.username}
-                      </strong>
-                      <span dir="ltr">@{student.username}</span>
+                      <strong dir="auto">{student.name || "زميل"}</strong>
                     </span>
                   </button>
                 ))
               )}
-              {searchEnabled && search.data?.nextOffset != null && (
-                <button
-                  type="button"
-                  className="sh-more"
-                  onClick={() => setOffset(search.data!.nextOffset!)}
-                >
-                  نتائج أكثر
-                </button>
-              )}
-              {searchEnabled && offset > 0 && (
-                <button
-                  type="button"
-                  className="sh-more"
-                  onClick={() => setOffset(0)}
-                >
-                  العودة لأول النتائج
-                </button>
-              )}
+              <Link href="/shared" className="sh-more">
+                <UserPlus size={14} aria-hidden="true" /> أضف زميلًا جديدًا
+              </Link>
             </div>
           </>
         )}

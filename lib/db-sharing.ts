@@ -10,7 +10,6 @@ import {
   eq,
   gt,
   inArray,
-  isNotNull,
   isNull,
   ne,
   or,
@@ -28,6 +27,11 @@ import {
   userBlocks,
   users,
 } from "../drizzle/schema";
+import {
+  areColleagues,
+  blockWithin,
+  countIncomingColleagueRequests,
+} from "./colleagues";
 import { getDb, requireDb } from "./db";
 
 export type SharingErrorCode =
@@ -37,6 +41,7 @@ export type SharingErrorCode =
   | "ALREADY_SHARED"
   | "RECENTLY_DECLINED"
   | "BLOCKED"
+  | "NOT_COLLEAGUE"
   | "NOT_READY"
   | "USERNAME_TAKEN"
   | "INVALID_USERNAME"
@@ -114,10 +119,11 @@ function escapeLike(value: string): string {
   return value.replace(/[\\%_]/g, match => `\\${match}`);
 }
 
-// Only discoverable students (who chose a username), never the searcher,
-// never suspended accounts, never anyone in a block with the searcher.
-// Matches username prefix or display-name substring, case-insensitive.
-// Returns public profile fields only — never email or anything else.
+// Whom a file can be sent to: the searcher's own colleagues
+// (lib/colleagues.ts), by the name they registered with. Never suspended
+// accounts, never anyone in a block with the searcher. Returns public
+// profile fields only — never email or anything else. (Finding someone who
+// is not a colleague yet is `searchPeople` there.)
 export async function searchStudents(
   viewerId: string,
   rawQuery: string,
@@ -139,8 +145,13 @@ export async function searchStudents(
     .from(users)
     .where(
       and(
-        isNotNull(users.username),
         ne(users.id, viewerId),
+        sql`exists (
+          select 1 from "study_connections" sc
+          where sc."status" = 'accepted'
+            and ((sc."requesterId" = ${viewerId} and sc."addresseeId" = "users"."id")
+              or (sc."addresseeId" = ${viewerId} and sc."requesterId" = "users"."id"))
+        )`,
         isNull(users.suspendedAt),
         or(
           sql`${users.username} like ${`${like}%`}`,
@@ -148,8 +159,8 @@ export async function searchStudents(
         ),
         sql`not exists (
           select 1 from ${userBlocks}
-          where (${userBlocks.blockerId} = ${viewerId} and ${userBlocks.blockedId} = ${users.id})
-             or (${userBlocks.blockerId} = ${users.id} and ${userBlocks.blockedId} = ${viewerId})
+          where ("user_blocks"."blockerId" = ${viewerId} and "user_blocks"."blockedId" = "users"."id")
+             or ("user_blocks"."blockerId" = "users"."id" and "user_blocks"."blockedId" = ${viewerId})
         )`
       )
     )
@@ -162,7 +173,9 @@ export async function searchStudents(
     .limit(limit + 1);
   const items = rows.slice(0, limit).map(row => ({
     id: row.id,
-    username: row.username as string,
+    // Older screens print this as a handle; a student who never chose
+    // one is known by their name alone.
+    username: row.username ?? "",
     name: row.name,
     image: row.image,
   }));
@@ -342,6 +355,8 @@ export function shareRequestMessage(
       return `${recipientLabel} لديه وصول لهذا الملف بالفعل.`;
     case "RECENTLY_DECLINED":
       return "رفض الطالب هذا الطلب مؤخرًا، يمكنك إعادة الإرسال بعد 24 ساعة.";
+    case "NOT_COLLEAGUE":
+      return "أضف هذا الطالب إلى زملائك أولًا، ثم أرسل له الملف.";
     case "NOT_READY":
       return "انتظر اكتمال قراءة الملف قبل مشاركته.";
     case "RATE_LIMITED":
@@ -391,7 +406,7 @@ export async function createShareRequest(
       .from(users)
       .where(eq(users.id, recipientId))
       .limit(1);
-    if (!recipient || !recipient.username || recipient.suspendedAt) {
+    if (!recipient || recipient.suspendedAt) {
       throw new SharingError("NOT_FOUND", "الطالب غير موجود.");
     }
     const [block] = await tx
@@ -448,7 +463,17 @@ export async function createShareRequest(
         shareRequestMessage("RATE_LIMITED", "")
       );
     }
-    const label = recipient.name || `@${recipient.username}`;
+    const label =
+      recipient.name ||
+      (recipient.username ? `@${recipient.username}` : "الطالب");
+    // Files go to colleagues only: nobody receives one from a stranger.
+    // (A block ended the colleagueship, so it gets this same answer.)
+    if (!(await areColleagues(tx, ownerId, recipientId))) {
+      throw new SharingError(
+        "NOT_COLLEAGUE",
+        shareRequestMessage("NOT_COLLEAGUE", label)
+      );
+    }
     const broken = checkShareRequest({
       ownerId,
       recipientId,
@@ -542,10 +567,7 @@ export async function respondToShare(
       { shareId, bookId: share.bookId, bookTitle: book?.fileName ?? "" }
     );
     if (decision === "decline" && block) {
-      await tx
-        .insert(userBlocks)
-        .values({ blockerId: recipientId, blockedId: share.ownerId })
-        .onConflictDoNothing();
+      await blockWithin(tx, recipientId, share.ownerId);
       await audit(tx, shareId, recipientId, "sender_blocked");
     }
     // The request notification has been answered — mark it read.
@@ -649,7 +671,9 @@ export async function listIncomingRequests(recipientId: string) {
       createdAt: bookShares.createdAt,
       bookTitle: books.fileName,
       pageCount: books.pageCount,
+      ownerId: users.id,
       ownerName: users.name,
+      ownerImage: users.image,
       ownerUsername: users.username,
     })
     .from(bookShares)
@@ -712,6 +736,7 @@ export async function listSharesForBook(ownerId: string, bookId: string) {
   return db
     .select({
       shareId: bookShares.id,
+      recipientId: bookShares.recipientId,
       status: bookShares.status,
       createdAt: bookShares.createdAt,
       respondedAt: bookShares.respondedAt,
@@ -731,8 +756,8 @@ export async function listSharesForBook(ownerId: string, bookId: string) {
 
 export async function getSharingHomeSummary(userId: string) {
   const db = getDb();
-  if (!db) return { pending: 0, unread: 0, recent: [] };
-  const [[pendingRow], recent, unread] = await Promise.all([
+  if (!db) return { pending: 0, unread: 0, colleagueRequests: 0, recent: [] };
+  const [[pendingRow], recent, unread, colleagueRequests] = await Promise.all([
     db
       .select({ n: count() })
       .from(bookShares)
@@ -767,6 +792,12 @@ export async function getSharingHomeSummary(userId: string) {
       .orderBy(desc(bookShares.respondedAt))
       .limit(3),
     countUnreadNotifications(userId),
+    countIncomingColleagueRequests(userId),
   ]);
-  return { pending: Number(pendingRow?.n ?? 0), unread, recent };
+  return {
+    pending: Number(pendingRow?.n ?? 0),
+    unread,
+    colleagueRequests,
+    recent,
+  };
 }

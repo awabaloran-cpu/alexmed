@@ -28,6 +28,7 @@ import { decksRouter } from "./decksRouter";
 import { examFocusRouter } from "./examFocusRouter";
 import { mirrorRouter } from "./mirrorRouter";
 import { questionFilesRouter } from "./questionFilesRouter";
+import { colleaguesRouter } from "./colleaguesRouter";
 import { roomsRouter } from "./roomsRouter";
 import { sharingRouter } from "./sharingRouter";
 import { studentMaterialsRouter } from "./studentMaterialsRouter";
@@ -113,6 +114,9 @@ export const appRouter = router({
   // 📤 Study Pack sharing (requests, access, notifications) — see
   // lib/db-sharing.ts; read authorization lives in lib/book-access.ts.
   sharing: sharingRouter,
+  // 🤝 Colleagues (lib/colleagues.ts): who may send whom files and room
+  // invitations.
+  colleagues: colleaguesRouter,
   // 👥 Study Rooms (docs/study-rooms) — off behind STUDY_ROOMS_ENABLED.
   rooms: roomsRouter,
   brainGames: brainGamesRouter,

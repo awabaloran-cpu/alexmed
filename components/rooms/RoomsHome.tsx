@@ -12,6 +12,7 @@ import {
   sectionIcon,
   sectionName,
 } from "./parts";
+import { MyInvites } from "./RoomColleagues";
 import { useRooms } from "./RoomsProvider";
 import s from "./rooms.module.css";
 
@@ -166,6 +167,8 @@ export default function RoomsHome() {
           {t("rooms.minorNote")} {t("rooms.minorWhy")}
         </p>
       )}
+
+      {filters.active ? null : <MyInvites />}
 
       {filters.active ? null : (
         <>

@@ -48,7 +48,12 @@ export type RoomErrorReason =
   | "video_unavailable" // no such video (deleted, mistyped)
   | "video_no_embed" // private, or its owner forbids playing it elsewhere
   | "video_bad_position"
-  | "no_video";
+  | "no_video"
+  // ✉️ inviting a colleague (lib/study-rooms/invites.ts)
+  | "invite_not_colleague"
+  | "invite_refused" // this room is not one the colleague can be invited to
+  | "invite_already_here"
+  | "already_invited";
 
 const CODES: Record<RoomErrorReason, RoomErrorCode> = {
   not_available: "NOT_FOUND",
@@ -87,6 +92,10 @@ const CODES: Record<RoomErrorReason, RoomErrorCode> = {
   video_no_embed: "BAD_REQUEST",
   video_bad_position: "BAD_REQUEST",
   no_video: "PRECONDITION_FAILED",
+  invite_not_colleague: "FORBIDDEN",
+  invite_refused: "FORBIDDEN",
+  invite_already_here: "CONFLICT",
+  already_invited: "CONFLICT",
 };
 
 export class RoomError extends Error {

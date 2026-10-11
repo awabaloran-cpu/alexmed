@@ -1,0 +1,475 @@
+/* "الزملاء" (app/shared/page.tsx): the people a student studies with, what
+   they sent, and what waits for an answer. Ink & highlighter tokens from
+   app/base.css. */
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  width: 100%;
+  max-width: 720px;
+  margin-inline: auto;
+  padding: 20px 16px 110px;
+}
+
+.head h1 {
+  margin: 0;
+  font-size: clamp(1.5rem, 4vw, 1.9rem);
+  font-weight: 700;
+  color: var(--nl-ink);
+  text-wrap: balance;
+}
+
+.head p {
+  margin: 4px 0 0;
+  max-width: 52ch;
+  color: var(--nl-ink-3);
+  font-size: 0.95rem;
+}
+
+/* ── Finding a student ── */
+.search {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 50px;
+  padding: 0 14px;
+  border: 1px solid var(--nl-rule-strong);
+  border-radius: var(--nl-r-md);
+  background: var(--nl-sheet);
+  color: var(--nl-ink-3);
+  transition:
+    border-color 0.15s var(--nl-ease),
+    box-shadow 0.15s var(--nl-ease);
+}
+
+.search:focus-within {
+  border-color: var(--nl-niro);
+  box-shadow: 0 0 0 3px var(--nl-niro-soft);
+}
+
+.search input {
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  outline: 0;
+  box-shadow: none;
+  background: transparent;
+  color: var(--nl-ink);
+  font: inherit;
+  font-size: 1rem;
+}
+
+.search input::placeholder {
+  color: var(--nl-ink-3);
+}
+
+.clear {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--nl-ink-3);
+  cursor: pointer;
+}
+
+.clear:hover {
+  background: var(--nl-paper);
+  color: var(--nl-ink);
+}
+
+/* ── Tabs ── */
+.tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--nl-rule);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.tab {
+  position: relative;
+  display: inline-flex;
+  flex: 1 0 auto;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 46px;
+  padding: 0 12px;
+  border: 0;
+  background: transparent;
+  color: var(--nl-ink-3);
+  font: inherit;
+  font-size: 0.92rem;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.tab:hover {
+  color: var(--nl-ink);
+}
+
+.tab[aria-selected="true"] {
+  color: var(--nl-ink);
+}
+
+.tab[aria-selected="true"]::after {
+  content: "";
+  position: absolute;
+  inset-inline: 10px;
+  bottom: -1px;
+  height: 3px;
+  border-radius: 3px 3px 0 0;
+  background: var(--nl-niro);
+}
+
+.count {
+  display: inline-grid;
+  place-items: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 10px;
+  background: var(--nl-marker);
+  /* Ink on the marker in both themes: the marker stays yellow at night. */
+  color: #1b2340;
+  font-size: 0.72rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+
+.group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.group h2 {
+  margin: 0;
+  color: var(--nl-ink-3);
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+/* ── A person, a request, an invitation: one row shape ── */
+.list {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--nl-rule);
+  border-radius: var(--nl-r-md);
+  background: var(--nl-sheet);
+  list-style: none;
+  overflow: hidden;
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 12px;
+  padding: 12px 14px;
+}
+
+.row + .row {
+  border-top: 1px solid var(--nl-rule);
+}
+
+.who {
+  display: flex;
+  flex: 1 1 180px;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.who strong {
+  overflow: hidden;
+  color: var(--nl-ink);
+  font-size: 0.98rem;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.who span {
+  color: var(--nl-ink-3);
+  font-size: 0.82rem;
+}
+
+.who .file {
+  overflow: hidden;
+  color: var(--nl-ink-2);
+  font-size: 0.9rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* A notice reads in full: it wraps instead of being cut. */
+.who .say,
+.who a {
+  color: var(--nl-ink);
+  font-size: 0.92rem;
+  line-height: 1.6;
+}
+
+.acts {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 38px;
+  padding: 0 14px;
+  border: 1px solid var(--nl-rule-strong);
+  border-radius: var(--nl-r-sm);
+  background: var(--nl-sheet);
+  color: var(--nl-ink);
+  font: inherit;
+  font-size: 0.88rem;
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background-color 0.15s var(--nl-ease),
+    border-color 0.15s var(--nl-ease);
+}
+
+.btn:hover {
+  background: var(--nl-paper);
+}
+
+.btn:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.btn:focus-visible,
+.tab:focus-visible,
+.clear:focus-visible,
+.more:focus-visible {
+  outline: 2px solid var(--nl-niro);
+  outline-offset: 2px;
+}
+
+.primary {
+  border-color: var(--nl-niro);
+  background: var(--nl-niro);
+  color: #fff;
+}
+
+.primary:hover {
+  border-color: var(--nl-niro-deep);
+  background: var(--nl-niro-deep);
+}
+
+.quiet {
+  border-color: transparent;
+  background: transparent;
+  color: var(--nl-ink-2);
+}
+
+.danger {
+  border-color: transparent;
+  background: transparent;
+  color: var(--nl-wrong);
+}
+
+.danger:hover {
+  background: var(--nl-wrong-soft);
+}
+
+.more {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border: 0;
+  border-radius: var(--nl-r-sm);
+  background: transparent;
+  color: var(--nl-ink-3);
+  cursor: pointer;
+}
+
+.more:hover,
+.more[aria-expanded="true"] {
+  background: var(--nl-paper);
+  color: var(--nl-ink);
+}
+
+/* What "⋯" opens, and the question before something that cannot be taken
+   back with one tap. */
+.drawer {
+  display: flex;
+  flex: 1 0 100%;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 12px;
+  border-radius: var(--nl-r-sm);
+  background: var(--nl-paper);
+}
+
+.drawer p {
+  flex: 1 1 220px;
+  margin: 0;
+  color: var(--nl-ink-2);
+  font-size: 0.88rem;
+}
+
+.drawer select {
+  min-height: 38px;
+  padding: 0 10px;
+  border: 1px solid var(--nl-rule-strong);
+  border-radius: var(--nl-r-sm);
+  background: var(--nl-sheet);
+  color: var(--nl-ink);
+  font: inherit;
+  font-size: 0.88rem;
+}
+
+.tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--nl-paper);
+  color: var(--nl-ink-2);
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.tagOk {
+  background: var(--nl-correct-soft);
+  color: var(--nl-correct);
+}
+
+.chips {
+  display: flex;
+  flex: 1 0 100%;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.chips li {
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: var(--nl-paper);
+  color: var(--nl-ink-2);
+  font-size: 0.78rem;
+}
+
+/* ── Nothing here yet ── */
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 36px 20px;
+  border: 1px dashed var(--nl-rule-strong);
+  border-radius: var(--nl-r-md);
+  color: var(--nl-ink-3);
+  text-align: center;
+}
+
+.empty strong {
+  color: var(--nl-ink);
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.empty span {
+  max-width: 40ch;
+  font-size: 0.9rem;
+}
+
+.note {
+  margin: 0;
+  color: var(--nl-ink-3);
+  font-size: 0.85rem;
+}
+
+.error {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: var(--nl-r-sm);
+  background: var(--nl-wrong-soft);
+  color: var(--nl-wrong);
+  font-size: 0.88rem;
+}
+
+.pack {
+  color: inherit;
+  text-decoration: none;
+}
+
+.pack:hover {
+  background: var(--nl-paper);
+}
+
+.unread {
+  box-shadow: inset 3px 0 0 var(--nl-niro);
+}
+
+[dir="rtl"] .unread {
+  box-shadow: inset -3px 0 0 var(--nl-niro);
+}
+
+.when {
+  color: var(--nl-ink-3);
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.fold {
+  border: 0;
+  background: transparent;
+  color: var(--nl-ink-3);
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-align: start;
+  cursor: pointer;
+}
+
+.fold:hover {
+  color: var(--nl-ink);
+}
+
+@media (max-width: 480px) {
+  .acts {
+    flex: 1 0 100%;
+  }
+
+  .acts .btn {
+    flex: 1;
+  }
+}

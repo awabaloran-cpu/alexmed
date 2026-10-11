@@ -4,7 +4,6 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { signOut, useSession } from "next-auth/react";
 import {
-  AtSign,
   BarChart3,
   BookOpen,
   ChevronLeft,
@@ -24,13 +23,12 @@ import {
 import { trpc } from "@/lib/trpc-client";
 import { formatPhoneForDisplay } from "@/lib/phone";
 import PlanSummaryCard from "@/components/billing/PlanSummaryCard";
-import { UsernameCard } from "@/components/sharing/UsernameCard";
 import DeleteAccountSection from "@/components/DeleteAccountSection";
 import s from "./account.module.css";
 
 // Real route for Bottom Nav's "👤 حسابي". Organised like a platform
 // settings screen: who you are and your study numbers first, then grouped
-// lists — rows that expand in place (profile, username, plan) and rows that
+// lists — rows that expand in place (profile, plan) and rows that
 // open a page. Everything the old page offered is still here; only the
 // arrangement changed. لوحة اليوم / المراجعة اليومية / اختباراتي / نقاط
 // الضعف stay off this menu at the owner's request (2026-09-24).
@@ -45,7 +43,7 @@ type LinkRow = { href: string; label: string; icon: LucideIcon };
 const STUDY_LINKS: LinkRow[] = [
   { href: "/?view=library", label: "ملفات الأسئلة", icon: BookOpen },
   { href: "/books/stats", label: "إحصائياتي", icon: BarChart3 },
-  { href: "/shared", label: "مشترك معي", icon: Users },
+  { href: "/shared", label: "الزملاء", icon: Users },
 ];
 
 const HELP_LINKS: LinkRow[] = [
@@ -83,7 +81,7 @@ export default function AccountPage() {
   const profileQuery = trpc.auth.profile.useQuery();
   const statsQuery = trpc.books.stats.useQuery();
   const planQuery = trpc.billing.mine.useQuery();
-  const sharingQuery = trpc.sharing.profile.useQuery();
+
   // 🔒 Doctor capability (Protected Doctor Question Sets) — only asked for
   // while the feature is on.
   const doctorSetsOn = trpc.questionSets.enabled.useQuery().data === true;
@@ -118,7 +116,6 @@ export default function AccountPage() {
   const studyLine = [profile?.specialty, profile?.academicYear]
     .filter(Boolean)
     .join("، ");
-  const username = sharingQuery.data?.username;
   const stats = statsQuery.data;
   const isDoctor = doctorSetsOn && doctorQuery.data?.approved === true;
 
@@ -229,19 +226,6 @@ export default function AccountPage() {
                   ) : null}
                 </div>
                 {profile ? <DeleteAccountSection /> : null}
-              </div>
-            </details>
-          </li>
-          <li>
-            <details className={s.expand}>
-              <RowSummary
-                icon={AtSign}
-                label="اسم المستخدم للمشاركة"
-                value={username ? `@${username}` : "لم تختره بعد"}
-                valueDir={username ? "ltr" : undefined}
-              />
-              <div className={`${s.panel} ${s.nested}`}>
-                <UsernameCard compact />
               </div>
             </details>
           </li>

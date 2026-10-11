@@ -16,6 +16,13 @@ import {
 } from "../study-rooms/config";
 import { RoomError } from "../study-rooms/errors";
 import {
+  cancelInvite,
+  declineInvite,
+  inviteCandidates,
+  inviteColleague,
+  listMyInvites,
+} from "../study-rooms/invites";
+import {
   addMark,
   deleteMark,
   deleteMessage,
@@ -309,6 +316,46 @@ export const roomsRouter = router({
           input.roomId
         ),
       }))
+    ),
+
+  // ── Inviting a colleague by name (lib/study-rooms/invites.ts) ──
+  inviteCandidates: roomsProcedure
+    .input(z.object({ roomId: uuid }))
+    .query(({ ctx, input }) =>
+      guard(async () =>
+        inviteCandidates(await getViewer(ctx.user.id), input.roomId)
+      )
+    ),
+
+  inviteColleague: roomsProcedure
+    .input(z.object({ roomId: uuid, userId: uuid }))
+    .mutation(({ ctx, input }) =>
+      guard(async () =>
+        inviteColleague(await getViewer(ctx.user.id), {
+          roomId: input.roomId,
+          inviteeId: input.userId,
+        })
+      )
+    ),
+
+  cancelInvite: roomsProcedure
+    .input(z.object({ inviteId: uuid }))
+    .mutation(({ ctx, input }) =>
+      guard(async () =>
+        cancelInvite(await getViewer(ctx.user.id), input.inviteId)
+      )
+    ),
+
+  myInvites: roomsProcedure.query(({ ctx }) =>
+    guard(async () => listMyInvites(await getViewer(ctx.user.id)))
+  ),
+
+  declineInvite: roomsProcedure
+    .input(z.object({ inviteId: uuid }))
+    .mutation(({ ctx, input }) =>
+      guard(async () =>
+        declineInvite(await getViewer(ctx.user.id), input.inviteId)
+      )
     ),
 
   setMember: roomsProcedure

@@ -6,7 +6,9 @@ import { createHash, randomBytes } from "node:crypto";
 import { and, asc, count, desc, eq, gt, inArray, sql } from "drizzle-orm";
 import {
   books,
+  notifications,
   studyRoomEvents,
+  studyRoomInvites,
   studyRoomMembers,
   studyRooms,
   studySections,
@@ -16,6 +18,7 @@ import {
   type StudyRoomGrants,
   type StudyRoomSettings,
 } from "../../drizzle/schema";
+import { areColleagues, isBlockedEitherWay } from "../colleagues";
 import { requireDb } from "../db";
 import { mayEnterRoom, mayOpenPublicRoom, mayUseSection } from "./age";
 import { videoOf } from "./video-view";
@@ -50,7 +53,7 @@ export const hashInvite = (code: string) =>
 const newInviteCode = () => randomBytes(16).toString("base64url");
 
 // ── Rate limits, counted from the audit trail ─────────────────────────────
-async function countEvents(
+export async function countEvents(
   db: Db | Tx,
   actorId: string,
   type: string,
@@ -101,6 +104,44 @@ const blockedEitherWay = (
   where (ub."blockerId" = ${a} and ub."blockedId" = ${b})
      or (ub."blockerId" = ${b} and ub."blockedId" = ${a})
 )`;
+
+// An invitation addressed to this student for this room, still good: not
+// answered, not expired, and from someone who is in the room now, may
+// still invite to it, and is still this student's colleague. So a host who
+// takes the right to invite back, a member who leaves or is put out, a
+// block or the end of the colleagueship each close the door again
+// (lib/study-rooms/invites.ts).
+export async function hasLiveInvite(
+  db: Db | Tx,
+  room: StudyRoom,
+  userId: string
+): Promise<boolean> {
+  const waiting = await db
+    .select({ inviterId: studyRoomInvites.inviterId })
+    .from(studyRoomInvites)
+    .where(
+      and(
+        eq(studyRoomInvites.roomId, room.id),
+        eq(studyRoomInvites.inviteeId, userId),
+        eq(studyRoomInvites.status, "pending"),
+        gt(studyRoomInvites.expiresAt, new Date())
+      )
+    );
+  for (const invite of waiting) {
+    const inviter = await memberOf(db, room.id, invite.inviterId);
+    if (!inviter || inviter.state !== "joined") continue;
+    if (
+      room.visibility === "private" &&
+      !can(actorOf(inviter), room.settings, "invite")
+    ) {
+      continue;
+    }
+    if (!(await areColleagues(db, invite.inviterId, userId))) continue;
+    if (await isBlockedEitherWay(db, invite.inviterId, userId)) continue;
+    return true;
+  }
+  return false;
+}
 
 // ── Sections and subjects ─────────────────────────────────────────────────
 export async function listSections(viewer: Viewer) {
@@ -444,7 +485,7 @@ export async function requireAction(
 }
 
 // Whether this viewer may know the room exists at all (without its invite).
-function visibleTo(viewer: Viewer, room: StudyRoom): boolean {
+export function visibleTo(viewer: Viewer, room: StudyRoom): boolean {
   if (!mayEnterRoom(viewer.audience, room)) return false;
   if (room.womenOnly && viewer.gender !== "female") return false;
   return true;
@@ -657,7 +698,12 @@ export async function previewRoom(
   };
   const member = await memberOf(db, room.id, viewer.userId);
   const known = member && ["joined", "left", "kicked"].includes(member.state);
-  if (room.visibility === "private" && !input.invite && !known) {
+  if (
+    room.visibility === "private" &&
+    !input.invite &&
+    !known &&
+    !(await hasLiveInvite(db, room, viewer.userId))
+  ) {
     throw new RoomError("not_available");
   }
   if (room.hiddenAt && member?.state !== "joined") {
@@ -731,7 +777,13 @@ export async function joinRoom(
           !!room.inviteHash &&
           hashInvite(input.invite) === room.inviteHash;
         const returning = member?.state === "left";
-        if (!invited && !returning) throw new RoomError("bad_invite");
+        // Someone put out of the room does not come back on an invitation.
+        const personal =
+          member?.state !== "kicked" &&
+          (await hasLiveInvite(tx, room, viewer.userId));
+        if (!invited && !returning && !personal) {
+          throw new RoomError("bad_invite");
+        }
       }
       if (room.locked) throw new RoomError("room_locked");
 
@@ -780,6 +832,30 @@ export async function joinRoom(
           },
         });
       await refreshCountries(tx, room.id);
+      // In the room now: any invitation to it is answered.
+      const answered = await tx
+        .update(studyRoomInvites)
+        .set({ status: "accepted", respondedAt: now })
+        .where(
+          and(
+            eq(studyRoomInvites.roomId, room.id),
+            eq(studyRoomInvites.inviteeId, viewer.userId),
+            eq(studyRoomInvites.status, "pending")
+          )
+        )
+        .returning({ id: studyRoomInvites.id });
+      if (answered.length) {
+        await tx
+          .update(notifications)
+          .set({ readAt: now })
+          .where(
+            and(
+              eq(notifications.userId, viewer.userId),
+              eq(notifications.type, "room_invite"),
+              sql`${notifications.data}->>'roomId' = ${room.id}`
+            )
+          );
+      }
       await logRoomEvent(tx, {
         roomId: room.id,
         actorId: viewer.userId,

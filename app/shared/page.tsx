@@ -6,49 +6,87 @@ import {
   Bell,
   BookOpen,
   Check,
+  DoorOpen,
   Inbox,
   Loader2,
-  ShieldBan,
+  MoreHorizontal,
+  Search,
+  UserPlus,
   Users,
   X,
 } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
+import { ROOMS_MESSAGES } from "@/lib/study-rooms/i18n";
 import { StudentAvatar } from "@/components/sharing/StudentAvatar";
-import { UsernameCard } from "@/components/sharing/UsernameCard";
+import s from "./colleagues.module.css";
 
-// 📤 مشترك معي — incoming share requests (accept / decline / block), the
-// Study Packs other students shared with me, and sharing notifications.
-// Everything here is the caller's own data; the server scopes every list.
+// 🤝 الزملاء — the one place for the people a student studies with: finding
+// and adding them, what waits for an answer (colleague requests, room
+// invitations, files sent), the files received, and the notices. Every
+// list is the caller's own; the server decides every rule and this page
+// only shows its answer.
 
-type Tab = "requests" | "library" | "notifications";
-
-type Contents = {
-  chapters: number;
-  flashcards: number;
-  questions: number;
-  examFocus: number | null;
-};
+type Tab = "colleagues" | "requests" | "files" | "notices";
+type Person = { id: string; name: string | null };
+type Drawer = { id: string; mode: "menu" | "remove" | "block" | "report" };
 
 const dateFormat = new Intl.DateTimeFormat("ar-EG-u-nu-latn", {
   day: "numeric",
   month: "short",
 });
+const day = (value: Date | string | null) =>
+  value ? dateFormat.format(new Date(value)) : "";
 
-function ContentsChips({ contents }: { contents: Contents }) {
-  const chips = [
-    contents.chapters > 0 && `📘 ${contents.chapters} أجزاء ملخّصة`,
-    contents.flashcards > 0 && `🃏 ${contents.flashcards} بطاقة`,
-    contents.questions > 0 && `❓ ${contents.questions} سؤال`,
-    contents.chapters > 0 && "🧠 خريطة ذهنية",
-    contents.examFocus != null && `🔥 ${contents.examFocus} Exam Focus`,
-  ].filter(Boolean) as string[];
-  if (!chips.length) {
-    return (
-      <p className="sh-hint">الملف جاهز للقراءة، ولم يُولَّد محتوى بعد.</p>
-    );
-  }
+const nameOf = (name: string | null, username?: string | null) =>
+  name || (username ? `@${username}` : "طالب");
+
+// A refusal's sentence: colleague and room reasons arrive as keys, the
+// file-sharing ones already as sentences.
+function explain(error: { message: string } | null | undefined) {
+  if (!error) return null;
+  const words = ROOMS_MESSAGES.ar as Record<string, string>;
   return (
-    <ul className="sh-chips" aria-label="محتوى الملف">
+    words[`col.${error.message}`] ??
+    words[`error.${error.message}`] ??
+    (/\p{Script=Arabic}/u.test(error.message)
+      ? error.message
+      : words["error.unknown"])
+  );
+}
+
+const REPORT_REASONS = [
+  ["abuse", "إساءة أو كلام مؤذٍ"],
+  ["spam", "إزعاج أو طلبات متكررة"],
+  ["other", "سبب آخر"],
+] as const;
+
+function Avatar({ person }: { person: Person }) {
+  return <StudentAvatar name={person.name} username={person.id} />;
+}
+
+function Busy() {
+  return <Loader2 size={15} className="spin" aria-hidden="true" />;
+}
+
+function Contents({
+  contents,
+}: {
+  contents: {
+    chapters: number;
+    flashcards: number;
+    questions: number;
+    examFocus: number | null;
+  };
+}) {
+  const chips = [
+    contents.chapters > 0 && `${contents.chapters} أجزاء ملخّصة`,
+    contents.flashcards > 0 && `${contents.flashcards} بطاقة`,
+    contents.questions > 0 && `${contents.questions} سؤال`,
+    contents.examFocus != null && `${contents.examFocus} Exam Focus`,
+  ].filter(Boolean) as string[];
+  if (!chips.length) return null;
+  return (
+    <ul className={s.chips} aria-label="محتوى الملف">
       {chips.map(chip => (
         <li key={chip}>
           <bdi>{chip}</bdi>
@@ -58,278 +96,747 @@ function ContentsChips({ contents }: { contents: Contents }) {
   );
 }
 
-function ownerLabel(name: string | null, username: string | null) {
-  return name || (username ? `@${username}` : "طالب");
+function useDebounced<T>(value: T, delayMs: number) {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const timer = setTimeout(() => setDebounced(value), delayMs);
+    return () => clearTimeout(timer);
+  }, [value, delayMs]);
+  return debounced;
 }
 
-export default function SharedWithMePage() {
+export default function ColleaguesPage() {
   const utils = trpc.useUtils();
-  const incoming = trpc.sharing.incoming.useQuery();
+  const [tab, setTab] = useState<Tab | null>(null);
+  const [query, setQuery] = useState("");
+  const [drawer, setDrawer] = useState<Drawer | null>(null);
+  const [reason, setReason] = useState<string>("abuse");
+  const [showBlocked, setShowBlocked] = useState(false);
+  const [reported, setReported] = useState<string | null>(null);
+  const debounced = useDebounced(query.trim(), 300);
+  const searching = debounced.length >= 2;
+
+  const colleagues = trpc.colleagues.list.useQuery();
+  const requests = trpc.colleagues.requests.useQuery();
+  const files = trpc.sharing.incoming.useQuery();
   const library = trpc.sharing.sharedWithMe.useQuery();
   const summary = trpc.sharing.homeSummary.useQuery();
-  const [tab, setTab] = useState<Tab | null>(null);
-  const activeTab: Tab =
-    tab ?? ((incoming.data?.length ?? 0) > 0 ? "requests" : "library");
-
-  const notifications = trpc.sharing.notifications.useQuery(undefined, {
-    enabled: activeTab === "notifications",
+  const roomsOn = trpc.rooms.enabled.useQuery();
+  const invites = trpc.rooms.myInvites.useQuery(undefined, {
+    enabled: !!roomsOn.data?.enabled,
+    refetchInterval: 30_000,
   });
-  const markRead = trpc.sharing.markNotificationsRead.useMutation({
+  const blocked = trpc.sharing.blocked.useQuery(undefined, {
+    enabled: showBlocked,
+  });
+  const search = trpc.colleagues.search.useQuery(
+    { query: debounced },
+    { enabled: searching, placeholderData: previous => previous }
+  );
+
+  const waiting =
+    (requests.data?.incoming.length ?? 0) +
+    (files.data?.length ?? 0) +
+    (invites.data?.length ?? 0);
+  const activeTab: Tab = tab ?? (waiting > 0 ? "requests" : "colleagues");
+
+  const notices = trpc.sharing.notifications.useQuery(undefined, {
+    enabled: activeTab === "notices",
+  });
+  const { mutate: markRead } = trpc.sharing.markNotificationsRead.useMutation({
     onSuccess: () => utils.sharing.homeSummary.invalidate(),
   });
-  const { mutate: markReadMutate } = markRead;
   const unread = summary.data?.unread ?? 0;
   useEffect(() => {
-    if (activeTab === "notifications" && unread > 0) markReadMutate();
-  }, [activeTab, unread, markReadMutate]);
+    if (activeTab === "notices" && unread > 0) markRead();
+  }, [activeTab, unread, markRead]);
 
-  const respond = trpc.sharing.respond.useMutation({
-    onSuccess: () => {
-      utils.sharing.incoming.invalidate();
-      utils.sharing.sharedWithMe.invalidate();
-      utils.sharing.homeSummary.invalidate();
+  const refresh = () => {
+    setDrawer(null);
+    utils.colleagues.invalidate();
+    utils.sharing.invalidate();
+    utils.rooms.myInvites.invalidate();
+  };
+  const ask = trpc.colleagues.request.useMutation({ onSuccess: refresh });
+  const answer = trpc.colleagues.respond.useMutation({ onSuccess: refresh });
+  const withdraw = trpc.colleagues.cancel.useMutation({ onSuccess: refresh });
+  const remove = trpc.colleagues.remove.useMutation({ onSuccess: refresh });
+  const block = trpc.colleagues.block.useMutation({ onSuccess: refresh });
+  const unblock = trpc.sharing.unblock.useMutation({ onSuccess: refresh });
+  const report = trpc.colleagues.report.useMutation({
+    onSuccess: (_, input) => {
+      setReported(input.userId);
+      setDrawer(null);
     },
   });
+  const answerFile = trpc.sharing.respond.useMutation({ onSuccess: refresh });
+  const declineInvite = trpc.rooms.declineInvite.useMutation({
+    onSuccess: refresh,
+  });
 
-  const tabs: { id: Tab; label: string; icon: typeof Inbox; count?: number }[] =
+  const failure = explain(
+    (searching ? search.error : null) ??
+      ask.error ??
+      answer.error ??
+      withdraw.error ??
+      remove.error ??
+      block.error ??
+      unblock.error ??
+      report.error ??
+      answerFile.error ??
+      declineInvite.error
+  );
+  const busy =
+    ask.isPending ||
+    answer.isPending ||
+    withdraw.isPending ||
+    remove.isPending ||
+    block.isPending ||
+    report.isPending ||
+    answerFile.isPending ||
+    declineInvite.isPending;
+
+  const toggle = (id: string) =>
+    setDrawer(current => (current?.id === id ? null : { id, mode: "menu" }));
+
+  // The "⋯" of a person: remove (colleagues only), block, report — each
+  // asked about once before it happens.
+  const personDrawer = (person: Person, isColleague: boolean) => {
+    if (drawer?.id !== person.id) return null;
+    const who = nameOf(person.name);
+    if (drawer.mode === "menu") {
+      return (
+        <div className={s.drawer}>
+          {isColleague ? (
+            <button
+              type="button"
+              className={s.btn}
+              onClick={() => setDrawer({ id: person.id, mode: "remove" })}
+            >
+              إزالة من الزملاء
+            </button>
+          ) : null}
+          <button
+            type="button"
+            className={`${s.btn} ${s.danger}`}
+            onClick={() => setDrawer({ id: person.id, mode: "block" })}
+          >
+            حظر
+          </button>
+          <button
+            type="button"
+            className={`${s.btn} ${s.danger}`}
+            onClick={() => setDrawer({ id: person.id, mode: "report" })}
+          >
+            إبلاغ
+          </button>
+        </div>
+      );
+    }
+    if (drawer.mode === "report") {
+      return (
+        <div className={s.drawer}>
+          <p>
+            ما سبب الإبلاغ عن <bdi>{who}</bdi>؟ يصل البلاغ للإدارة فقط.
+          </p>
+          <select
+            value={reason}
+            aria-label="سبب البلاغ"
+            onChange={event => setReason(event.target.value)}
+          >
+            {REPORT_REASONS.map(([value, label]) => (
+              <option key={value} value={value}>
+                {label}
+              </option>
+            ))}
+          </select>
+          <button
+            type="button"
+            className={`${s.btn} ${s.primary}`}
+            disabled={busy}
+            onClick={() =>
+              report.mutate({
+                userId: person.id,
+                reason: reason as "abuse" | "spam" | "other",
+              })
+            }
+          >
+            إرسال البلاغ
+          </button>
+          <button
+            type="button"
+            className={`${s.btn} ${s.quiet}`}
+            onClick={() => setDrawer(null)}
+          >
+            تراجع
+          </button>
+        </div>
+      );
+    }
+    const removing = drawer.mode === "remove";
+    return (
+      <div className={s.drawer}>
+        <p>
+          {removing ? (
+            <>
+              إزالة <bdi>{who}</bdi> من زملائك؟ الملفات التي تبادلتماها تبقى كما
+              هي.
+            </>
+          ) : (
+            <>
+              حظر <bdi>{who}</bdi>؟ لن يجدك في البحث ولن يصلك منه طلب أو دعوة أو
+              ملف، وتُلغى الملفات المتبادلة بينكما.
+            </>
+          )}
+        </p>
+        <button
+          type="button"
+          className={`${s.btn} ${s.primary}`}
+          disabled={busy}
+          onClick={() =>
+            removing
+              ? remove.mutate({ userId: person.id })
+              : block.mutate({ userId: person.id })
+          }
+        >
+          {removing ? "إزالة" : "حظر"}
+        </button>
+        <button
+          type="button"
+          className={`${s.btn} ${s.quiet}`}
+          onClick={() => setDrawer(null)}
+        >
+          تراجع
+        </button>
+      </div>
+    );
+  };
+
+  const moreButton = (person: Person) => (
+    <button
+      type="button"
+      className={s.more}
+      aria-label={`خيارات ${nameOf(person.name)}`}
+      aria-expanded={drawer?.id === person.id}
+      onClick={() => toggle(person.id)}
+    >
+      <MoreHorizontal size={18} aria-hidden="true" />
+    </button>
+  );
+
+  const tabs: { id: Tab; label: string; icon: typeof Users; count?: number }[] =
     [
       {
-        id: "requests",
-        label: "الطلبات",
-        icon: Inbox,
-        count: incoming.data?.length,
+        id: "colleagues",
+        label: "زملائي",
+        icon: Users,
       },
-      { id: "library", label: "مشترك معي", icon: BookOpen },
-      { id: "notifications", label: "الإشعارات", icon: Bell, count: unread },
+      { id: "requests", label: "الطلبات", icon: Inbox, count: waiting },
+      { id: "files", label: "ملفات وصلتني", icon: BookOpen },
+      { id: "notices", label: "الإشعارات", icon: Bell, count: unread },
     ];
 
   return (
-    <section className="sh-page">
-      <header className="sh-hero">
-        <h1>
-          <Users size={24} aria-hidden="true" /> مشترك معي
-        </h1>
-        <p>ملفات دراسية جاهزة شاركها معك زملاؤك — تقدّمك فيها خاص بك.</p>
+    <section className={s.page}>
+      <header className={s.head}>
+        <h1>الزملاء</h1>
+        <p>
+          أضف من تذاكر معهم، تبادلوا الملفات الجاهزة، وادعُهم إلى غرف الدراسة.
+        </p>
       </header>
 
-      <UsernameCard compact />
+      <label className={s.search}>
+        <Search size={18} aria-hidden="true" />
+        <input
+          type="search"
+          value={query}
+          onChange={event => setQuery(event.target.value)}
+          placeholder="ابحث عن طالب باسمه لتضيفه"
+          aria-label="ابحث عن طالب باسمه"
+          dir="auto"
+          maxLength={64}
+        />
+        {search.isFetching ? <Busy /> : null}
+        {query ? (
+          <button
+            type="button"
+            className={s.clear}
+            aria-label="مسح البحث"
+            onClick={() => setQuery("")}
+          >
+            <X size={16} aria-hidden="true" />
+          </button>
+        ) : null}
+      </label>
 
-      <div className="sh-tabs" role="tablist" aria-label="أقسام المشاركة">
+      {failure ? (
+        <p className={s.error} role="alert">
+          {failure}
+        </p>
+      ) : null}
+
+      {searching ? (
+        <div className={s.group} aria-live="polite">
+          <h2>نتائج البحث</h2>
+          {search.isLoading ? (
+            <Busy />
+          ) : !search.data?.items.length ? (
+            <div className={s.empty}>
+              <strong>لا يوجد طالب بهذا الاسم</strong>
+              <span>اكتب الاسم كما سجّل به زميلك في NiroLearn.</span>
+            </div>
+          ) : (
+            <ul className={s.list}>
+              {search.data.items.map(person => (
+                <li key={person.id} className={s.row}>
+                  <Avatar person={person} />
+                  <span className={s.who}>
+                    <strong dir="auto">{nameOf(person.name)}</strong>
+                  </span>
+                  <span className={s.acts}>
+                    {person.relation === "colleague" ? (
+                      <span className={`${s.tag} ${s.tagOk}`}>
+                        <Check size={13} aria-hidden="true" /> من زملائك
+                      </span>
+                    ) : person.relation === "outgoing" ? (
+                      <>
+                        <span className={s.tag}>بانتظار ردّه</span>
+                        <button
+                          type="button"
+                          className={`${s.btn} ${s.quiet}`}
+                          disabled={busy}
+                          onClick={() =>
+                            person.connectionId &&
+                            withdraw.mutate({
+                              connectionId: person.connectionId,
+                            })
+                          }
+                        >
+                          سحب الطلب
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        type="button"
+                        className={`${s.btn} ${s.primary}`}
+                        disabled={busy}
+                        onClick={() => ask.mutate({ userId: person.id })}
+                      >
+                        <UserPlus size={15} aria-hidden="true" />
+                        {person.relation === "incoming"
+                          ? "قبول طلبه"
+                          : "أضف زميلًا"}
+                      </button>
+                    )}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+          {search.data?.more ? (
+            <p className={s.note}>
+              النتائج كثيرة — اكتب الاسم كاملًا لتصل إلى زميلك.
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+
+      <div className={s.tabs} role="tablist" aria-label="أقسام الزملاء">
         {tabs.map(({ id, label, icon: Icon, count }) => (
           <button
             key={id}
             type="button"
             role="tab"
             aria-selected={activeTab === id}
-            className={activeTab === id ? "sh-tab is-active" : "sh-tab"}
-            onClick={() => setTab(id)}
+            className={s.tab}
+            onClick={() => {
+              setTab(id);
+              setDrawer(null);
+            }}
           >
             <Icon size={16} aria-hidden="true" />
             {label}
-            {!!count && <span className="sh-count">{count}</span>}
+            {count ? <span className={s.count}>{count}</span> : null}
           </button>
         ))}
       </div>
 
-      {activeTab === "requests" && (
-        <div role="tabpanel" className="sh-list">
-          {incoming.isLoading ? (
-            <Loader2 size={22} className="spin" />
-          ) : !incoming.data?.length ? (
-            <div className="sh-empty">
-              <Inbox size={28} aria-hidden="true" />
-              <strong>لا توجد طلبات جديدة</strong>
-              <span>عندما يشارك زميل ملفًا معك سيظهر طلبه هنا.</span>
-            </div>
-          ) : (
-            incoming.data.map(request => {
-              const busy =
-                respond.isPending &&
-                respond.variables?.shareId === request.shareId;
-              return (
-                <article key={request.shareId} className="sh-request">
-                  <div className="sh-request-from">
-                    <StudentAvatar
-                      name={request.ownerName}
-                      username={request.ownerUsername ?? ""}
-                    />
-                    <span>
-                      <strong dir="auto">
-                        {ownerLabel(request.ownerName, request.ownerUsername)}
-                      </strong>{" "}
-                      يريد مشاركة ملف معك
-                      <small>
-                        {dateFormat.format(new Date(request.createdAt))}
-                      </small>
-                    </span>
-                  </div>
-                  <h3 dir="auto">{request.bookTitle}</h3>
-                  <p className="sh-hint">{request.pageCount} صفحة</p>
-                  <ContentsChips contents={request.contents} />
-                  <div className="sh-actions">
-                    <button
-                      type="button"
-                      className="primary-button"
-                      disabled={busy}
-                      onClick={() =>
-                        respond.mutate({
-                          shareId: request.shareId,
-                          decision: "accept",
-                        })
-                      }
-                    >
-                      {busy && respond.variables?.decision === "accept" ? (
-                        <Loader2 size={15} className="spin" />
-                      ) : (
-                        <Check size={15} />
-                      )}
-                      قبول
-                    </button>
-                    <button
-                      type="button"
-                      className="secondary-button"
-                      disabled={busy}
-                      onClick={() =>
-                        respond.mutate({
-                          shareId: request.shareId,
-                          decision: "decline",
-                        })
-                      }
-                    >
-                      <X size={15} /> رفض
-                    </button>
-                    <button
-                      type="button"
-                      className="sh-block"
-                      disabled={busy}
-                      onClick={() => {
-                        if (
-                          window.confirm(
-                            `رفض الطلب وحظر ${ownerLabel(request.ownerName, request.ownerUsername)}؟ لن يتمكن من إيجادك أو مشاركة ملفات معك.`
-                          )
-                        ) {
-                          respond.mutate({
-                            shareId: request.shareId,
-                            decision: "decline",
-                            block: true,
-                          });
-                        }
-                      }}
-                    >
-                      <ShieldBan size={15} /> رفض وحظر
-                    </button>
-                  </div>
-                </article>
-              );
-            })
-          )}
-          {respond.error && (
-            <p className="sh-error" role="alert">
-              {respond.error.message}
-            </p>
-          )}
-        </div>
-      )}
-
-      {activeTab === "library" && (
-        <div role="tabpanel" className="sh-list">
-          {library.isLoading ? (
-            <Loader2 size={22} className="spin" />
-          ) : !library.data?.length ? (
-            <div className="sh-empty">
-              <BookOpen size={28} aria-hidden="true" />
-              <strong>لا توجد ملفات مشتركة بعد</strong>
+      {activeTab === "colleagues" ? (
+        <div role="tabpanel" className={s.panel}>
+          {colleagues.isLoading ? (
+            <Busy />
+          ) : !colleagues.data?.length ? (
+            <div className={s.empty}>
+              <Users size={28} aria-hidden="true" />
+              <strong>لا زملاء بعد</strong>
               <span>
-                الملفات التي تقبلها تظهر هنا وتفتح بنفس أدوات الدراسة.
+                ابحث عن زميلك باسمه في الأعلى وأرسل له طلبًا. بعد قبوله تتبادلان
+                الملفات ودعوات الغرف.
               </span>
             </div>
           ) : (
-            library.data.map(pack => (
-              <Link
-                key={pack.shareId}
-                href={`/books/${pack.bookId}`}
-                className="sh-pack"
-              >
-                <span className="sh-pack-icon" aria-hidden="true">
-                  📘
-                </span>
-                <span className="sh-pack-body">
-                  <strong dir="auto">{pack.bookTitle}</strong>
-                  <span className="sh-hint">
-                    من{" "}
-                    <bdi>{ownerLabel(pack.ownerName, pack.ownerUsername)}</bdi>
-                    {pack.sharedAt &&
-                      ` · ${dateFormat.format(new Date(pack.sharedAt))}`}
+            <ul className={s.list}>
+              {colleagues.data.map(person => (
+                <li key={person.id} className={s.row}>
+                  <Avatar person={person} />
+                  <span className={s.who}>
+                    <strong dir="auto">{nameOf(person.name)}</strong>
+                    <span>
+                      {reported === person.id
+                        ? "وصل بلاغك للإدارة"
+                        : `زميلك منذ ${day(person.since)}`}
+                    </span>
                   </span>
-                  <ContentsChips contents={pack.contents} />
-                </span>
-              </Link>
-            ))
+                  {moreButton(person)}
+                  {personDrawer(person, true)}
+                </li>
+              ))}
+            </ul>
           )}
-        </div>
-      )}
 
-      {activeTab === "notifications" && (
-        <div role="tabpanel" className="sh-list">
-          {notifications.isLoading ? (
-            <Loader2 size={22} className="spin" />
-          ) : !notifications.data?.length ? (
-            <div className="sh-empty">
-              <Bell size={28} aria-hidden="true" />
-              <strong>لا توجد إشعارات</strong>
+          <div className={s.group}>
+            <button
+              type="button"
+              className={s.fold}
+              aria-expanded={showBlocked}
+              onClick={() => setShowBlocked(value => !value)}
+            >
+              {showBlocked ? "إخفاء المحظورين" : "المحظورون"}
+            </button>
+            {showBlocked ? (
+              blocked.isLoading ? (
+                <Busy />
+              ) : !blocked.data?.length ? (
+                <p className={s.note}>لم تحظر أحدًا.</p>
+              ) : (
+                <ul className={s.list}>
+                  {blocked.data.map(person => (
+                    <li key={person.id} className={s.row}>
+                      <Avatar person={person} />
+                      <span className={s.who}>
+                        <strong dir="auto">
+                          {nameOf(person.name, person.username)}
+                        </strong>
+                      </span>
+                      <button
+                        type="button"
+                        className={s.btn}
+                        disabled={unblock.isPending}
+                        onClick={() => unblock.mutate({ userId: person.id })}
+                      >
+                        إلغاء الحظر
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+
+      {activeTab === "requests" ? (
+        <div role="tabpanel" className={s.panel}>
+          {requests.isLoading || files.isLoading ? <Busy /> : null}
+
+          {invites.data?.length ? (
+            <div className={s.group}>
+              <h2>دعوات إلى غرف الدراسة</h2>
+              <ul className={s.list}>
+                {invites.data.map(invite => (
+                  <li key={invite.inviteId} className={s.row}>
+                    <Avatar person={invite.inviter} />
+                    <span className={s.who}>
+                      <strong dir="auto">{invite.roomTitle}</strong>
+                      <span>
+                        دعوة من <bdi>{nameOf(invite.inviter.name)}</bdi> ·{" "}
+                        {day(invite.createdAt)}
+                      </span>
+                    </span>
+                    <span className={s.acts}>
+                      <Link
+                        href={`/rooms/${invite.roomId}`}
+                        className={`${s.btn} ${s.primary}`}
+                      >
+                        <DoorOpen size={15} aria-hidden="true" /> ادخل
+                      </Link>
+                      <button
+                        type="button"
+                        className={s.btn}
+                        disabled={busy}
+                        onClick={() =>
+                          declineInvite.mutate({ inviteId: invite.inviteId })
+                        }
+                      >
+                        اعتذر
+                      </button>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+
+          {requests.data?.incoming.length ? (
+            <div className={s.group}>
+              <h2>طلبات زمالة</h2>
+              <ul className={s.list}>
+                {requests.data.incoming.map(person => (
+                  <li key={person.connectionId} className={s.row}>
+                    <Avatar person={person} />
+                    <span className={s.who}>
+                      <strong dir="auto">{nameOf(person.name)}</strong>
+                      <span>يريد أن يكون زميلك · {day(person.createdAt)}</span>
+                    </span>
+                    <span className={s.acts}>
+                      <button
+                        type="button"
+                        className={`${s.btn} ${s.primary}`}
+                        disabled={busy}
+                        onClick={() =>
+                          answer.mutate({
+                            connectionId: person.connectionId,
+                            decision: "accept",
+                          })
+                        }
+                      >
+                        <Check size={15} aria-hidden="true" /> قبول
+                      </button>
+                      <button
+                        type="button"
+                        className={s.btn}
+                        disabled={busy}
+                        onClick={() =>
+                          answer.mutate({
+                            connectionId: person.connectionId,
+                            decision: "decline",
+                          })
+                        }
+                      >
+                        رفض
+                      </button>
+                      {moreButton(person)}
+                    </span>
+                    {personDrawer(person, false)}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+
+          {files.data?.length ? (
+            <div className={s.group}>
+              <h2>ملفات أرسلها زملاؤك</h2>
+              <ul className={s.list}>
+                {files.data.map(request => (
+                  <li key={request.shareId} className={s.row}>
+                    <Avatar
+                      person={{ id: request.ownerId, name: request.ownerName }}
+                    />
+                    <span className={s.who}>
+                      <strong dir="auto">{request.bookTitle}</strong>
+                      <span>
+                        من{" "}
+                        <bdi>
+                          {nameOf(request.ownerName, request.ownerUsername)}
+                        </bdi>{" "}
+                        · {request.pageCount} صفحة · {day(request.createdAt)}
+                      </span>
+                    </span>
+                    <span className={s.acts}>
+                      <button
+                        type="button"
+                        className={`${s.btn} ${s.primary}`}
+                        disabled={busy}
+                        onClick={() =>
+                          answerFile.mutate({
+                            shareId: request.shareId,
+                            decision: "accept",
+                          })
+                        }
+                      >
+                        <Check size={15} aria-hidden="true" /> أضف لمكتبتي
+                      </button>
+                      <button
+                        type="button"
+                        className={s.btn}
+                        disabled={busy}
+                        onClick={() =>
+                          answerFile.mutate({
+                            shareId: request.shareId,
+                            decision: "decline",
+                          })
+                        }
+                      >
+                        رفض
+                      </button>
+                    </span>
+                    <Contents contents={request.contents} />
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+
+          {requests.data?.outgoing.length ? (
+            <div className={s.group}>
+              <h2>طلبات أرسلتها</h2>
+              <ul className={s.list}>
+                {requests.data.outgoing.map(person => (
+                  <li key={person.connectionId} className={s.row}>
+                    <Avatar person={person} />
+                    <span className={s.who}>
+                      <strong dir="auto">{nameOf(person.name)}</strong>
+                      <span>بانتظار ردّه · {day(person.createdAt)}</span>
+                    </span>
+                    <button
+                      type="button"
+                      className={`${s.btn} ${s.quiet}`}
+                      disabled={busy}
+                      onClick={() =>
+                        withdraw.mutate({ connectionId: person.connectionId })
+                      }
+                    >
+                      سحب الطلب
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+
+          {!requests.isLoading &&
+          !files.isLoading &&
+          waiting === 0 &&
+          !requests.data?.outgoing.length ? (
+            <div className={s.empty}>
+              <Inbox size={28} aria-hidden="true" />
+              <strong>لا شيء بانتظار ردّك</strong>
+              <span>
+                طلبات الزمالة ودعوات الغرف والملفات التي يرسلها زملاؤك تظهر هنا.
+              </span>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+
+      {activeTab === "files" ? (
+        <div role="tabpanel" className={s.panel}>
+          {library.isLoading ? (
+            <Busy />
+          ) : !library.data?.length ? (
+            <div className={s.empty}>
+              <BookOpen size={28} aria-hidden="true" />
+              <strong>لم يصلك ملف بعد</strong>
+              <span>
+                الملفات التي تقبلها من زملائك تظهر هنا وتفتح بنفس أدوات الدراسة،
+                وتقدّمك فيها خاص بك.
+              </span>
             </div>
           ) : (
-            <ul className="sh-notes">
-              {notifications.data.map(note => {
+            <ul className={s.list}>
+              {library.data.map(pack => (
+                <li key={pack.shareId}>
+                  <Link
+                    href={`/books/${pack.bookId}`}
+                    className={`${s.row} ${s.pack}`}
+                  >
+                    <span className={s.who}>
+                      <strong dir="auto">{pack.bookTitle}</strong>
+                      <span>
+                        من{" "}
+                        <bdi>{nameOf(pack.ownerName, pack.ownerUsername)}</bdi>
+                        {pack.sharedAt ? ` · ${day(pack.sharedAt)}` : ""}
+                      </span>
+                    </span>
+                    <Contents contents={pack.contents} />
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      ) : null}
+
+      {activeTab === "notices" ? (
+        <div role="tabpanel" className={s.panel}>
+          {notices.isLoading ? (
+            <Busy />
+          ) : !notices.data?.length ? (
+            <div className={s.empty}>
+              <Bell size={28} aria-hidden="true" />
+              <strong>لا إشعارات</strong>
+            </div>
+          ) : (
+            <ul className={s.list}>
+              {notices.data.map(note => {
                 const data = note.data as {
                   bookTitle?: string;
                   text?: string;
+                  roomId?: string;
+                  roomTitle?: string;
                   // question_set_ready (lib/db-question-sets.ts)
                   setId?: string;
                   title?: string;
                   needsReview?: number;
                   failed?: number;
                 };
-                const who = ownerLabel(note.actorName, note.actorUsername);
+                const who = nameOf(note.actorName, note.actorUsername);
                 const title = data.bookTitle ?? "";
                 const text =
-                  note.type === "share_request"
-                    ? `${who} أرسل لك طلب مشاركة «${title}»`
-                    : note.type === "share_accepted"
-                      ? `${who} قبل ملفك «${title}»`
-                      : note.type === "share_declined"
-                        ? `${who} رفض طلب مشاركة «${title}»`
-                        : note.type === "billing"
-                          ? (data.text ?? "")
-                          : note.type === "question_set_ready"
-                            ? `مجموعتك «${data.title ?? ""}» جاهزة للمراجعة والنشر${
-                                data.needsReview
-                                  ? ` · ${data.needsReview} سؤالًا يحتاج مراجعتك`
-                                  : ""
-                              }${
-                                data.failed ? ` · تعذّر شرح ${data.failed}` : ""
-                              }`
-                            : title;
+                  note.type === "connection_request"
+                    ? `${who} أرسل لك طلب زمالة`
+                    : note.type === "connection_accepted"
+                      ? `${who} قبل طلب الزمالة`
+                      : note.type === "room_invite"
+                        ? `${who} دعاك إلى غرفة «${data.roomTitle ?? ""}»`
+                        : note.type === "share_request"
+                          ? `${who} أرسل لك ملف «${title}»`
+                          : note.type === "share_accepted"
+                            ? `${who} قبل ملفك «${title}»`
+                            : note.type === "share_declined"
+                              ? `${who} رفض ملف «${title}»`
+                              : note.type === "billing"
+                                ? (data.text ?? "")
+                                : note.type === "question_set_ready"
+                                  ? `مجموعتك «${data.title ?? ""}» جاهزة للمراجعة والنشر${
+                                      data.needsReview
+                                        ? ` · ${data.needsReview} سؤالًا يحتاج مراجعتك`
+                                        : ""
+                                    }${
+                                      data.failed
+                                        ? ` · تعذّر شرح ${data.failed}`
+                                        : ""
+                                    }`
+                                  : title;
+                const href =
+                  note.type === "question_set_ready" && data.setId
+                    ? `/doctor/sets/${data.setId}`
+                    : null;
                 return (
                   <li
                     key={note.id}
-                    className={note.readAt ? "sh-note" : "sh-note is-unread"}
+                    className={note.readAt ? s.row : `${s.row} ${s.unread}`}
                   >
-                    {note.type === "question_set_ready" && data.setId ? (
-                      <Link href={`/doctor/sets/${data.setId}`} dir="auto">
-                        {text}
-                      </Link>
-                    ) : (
-                      <span dir="auto">{text}</span>
-                    )}
-                    <small>{dateFormat.format(new Date(note.createdAt))}</small>
+                    <span className={s.who}>
+                      {href ? (
+                        <Link href={href} dir="auto">
+                          {text}
+                        </Link>
+                      ) : (
+                        <span className={s.say} dir="auto">
+                          {text}
+                        </span>
+                      )}
+                    </span>
+                    <span className={s.when}>{day(note.createdAt)}</span>
                   </li>
                 );
               })}
             </ul>
           )}
         </div>
-      )}
+      ) : null}
     </section>
   );
 }
