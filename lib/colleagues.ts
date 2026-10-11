@@ -31,7 +31,10 @@ export type ColleagueReason =
   | "try_later"
   | "rate_limited"
   | "too_many"
-  | "already_reported";
+  | "already_reported"
+  // A guest account (opened by the Telegram bot, never registered) has no
+  // name of its own yet: it registers first.
+  | "name_required";
 
 const CODES = {
   self: "BAD_REQUEST",
@@ -42,6 +45,7 @@ const CODES = {
   rate_limited: "TOO_MANY_REQUESTS",
   too_many: "CONFLICT",
   already_reported: "CONFLICT",
+  name_required: "FORBIDDEN",
 } as const satisfies Record<ColleagueReason, string>;
 
 export class ColleagueError extends Error {
@@ -110,6 +114,22 @@ export function checkConnectionRequest(
   }
   if (state.requestsLastHour >= MAX_REQUESTS_PER_HOUR) return "rate_limited";
   return null;
+}
+
+// A registered student: one who can sign in on their own (a phone, an
+// email or a password) and so chose the name they are known by. The
+// Telegram bot's guest accounts all carry one placeholder name; they are
+// neither found nor asked until they register (lib/telegram/accounts.ts
+// `isGuestUser` is the same test).
+const registered = sql`(${users.email} is not null or ${users.phone} is not null or ${users.passwordHash} is not null)`;
+
+async function isRegistered(db: Db | Tx, userId: string): Promise<boolean> {
+  const [row] = await db
+    .select({ id: users.id })
+    .from(users)
+    .where(and(eq(users.id, userId), registered))
+    .limit(1);
+  return Boolean(row);
 }
 
 // ── Small reads ───────────────────────────────────────────────────────────
@@ -205,10 +225,13 @@ export async function requestColleague(userId: string, targetId: string) {
   if (userId === targetId) throw new ColleagueError("self");
   const db = requireDb();
   return db.transaction(async tx => {
+    if (!(await isRegistered(tx, userId))) {
+      throw new ColleagueError("name_required");
+    }
     const [target] = await tx
       .select({ id: users.id, suspendedAt: users.suspendedAt })
       .from(users)
-      .where(eq(users.id, targetId))
+      .where(and(eq(users.id, targetId), registered))
       .limit(1);
     if (!target || target.suspendedAt) throw new ColleagueError("not_found");
 
@@ -699,6 +722,7 @@ export async function searchPeople(
       and(
         sql`${users.id} <> ${viewerId}`,
         sql`${users.suspendedAt} is null`,
+        registered,
         or(
           sql`${name} like ${`%${like}%`}`,
           sql`${users.username} like ${`${like}%`}`

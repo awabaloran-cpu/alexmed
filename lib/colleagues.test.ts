@@ -39,6 +39,7 @@ const OMAR = id(3); // adult
 const YARA = id(4); // 16
 const LAYAN = id(5); // adult woman
 const GONE = id(6); // suspended
+const GUEST = id(7); // opened by the Telegram bot, never registered
 const BOOK = id(101); // Ahmed's book
 const NOBODY = id(999);
 
@@ -112,6 +113,10 @@ beforeAll(async () => {
     `UPDATE users SET "suspendedAt" = now() WHERE id = $1`,
     [GONE]
   );
+  await insertUser(test.client, { id: GUEST, name: "ضيف Telegram" });
+  await test.client.query(`UPDATE users SET email = NULL WHERE id = $1`, [
+    GUEST,
+  ]);
   await test.client.query(
     `INSERT INTO books (id, "userId", "fileName", "fileKey", "sourceType", status, "pageCount")
      VALUES ($1, $2, 'Renal.pdf', 'uploads/a/renal.pdf', 'study_book', 'complete', 3)`,
@@ -433,6 +438,19 @@ describe("finding a student", () => {
     expect((await col(SARA).search({ query: "__" })).items).toEqual([]);
     expect((await col(SARA).search({ query: "' or 1=1 --" })).items).toEqual(
       []
+    );
+  });
+});
+
+describe("a guest account, not registered yet", () => {
+  it("is not found, cannot be asked, and registers before asking", async () => {
+    expect((await col(AHMED).search({ query: "ضيف" })).items).toEqual([]);
+    expect((await col(AHMED).search({ query: "telegram" })).items).toEqual([]);
+    expect(await refusal(col(AHMED).request({ userId: GUEST }))).toBe(
+      "NOT_FOUND:not_found"
+    );
+    expect(await refusal(col(GUEST).request({ userId: AHMED }))).toBe(
+      "FORBIDDEN:name_required"
     );
   });
 });

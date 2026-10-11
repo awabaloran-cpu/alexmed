@@ -443,6 +443,7 @@ const ar = {
   "col.try_later": "لا يمكن إرسال طلب لهذا الطالب الآن.",
   "col.rate_limited": "أرسلت طلبات كثيرة. حاول بعد قليل.",
   "col.too_many": "وصلت للحدّ الأقصى من الزملاء.",
+  "col.name_required": "سجّل حسابك باسمك أولًا لتضيف زملاء.",
   "col.already_reported": "أرسلت بلاغًا عن هذا الطالب من قبل.",
   "error.unknown": "حدث خطأ. حاول مرة أخرى.",
 } as const;
@@ -895,6 +896,7 @@ const en: Record<RoomsKey, string> = {
   "col.try_later": "A request cannot be sent to this student now.",
   "col.rate_limited": "You sent many requests. Try again in a while.",
   "col.too_many": "You have reached the largest number of colleagues.",
+  "col.name_required": "Register your account with your name first.",
   "col.already_reported": "You already reported this student.",
   "error.unknown": "Something went wrong. Try again.",
 };
