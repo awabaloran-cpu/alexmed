@@ -6,19 +6,26 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   Ban,
+  ChevronLeft,
+  ChevronRight,
   Crown,
   FileText,
   Flag,
+  Headphones,
+  LayoutList,
   ListChecks,
   LogOut,
+  Maximize2,
   MessageCircle,
   MicOff,
+  MoreVertical,
   PanelLeftClose,
   PanelLeftOpen,
   Settings,
   ShieldCheck,
   UserMinus,
   UserPlus,
+  Users,
   Video,
 } from "lucide-react";
 import { REPORT_REASONS, type ReportReason } from "@/lib/study-rooms/config";
@@ -28,7 +35,7 @@ import { Avatar, Sheet, SubjectLine } from "./parts";
 import RoomChat, { useRoomChat } from "./RoomChat";
 import { ColleagueItems, InviteColleagues } from "./RoomColleagues";
 import { InviteBox } from "./RoomCreate";
-import RoomDesk from "./RoomDesk";
+import RoomDesk, { type DeskInfo } from "./RoomDesk";
 import RoomFilePicker from "./RoomFilePicker";
 import RoomVideo from "./RoomVideo";
 import RoomVideoAdd from "./RoomVideoAdd";
@@ -49,7 +56,7 @@ const POLL_MS = 4000;
 // student's heartbeat. (The shared file, voice and chat join this screen in
 // the next stages of docs/study-rooms.)
 export default function LiveRoom({ roomId }: { roomId: string }) {
-  const { t, tError } = useRooms();
+  const { t, tError, language } = useRooms();
   const router = useRouter();
   const utils = trpc.useUtils();
   const state = trpc.rooms.state.useQuery(
@@ -91,6 +98,8 @@ export default function LiveRoom({ roomId }: { roomId: string }) {
     | { kind: "quiz" }
     | { kind: "video" }
     | { kind: "videoRemove" }
+    | { kind: "more" }
+    | { kind: "members" }
     | null
   >(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -116,6 +125,38 @@ export default function LiveRoom({ roomId }: { roomId: string }) {
   const videoTimeRef = useRef<number | null>(null);
   const [videoSeek, setVideoSeek] = useState<{ seconds: number } | null>(null);
   const [sideOpen, setSideOpen] = useState(true);
+  // 🖥 The presentation: whenever the room has a file or a video, that is
+  // the screen — edge to edge, the rest of the room one tap away. Nobody
+  // presses anything to get it: it is where a member lands, and where a
+  // new file or video puts everyone. "Back" shows the room's own page.
+  const [focus, setFocus] = useState(true);
+  const [deskInfo, setDeskInfo] = useState<DeskInfo | null>(null);
+  const onDeskInfo = useCallback((info: DeskInfo) => setDeskInfo(info), []);
+  const live = state.data;
+  const liveVideo =
+    !!live &&
+    live.video.contentType === "youtube" &&
+    !!live.video.videoId &&
+    !!live.video.state;
+  const contentKey = !live
+    ? ""
+    : liveVideo
+      ? `video:${live.video.videoId}`
+      : `file:${live.room.bookId ?? ""}`;
+  useEffect(() => {
+    setFocus(true);
+  }, [contentKey]);
+  const presenting = focus && !!live && (liveVideo || !!live.room.bookId);
+  // The page behind does not scroll under the presentation.
+  useEffect(() => {
+    if (!presenting) return;
+    const root = document.documentElement;
+    const before = root.style.overflow;
+    root.style.overflow = "hidden";
+    return () => {
+      root.style.overflow = before;
+    };
+  }, [presenting]);
   const setContent = trpc.rooms.setContent.useMutation({
     onSuccess: () => utils.rooms.state.invalidate({ roomId }),
   });
@@ -417,11 +458,108 @@ export default function LiveRoom({ roomId }: { roomId: string }) {
         </div>
       ) : null}
 
+      {!presenting && (watching || room.bookId) ? (
+        <button
+          type="button"
+          className={`${s.btn} ${s.primary} ${s.wide}`}
+          onClick={() => setFocus(true)}
+        >
+          <Maximize2 size={17} aria-hidden="true" /> {t("present.open")}
+        </button>
+      ) : null}
+
       <div
-        className={`${s.work} ${wide && !sideOpen ? s.workWide : ""} ${
-          watching ? s.workVideo : ""
-        }`}
+        className={
+          presenting
+            ? `${s.present} ${wide && sideOpen ? s.presentSide : ""}`
+            : `${s.work} ${wide && !sideOpen ? s.workWide : ""} ${
+                watching ? s.workVideo : ""
+              }`
+        }
+        data-present={presenting ? "" : undefined}
       >
+        {presenting ? (
+          <header className={s.pHead}>
+            <button
+              type="button"
+              className={s.pHeadBtn}
+              aria-label={t("present.back")}
+              title={t("present.back")}
+              onClick={() => setFocus(false)}
+            >
+              {language === "ar" ? (
+                <ChevronRight size={22} aria-hidden="true" />
+              ) : (
+                <ChevronLeft size={22} aria-hidden="true" />
+              )}
+            </button>
+            <div className={s.pHeadInfo}>
+              <b dir="auto">
+                {watching
+                  ? (video.title ?? t("video.untitled"))
+                  : deskInfo?.pageCount
+                    ? t("desk.pageOf", {
+                        page: deskInfo.page,
+                        total: deskInfo.pageCount,
+                      })
+                    : room.title}
+              </b>
+              <small
+                className={
+                  state.isRefetchError || (!watching && deskInfo?.away)
+                    ? s.pHeadWarn
+                    : ""
+                }
+                role="status"
+                dir="auto"
+              >
+                {state.isRefetchError
+                  ? t("live.reconnecting")
+                  : watching
+                    ? room.title
+                    : deskInfo?.away
+                      ? t("present.away")
+                      : t("present.synced")}
+              </small>
+            </div>
+            <button
+              type="button"
+              className={s.pHeadBtn}
+              aria-label={
+                chat.unread
+                  ? t("live.chatUnread", { n: chat.unread })
+                  : t("live.chat")
+              }
+              aria-pressed={wide ? sideOpen : undefined}
+              onClick={() =>
+                wide ? setSideOpen(open => !open) : setChatOpen(true)
+              }
+            >
+              {wide && sideOpen ? (
+                <PanelLeftClose size={20} aria-hidden="true" />
+              ) : (
+                <MessageCircle size={20} aria-hidden="true" />
+              )}
+              {chat.unread && !(wide && sideOpen) ? (
+                <span className={s.pHeadBadge}>{chat.unread}</span>
+              ) : null}
+            </button>
+            <button
+              type="button"
+              className={s.pHeadBtn}
+              aria-label={t("present.more")}
+              title={t("present.more")}
+              onClick={() => setSheet({ kind: "more" })}
+            >
+              <MoreVertical size={20} aria-hidden="true" />
+            </button>
+            {mutationError ? (
+              <p className={`${s.errorNote} ${s.pHeadNote}`} role="alert">
+                {tError(mutationError)}
+              </p>
+            ) : null}
+          </header>
+        ) : null}
         {quiz.active ? (
           <QuizPanel
             roomId={roomId}
@@ -438,7 +576,10 @@ export default function LiveRoom({ roomId }: { roomId: string }) {
             onClose={quiz.dismiss}
           />
         ) : null}
-        <div hidden={!!quiz.active || !!quiz.finishedId}>
+        <div
+          hidden={!!quiz.active || !!quiz.finishedId}
+          className={presenting ? s.presentMain : undefined}
+        >
           {watching ? (
             <RoomVideo
               roomId={roomId}
@@ -454,8 +595,13 @@ export default function LiveRoom({ roomId }: { roomId: string }) {
               localSeek={videoSeek}
             />
           ) : null}
-          <div hidden={watching}>
+          <div
+            hidden={watching}
+            className={presenting ? s.presentMain : undefined}
+          >
             <RoomDesk
+              present={presenting}
+              onInfo={onDeskInfo}
               roomId={roomId}
               bookId={room.bookId}
               sharedPage={room.sharedPage}
@@ -613,6 +759,193 @@ export default function LiveRoom({ roomId }: { roomId: string }) {
           >
             {t("live.cancel")}
           </button>
+        </Sheet>
+      ) : null}
+
+      {sheet?.kind === "more" ? (
+        <Sheet title={room.title} onClose={close}>
+          <div>
+            <button
+              type="button"
+              className={s.item}
+              onClick={() => {
+                setFocus(false);
+                close();
+              }}
+            >
+              <LayoutList size={18} aria-hidden="true" />
+              <span>
+                {t("present.back")}
+                <small>{t("present.backHint")}</small>
+              </span>
+            </button>
+            <button
+              type="button"
+              className={s.item}
+              onClick={() => setSheet({ kind: "members" })}
+            >
+              <Users size={18} aria-hidden="true" />
+              {t("live.present", { n: members.length })}
+            </button>
+            {wide ? null : (
+              <button
+                type="button"
+                className={s.item}
+                onClick={() => {
+                  close();
+                  setChatOpen(true);
+                }}
+              >
+                <MessageCircle size={18} aria-hidden="true" />
+                {t("live.chat")}
+                {chat.unread ? (
+                  <span className={s.badge}>{chat.unread}</span>
+                ) : null}
+              </button>
+            )}
+            <button
+              type="button"
+              className={s.item}
+              onClick={() => {
+                setFocus(false);
+                close();
+              }}
+            >
+              <Headphones size={18} aria-hidden="true" />
+              <span>
+                {t("present.voice")}
+                <small>{t("present.voiceHint")}</small>
+              </span>
+            </button>
+            {me.can.edit_room ? (
+              <>
+                {watching && room.bookId ? (
+                  <button
+                    type="button"
+                    className={s.item}
+                    disabled={setContent.isPending}
+                    onClick={() => {
+                      setContent.mutate({ roomId, contentType: "pdf" });
+                      close();
+                    }}
+                  >
+                    <FileText size={18} aria-hidden="true" />
+                    {t("present.showFile")}
+                  </button>
+                ) : null}
+                {!watching && video.videoId ? (
+                  <button
+                    type="button"
+                    className={s.item}
+                    disabled={setContent.isPending}
+                    onClick={() => {
+                      setContent.mutate({ roomId, contentType: "youtube" });
+                      close();
+                    }}
+                  >
+                    <Video size={18} aria-hidden="true" />
+                    {t("present.showVideo")}
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  className={s.item}
+                  onClick={() => setSheet({ kind: "file" })}
+                >
+                  <FileText size={18} aria-hidden="true" />
+                  {room.bookId ? t("file.change") : t("file.choose")}
+                </button>
+                <button
+                  type="button"
+                  className={s.item}
+                  onClick={() => setSheet({ kind: "video" })}
+                >
+                  <Video size={18} aria-hidden="true" />
+                  {video.videoId ? t("video.change") : t("video.addButton")}
+                </button>
+                {video.videoId ? (
+                  <button
+                    type="button"
+                    className={s.item}
+                    onClick={() => setSheet({ kind: "videoRemove" })}
+                  >
+                    <Video size={18} aria-hidden="true" />
+                    {t("video.remove")}
+                  </button>
+                ) : null}
+              </>
+            ) : null}
+            {me.can.start_quiz && !quiz.active ? (
+              <button
+                type="button"
+                className={s.item}
+                onClick={() => setSheet({ kind: "quiz" })}
+              >
+                <ListChecks size={18} aria-hidden="true" /> {t("quiz.open")}
+              </button>
+            ) : null}
+            {room.visibility === "public" || me.can.invite ? (
+              <button
+                type="button"
+                className={s.item}
+                onClick={() => setSheet({ kind: "invite", code: null })}
+              >
+                <UserPlus size={18} aria-hidden="true" /> {t("live.invite")}
+              </button>
+            ) : null}
+            {me.can.edit_room ? (
+              <button
+                type="button"
+                className={s.item}
+                onClick={() => setSheet({ kind: "settings" })}
+              >
+                <Settings size={18} aria-hidden="true" /> {t("live.settings")}
+              </button>
+            ) : null}
+            <button
+              type="button"
+              className={s.item}
+              onClick={() => setSheet({ kind: "report", userId: null })}
+            >
+              <Flag size={18} aria-hidden="true" /> {t("member.report")}
+            </button>
+            <button
+              type="button"
+              className={`${s.item} ${s.danger}`}
+              disabled={leave.isPending}
+              onClick={() => leave.mutate({ roomId })}
+            >
+              <LogOut size={18} aria-hidden="true" /> {t("live.leave")}
+            </button>
+          </div>
+        </Sheet>
+      ) : null}
+
+      {sheet?.kind === "members" ? (
+        <Sheet title={t("live.present", { n: members.length })} onClose={close}>
+          <div>
+            {members.map(member => (
+              <button
+                key={member.userId}
+                type="button"
+                className={s.item}
+                disabled={member.userId === me.userId}
+                onClick={() =>
+                  setSheet({ kind: "member", userId: member.userId })
+                }
+              >
+                <Avatar person={member} size="sm" />
+                <span dir="auto">
+                  {member.userId === me.userId ? t("live.you") : member.name}
+                  <small>
+                    {roleLabel(member.role)}
+                    {member.mutedByHost ? " 🔇" : ""}
+                    {voice.inVoice.has(member.userId) ? " 🎧" : ""}
+                  </small>
+                </span>
+              </button>
+            ))}
+          </div>
         </Sheet>
       ) : null}
 

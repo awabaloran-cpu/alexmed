@@ -97,6 +97,7 @@ export default function RoomsProvider({
 
   const frame = (content: ReactNode) => (
     <div
+      data-rooms-root=""
       className={`${s.root} ${night ? s.night : ""}`}
       dir={language === "ar" ? "rtl" : "ltr"}
       lang={language}
