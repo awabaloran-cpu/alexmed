@@ -13,6 +13,7 @@ import { doctorRouter } from "./doctorRouter";
 import { questionSetsRouter } from "./questionSetsRouter";
 import { adminBillingRouter } from "./adminBillingRouter";
 import { adminJobsRouter } from "./adminJobsRouter";
+import { adminMonitorRouter } from "./adminMonitorRouter";
 import { adminMaterialsRouter } from "./adminMaterialsRouter";
 import { adminUsersRouter } from "./adminUsersRouter";
 import { adsRouter } from "./adsRouter";
@@ -135,6 +136,8 @@ export const appRouter = router({
   // Admin-only Jobs monitoring (Phase 0) — gated by adminProcedure inside
   // adminJobsRouter itself, same pattern as adminMaterials above.
   adminJobs: adminJobsRouter,
+  // 📊 What is being prepared, what has stopped, and why (app/admin/monitor).
+  adminMonitor: adminMonitorRouter,
   // Admin dashboard's user management (users list/detail/plan/suspend/
   // delete + platform-wide stats) — same adminProcedure gating pattern.
   adminUsers: adminUsersRouter,

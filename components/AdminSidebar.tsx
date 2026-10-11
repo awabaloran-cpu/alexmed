@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { signOut, useSession } from "next-auth/react";
 import {
+  Activity,
   BarChart3,
   Briefcase,
   GraduationCap,
@@ -34,6 +35,8 @@ const NAV_ITEMS = [
     exact: false,
   },
   { href: "/admin/jobs", label: "الوظائف", icon: Briefcase, exact: false },
+  // 📊 What is being prepared, what has stopped, and why.
+  { href: "/admin/monitor", label: "المراقبة", icon: Activity, exact: false },
   // 📈 Where the bot's students came from (lib/telegram/growth.ts).
   { href: "/admin/telegram", label: "Telegram", icon: Send, exact: false },
   // 🔒 Protected Doctor Question Sets (pages show a notice while the

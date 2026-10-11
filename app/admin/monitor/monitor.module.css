@@ -1,0 +1,159 @@
+/* The admin's monitoring page (page.tsx). The admin area is its own dark
+   palette (the ".dark" block in app/globals.css): these use its shadcn
+   variables, never a colour of their own. */
+.board {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+
+.board h2 {
+  margin: 14px 0 0;
+  color: var(--foreground);
+  font-size: 1.05rem;
+  font-weight: 600;
+}
+
+.at {
+  margin: 0;
+  color: var(--muted-foreground);
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.figures {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: 10px;
+  margin: 0;
+}
+
+.figure {
+  display: grid;
+  gap: 2px;
+  align-content: start;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--card);
+}
+
+.figure dt {
+  color: var(--muted-foreground);
+  font-size: 0.82rem;
+}
+
+.figure dd {
+  margin: 0;
+  color: var(--foreground);
+  font-size: 1.5rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.figure small {
+  color: var(--muted-foreground);
+  font-size: 0.75rem;
+}
+
+.alarm {
+  border-color: var(--destructive);
+}
+
+.alarm dd {
+  color: var(--destructive);
+}
+
+.none {
+  margin: 0;
+  color: var(--muted-foreground);
+  font-size: 0.88rem;
+}
+
+.blocks {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 10px;
+}
+
+.block {
+  display: grid;
+  gap: 8px;
+  align-content: start;
+  min-width: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--card);
+}
+
+.block h3 {
+  margin: 0;
+  color: var(--foreground);
+  font-size: 0.92rem;
+  font-weight: 600;
+}
+
+.reasons {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.reasons li {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  color: var(--foreground);
+  font-size: 0.85rem;
+}
+
+.reasons span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.reasons b {
+  flex: none;
+  font-variant-numeric: tabular-nums;
+}
+
+.tableWrap {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+.table {
+  width: 100%;
+  min-width: 560px;
+  border-collapse: collapse;
+  color: var(--foreground);
+  font-size: 0.86rem;
+}
+
+.table th,
+.table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  text-align: start;
+  vertical-align: top;
+}
+
+.table th {
+  color: var(--muted-foreground);
+  font-weight: 500;
+}
+
+.table tr:last-child td {
+  border-bottom: 0;
+}
+
+.table td small {
+  display: block;
+  color: var(--muted-foreground);
+  font-size: 0.75rem;
+}
