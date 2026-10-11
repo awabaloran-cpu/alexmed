@@ -19,6 +19,7 @@ vi.mock("@/lib/db", () => ({
 import { discoverRouter } from "../trpc/discoverRouter";
 import { roomsRouter } from "../trpc/roomsRouter";
 import { DISCOVER_CATEGORIES, pickQuizzes } from "./data";
+import { DISCOVER_MESSAGES, type DiscoverKey } from "./i18n";
 import {
   SEED_CHANNELS,
   SEED_QUIZZES,
@@ -79,10 +80,11 @@ describe("the first shelves", () => {
     }
   });
 
-  it("each has 8 to 15 questions, four different options and one right answer", () => {
+  it("each has 8 to 30 questions, four different options and one right answer", () => {
     for (const { quiz } of SEED_QUIZZES) {
       expect(quiz.questions.length, quiz.slug).toBeGreaterThanOrEqual(8);
-      expect(quiz.questions.length, quiz.slug).toBeLessThanOrEqual(15);
+      // 30 is the most a room plays in one game (QUIZ_COUNT_MAX).
+      expect(quiz.questions.length, quiz.slug).toBeLessThanOrEqual(30);
       for (const question of quiz.questions) {
         expect(question.o.length, question.q).toBe(4);
         expect(new Set(question.o).size, question.q).toBe(4);
@@ -94,6 +96,24 @@ describe("the first shelves", () => {
       expect(new Set(quiz.questions.map(q => q.q)).size).toBe(
         quiz.questions.length
       );
+    }
+  });
+
+  it("the studio's long quizzes have twenty questions or more", () => {
+    const long = SEED_QUIZZES.filter(entry =>
+      [
+        "ar-tech-computers",
+        "ar-arabic-language",
+        "ar-food-nutrition",
+        "ar-art-music",
+        "ar-math-mental",
+        "ar-health-first-aid",
+      ].includes(entry.quiz.slug)
+    );
+    expect(long.length).toBe(6);
+    for (const { quiz } of long) {
+      expect(quiz.channel).toBe("ar-niro-studio");
+      expect(quiz.questions.length, quiz.slug).toBeGreaterThanOrEqual(20);
     }
   });
 
@@ -124,7 +144,13 @@ describe("the first shelves", () => {
     for (const { language, quiz } of SEED_QUIZZES) {
       const channel = SEED_CHANNELS.find(row => row.slug === quiz.channel);
       expect(channel?.language, quiz.slug).toBe(language);
-      expect(DISCOVER_CATEGORIES).toContain(quiz.category);
+      // A subject is one both languages have a word for.
+      for (const language of ["ar", "en"] as const) {
+        expect(
+          DISCOVER_MESSAGES[language][`cat.${quiz.category}` as DiscoverKey],
+          quiz.category
+        ).toBeTruthy();
+      }
       expect(quiz.color).toMatch(/^#[0-9a-f]{6}$/);
     }
   });
@@ -262,6 +288,8 @@ describe("the catalogue on a real database", () => {
         "partners",
         "ranked_list",
         "featured_collections",
+        // The studio's own shelf, on the Arabic page.
+        ...(language === "ar" ? ["channel_block"] : []),
         "learn_cards",
         "channel_block",
         "horizontal_cards",

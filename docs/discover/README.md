@@ -9,7 +9,7 @@
 |---|---|
 | `drizzle/schema.ts` + `0051_discover.sql` | `discover_channels`, `discover_quizzes`, `discover_questions`, `discover_sections`, `discover_channel_follows` — جداول جديدة فقط |
 | `lib/discover/data.ts` | قراءة الصفحة، البحث، ورقة الاختبار، القناة، المتابعة، عدّ مرات اللعب |
-| `lib/discover/seed-*.json` + `seed.ts` | أول محتوى: 6 قنوات، 40 اختبارًا (20 عربي + 20 إنجليزي، 331 سؤالًا)، وأقسام الصفحة |
+| `lib/discover/seed-*.json` + `seed.ts` | المحتوى: 6 قنوات، 46 اختبارًا (26 عربي + 20 إنجليزي، 451 سؤالًا)، وأقسام الصفحة. `seed-ar-studio.json`: ستة اختبارات لاستوديو نيرو، 20 سؤالًا لكل منها |
 | `lib/discover/i18n.ts` | كل نصوص الواجهة بالعربية والإنجليزية؛ اختبار يمنع أي نص عربي داخل ملفات الشاشات |
 | `lib/discover/study.ts` | قواعد النجوم وجولة البطاقات والسحب (خالصة ومختبرة) |
 | `lib/trpc/discoverRouter.ts` | `discover.page / search / quiz / questions / played / channel / follow` |

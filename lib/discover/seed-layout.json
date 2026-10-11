@@ -26,8 +26,15 @@
       { "category": "geography", "art": "globe", "color": "#0f6b5c" },
       { "category": "history", "art": "ancient", "color": "#9a5b13" },
       { "category": "animals", "art": "animal", "color": "#a13d63" },
-      { "category": "sports", "art": "football", "color": "#1d6b2f" }
+      { "category": "sports", "art": "football", "color": "#1d6b2f" },
+      { "category": "technology", "art": "technology", "color": "#1e4f8f" },
+      { "category": "math", "art": "math", "color": "#1f6b63" },
+      { "category": "health", "art": "health", "color": "#a3303f" },
+      { "category": "language", "art": "literature", "color": "#7a3a66" },
+      { "category": "food", "art": "food", "color": "#9a5b13" },
+      { "category": "art", "art": "art", "color": "#8a2f78" }
     ] } },
+    { "key": "channel-studio-ar", "type": "channel_block", "language": "ar", "order": 45, "filter": { "channelSlug": "ar-niro-studio", "sort": "newest", "limit": 8 } },
     { "key": "learn", "type": "learn_cards", "language": null, "order": 50, "titleAr": "وضع التعلّم الفردي", "titleEn": "Solo learning", "subtitleAr": "جرّب وضع التعلّم: سؤال بسؤال، مع الجواب الصحيح بعد كل إجابة.", "subtitleEn": "Try learn mode: one question at a time, with the right answer after each.", "filter": { "category": "science", "limit": 8 } },
     { "key": "channel-curiosity-ar", "type": "channel_block", "language": "ar", "order": 60, "filter": { "channelSlug": "ar-curiosity", "limit": 6 } },
     { "key": "channel-curiosity-en", "type": "channel_block", "language": "en", "order": 60, "filter": { "channelSlug": "en-curiosity", "limit": 6 } },

@@ -9,7 +9,10 @@ import {
   Atom,
   Bird,
   Brain,
+  Calculator,
   Compass,
+  Cpu,
+  Feather,
   Fish,
   FlaskConical,
   Globe,
@@ -22,11 +25,14 @@ import {
   Map as MapIcon,
   Medal,
   Mountain,
+  Palette,
   PawPrint,
   Rocket,
   ScrollText,
   Sparkles,
+  Stethoscope,
   Trophy,
+  Utensils,
   type LucideIcon,
 } from "lucide-react";
 import s from "./discover.module.css";
@@ -53,6 +59,12 @@ const ART: Record<string, [LucideIcon, LucideIcon]> = {
   bird: [Bird, Mountain],
   football: [Trophy, Medal],
   olympics: [Medal, Trophy],
+  technology: [Cpu, Atom],
+  literature: [Feather, ScrollText],
+  food: [Utensils, Sparkles],
+  art: [Palette, Sparkles],
+  math: [Calculator, Hash],
+  health: [Stethoscope, HeartPulse],
 };
 
 export function Cover({

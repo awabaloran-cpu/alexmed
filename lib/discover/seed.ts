@@ -1,6 +1,8 @@
 // 🌱 The Discover catalogue's first shelves: 20 Arabic and 20 English
-// quizzes written for NiroLearn (seed-ar.json / seed-en.json), three
-// channels a language and the page's sections (seed-layout.json).
+// quizzes written for NiroLearn (seed-ar.json / seed-en.json), six longer
+// Arabic ones of twenty questions each for the studio's channel
+// (seed-ar-studio.json), three channels a language and the page's
+// sections (seed-layout.json).
 //
 // `seedDiscover` writes them through whatever database it is handed and
 // can be run again: every row is matched by its slug or key, so a second
@@ -17,6 +19,7 @@ import {
 } from "../../drizzle/schema";
 import type { requireDb } from "../db";
 import arabic from "./seed-ar.json";
+import arabicStudio from "./seed-ar-studio.json";
 import english from "./seed-en.json";
 import layout from "./seed-layout.json";
 
@@ -35,7 +38,10 @@ export type SeedQuiz = {
 };
 
 export const SEED_QUIZZES: { language: "ar" | "en"; quiz: SeedQuiz }[] = [
-  ...(arabic as SeedQuiz[]).map(quiz => ({ language: "ar" as const, quiz })),
+  ...([...arabic, ...arabicStudio] as SeedQuiz[]).map(quiz => ({
+    language: "ar" as const,
+    quiz,
+  })),
   ...(english as SeedQuiz[]).map(quiz => ({ language: "en" as const, quiz })),
 ];
 export const SEED_CHANNELS = layout.channels;
