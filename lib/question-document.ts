@@ -83,8 +83,10 @@ type Page = { page: number; text: string };
 const PAGE_NUMBER_LINE =
   /^\s*(?:[-–—]\s*)?(?:page|p\.?|صفحة)?\s*[\d٠-٩]{1,4}\s*(?:(?:of|\/|من)\s*[\d٠-٩]{1,4})?\s*(?:[-–—])?\s*$/i;
 const SCANNER_MARK = /\b(?:camscanner|scanned with|scanned by)\b.*$/i;
+// "Question 12" on a line of its own is the question's own title — on
+// every page of a file that titles them so, and never a running header.
 const STRUCTURAL_LINE =
-  /^\s*(?:\(?[A-Ha-hأابجد١-٨]\s?[.):]|\(?[A-Ha-h]\)|[\d٠-٩]{1,3}\s*[.):\-]\s|(?:correct answer|answer|ans|key|explanation|note|الإجابة|الجواب)\b)/i;
+  /^\s*(?:\(?[A-Ha-hأابجد١-٨]\s?[.):]|\(?[A-Ha-h]\)|[\d٠-٩]{1,3}\s*[.):\-]\s|(?:question|q|سؤال|السؤال)\s*\.?\s*[\d٠-٩]{1,3}\s*[.):\-]?\s*$|(?:correct answer|answer|ans|key|(?:added |additional |detailed )?explanation|note|الإجابة|الجواب)\b)/i;
 
 function lineKey(line: string): string {
   return toAsciiDigits(line)
@@ -198,6 +200,10 @@ function splitInlineOptions(line: string): string[] {
 
 const LINE_QUESTION_NUMBER =
   /^\s*(?:(?:question|q)\s*\.?\s*)?(\d{1,3})\s*[.):\-]\s+\S/i;
+// "Question 12" on a line of its own: a question starts here too, its stem
+// on the lines under it.
+const QUESTION_TITLE_LINE =
+  /^\s*(?:question|q|سؤال|السؤال)\s*\.?\s*\d{1,3}\s*[.):\-]?\s*$/i;
 
 // Answer / explanation / note markers OCR ran onto the end of a line.
 const INLINE_SECTION =
@@ -539,7 +545,8 @@ function pageStats(lines: StreamLine[]): Stats {
     if (/^\s*(?:correct answer|answer|ans)\s*[:\-]/i.test(text))
       stats.answers++;
     if (
-      LINE_QUESTION_NUMBER.test(toAsciiDigits(text)) &&
+      (LINE_QUESTION_NUMBER.test(toAsciiDigits(text)) ||
+        QUESTION_TITLE_LINE.test(toAsciiDigits(text))) &&
       !TOC_LINE.test(text)
     ) {
       stats.starts++;

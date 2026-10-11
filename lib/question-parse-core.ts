@@ -60,17 +60,36 @@ const ANSWER_LINE =
   /^\s*(?:the\s+)?(?:correct\s+answer|right\s+answer|answer|ans|key|الإجابة الصحيحة|الإجابة|الجواب)\s*(?:is\s*)?[:\-.]?\s+(.+)$/i;
 const ANSWER_LINE_STRICT =
   /^\s*(?:the\s+)?(?:correct\s+answer|right\s+answer|answer|ans|key|الإجابة الصحيحة|الإجابة|الجواب)\s*(?:is\s*)?[:\-.]\s*(.+)$/i;
-const EXPLANATION_LINE =
-  /^\s*(?:explanation|rationale|why|comments?|discussion|reasoning|reason|التفسير|الشرح|السبب|التعليل)\s*[:\-]\s*(.*)$/i;
-const EXPLANATION_HEADING =
-  /^\s*(?:explanation|rationale|comments?|discussion|التفسير|الشرح|التعليل)\s*:?\s*$/i;
+// "Added explanation", "Detailed explanation": still the explanation.
+const EXPLANATION_WORD_BEFORE =
+  "(?:(?:added|additional|suggested|detailed|brief|short)\\s+)?";
+const EXPLANATION_LINE = new RegExp(
+  `^\\s*${EXPLANATION_WORD_BEFORE}(?:explanation|rationale|why|comments?|discussion|reasoning|reason|التفسير|الشرح|السبب|التعليل)\\s*[:\\-]\\s*(.*)$`,
+  "i"
+);
+const EXPLANATION_HEADING = new RegExp(
+  `^\\s*${EXPLANATION_WORD_BEFORE}(?:explanation|rationale|comments?|discussion|التفسير|الشرح|التعليل)\\s*:?\\s*$`,
+  "i"
+);
+// "Correct answer" on a line of its own: the answer is the next line.
+const ANSWER_HEADING =
+  /^\s*(?:the\s+)?(?:correct\s+answer|right\s+answer|answer|الإجابة الصحيحة|الإجابة|الجواب)\s*:?\s*$/i;
+// A rule drawn across the page (a run of dashes, underscores…): where a
+// file draws one after a question's answer or explanation, the block ends
+// there.
+const SEPARATOR_LINE = /^[\s\-–—_=─━~*·•]{5,}$/;
+// A file that titles its questions "Question 12" on a line of their own
+// (three or more of them) numbers nothing else as a question: a "2. Notes"
+// line in such a file is a section title or a list item.
+const HEADING_STYLE_MIN = 3;
 const NOTE_LINE =
   /^\s*(?:note|notes|n\.?\s?b\.?|tip|remember|important|ملاحظة|ملاحظات)\b(?:\s*\(?[A-Ha-h0-9]\)?)?\s*[:\-.]?\s*(.*)$/i;
 // "1. B" / "12) c" / "3 - D": an answer-key entry, never a question.
 const KEY_ENTRY_BODY = /^\(?([A-Ha-h])\)?\s*\.?$/;
 const ARABIC_OPTION_LINE =
   /^\s*\(?([أاإبجده]|[١-٥]|[1-5]|[A-Ea-e])\)?\s*[.)\-:ـ]?\s+(.+)$/;
-const ARABIC_LETTER_OPTION = /^\s*(?:\([أاإبجده]\)|[أاإبجده]\s?[.):\-])\s*(?=\S)/;
+const ARABIC_LETTER_OPTION =
+  /^\s*(?:\([أاإبجده]\)|[أاإبجده]\s?[.):\-])\s*(?=\S)/;
 const INLINE_ARABIC_ANSWER =
   /\s*(?:الإجابة الصحيحة|الإجابة|الجواب)\s*[:\-]\s*(\(?[أاإبجدA-Da-d١-٤1-4]\)?\.?)\s*$/;
 
@@ -221,9 +240,13 @@ type Draft = {
   inlineArOptions: string[];
   // Inside the Arabic block that follows the English one.
   inArabicBlock: boolean;
+  // "Correct answer" stood alone on the last line: this one is the answer.
+  awaitingAnswer: boolean;
 };
 
-type Mode = "stem" | "options" | "explanation" | "notes";
+// "closed": past a rule drawn under the block — nothing more belongs to
+// this question, whatever follows, until the next one starts.
+type Mode = "stem" | "options" | "explanation" | "notes" | "closed";
 
 const comparable = (text: string) =>
   text
@@ -257,6 +280,10 @@ export function parseQuestionStream(
   const results: ParsedQuestion[] = [];
   let draft: Draft | null = null;
   let mode: Mode = "stem";
+  const headingStyle =
+    lines.filter(
+      line => QUESTION_HEADING.test(line.text) && /[a-z]/i.test(line.text)
+    ).length >= HEADING_STYLE_MIN;
 
   function flush() {
     if (!draft) return;
@@ -342,6 +369,7 @@ export function parseQuestionStream(
       arOptions: [],
       inlineArOptions: [],
       inArabicBlock: false,
+      awaitingAnswer: false,
     };
     mode = "stem";
   }
@@ -392,7 +420,12 @@ export function parseQuestionStream(
       continue;
     }
 
-    const questionStart = toAsciiDigits(text).match(QUESTION_START);
+    // In a file of "Question N" headings a numbered line is text (a
+    // section title, a list item) — handled below like any other line.
+    const questionStart =
+      headingStyle && !/^\s*(?:question|q)\b/i.test(text)
+        ? null
+        : toAsciiDigits(text).match(QUESTION_START);
     if (questionStart) {
       const number = Number(questionStart[1]);
       const body = text
@@ -469,6 +502,29 @@ export function parseQuestionStream(
       continue;
     }
     if (!current) continue; // Text before the first question — skip.
+
+    if (SEPARATOR_LINE.test(text)) {
+      // Under a finished block the rule closes it; anywhere else it is
+      // just a line drawn on the page.
+      if (current.pastOptions || current.options.length) mode = "closed";
+      continue;
+    }
+    if (mode === "closed") continue;
+
+    if (current.awaitingAnswer) {
+      current.awaitingAnswer = false;
+      if (!EXPLANATION_HEADING.test(text) && !EXPLANATION_LINE.test(text)) {
+        setAnswer(text, arabic);
+        mode = "notes";
+        continue;
+      }
+    }
+    if (ANSWER_HEADING.test(text) && current.options.length) {
+      current.awaitingAnswer = true;
+      current.pastOptions = true;
+      mode = "notes";
+      continue;
+    }
 
     const answerMatch =
       text.match(ANSWER_LINE_STRICT) ??
