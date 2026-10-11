@@ -1046,7 +1046,8 @@
   border: 0;
   border-radius: 12px;
   background: var(--marker);
-  color: var(--marker-ink);
+  /* On the yellow itself the ink is dark in both looks. */
+  color: var(--nl-ink);
   font: inherit;
   font-weight: 600;
   cursor: pointer;
@@ -1071,7 +1072,8 @@
   padding: 0 6px;
   border-radius: 999px;
   background: var(--marker);
-  color: var(--marker-ink);
+  /* On the yellow itself the ink is dark in both looks. */
+  color: var(--nl-ink);
   font-size: 0.75rem;
   font-weight: 700;
   line-height: 20px;
@@ -1230,7 +1232,8 @@
 }
 .clockLow {
   background: var(--marker);
-  color: var(--marker-ink);
+  /* On the yellow itself the ink is dark in both looks. */
+  color: var(--nl-ink);
 }
 .quizBar {
   height: 6px;
@@ -1774,7 +1777,8 @@
 .sync_tap {
   border-color: transparent;
   background: var(--marker);
-  color: var(--marker-ink);
+  /* On the yellow itself the ink is dark in both looks. */
+  color: var(--nl-ink);
 }
 .sync_offline {
   border-color: var(--bad);
@@ -1785,7 +1789,7 @@
 .videoFrame {
   position: relative;
   width: 100%;
-  max-width: calc((100vh - 220px) * 16 / 9);
+  max-width: calc((100vh - 150px) * 16 / 9);
   min-width: min(100%, 280px);
   margin-inline: auto;
   aspect-ratio: 16 / 9;
@@ -1879,5 +1883,23 @@
 @media (orientation: landscape) and (max-height: 520px) {
   .videoFrame {
     max-width: calc((100vh - 24px) * 16 / 9);
+  }
+}
+
+/* A phone: the video has the width — the card around it gives way. */
+@media (max-width: 640px) {
+  .video {
+    padding: 8px 0 10px;
+    border-inline: 0;
+    border-radius: 0;
+    margin-inline: -12px;
+  }
+  .videoHead,
+  .videoTools,
+  .video > p {
+    padding-inline: 12px;
+  }
+  .videoFrame {
+    border-radius: 0;
   }
 }
