@@ -109,6 +109,7 @@ function SiteFooter() {
             <Link href="/pricing">الأسعار</Link>
             <Link href="/register">إنشاء حساب</Link>
             <Link href="/login">تسجيل الدخول</Link>
+            <Link href="/about">من نحن</Link>
             <Link href="/contact">تواصل معنا</Link>
           </nav>
           <nav aria-label="السياسات" className={s.footerNav}>

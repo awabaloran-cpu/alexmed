@@ -50,6 +50,7 @@ export const PUBLIC_BASE_PATHS = [
   SOLVE_QUESTIONS_PATH,
   "/pricing",
   "/register",
+  "/about",
   "/contact",
   "/privacy",
   "/terms",

@@ -43,6 +43,7 @@ describe("site constants", () => {
       "/solve-questions",
       "/pricing",
       "/register",
+      "/about",
       "/contact",
       "/privacy",
       "/terms",
