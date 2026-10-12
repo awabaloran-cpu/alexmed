@@ -14,6 +14,7 @@ import { trpc } from "@/lib/trpc-client";
 import { SharedHomeWidget } from "@/components/sharing/SharedHomeWidget";
 import { StudyNext } from "@/components/home/StudyNext";
 import { HomeGamesRow } from "@/components/home/HomeGamesRow";
+import { HomeTop } from "@/components/home/HomeTop";
 
 // Cycled by list position (not the subject's own type/color, since none is
 // stored) purely to make one folder visually distinct from its neighbor in
@@ -80,6 +81,8 @@ export default function SubjectsPage() {
 
   return (
     <section className="cards-view home-view">
+      <HomeTop />
+
       <StudyNext />
 
       <SharedHomeWidget />

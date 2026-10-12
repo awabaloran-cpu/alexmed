@@ -1,0 +1,99 @@
+/* The sheet the home's top bar opens (components/colleagues/Sheet.tsx). */
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  background: rgba(17, 21, 39, 0.5);
+  animation: fade 0.18s var(--nl-ease);
+}
+
+.sheet {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 560px;
+  max-height: min(88vh, 88dvh);
+  border-radius: var(--nl-r-lg) var(--nl-r-lg) 0 0;
+  background: var(--nl-paper);
+  box-shadow: 0 -12px 32px rgba(27, 35, 64, 0.2);
+  outline: 0;
+  animation: rise 0.22s var(--nl-ease);
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px 10px;
+}
+
+.head h2 {
+  margin: 0;
+  color: var(--nl-ink);
+  font-size: 1.15rem;
+  font-weight: 700;
+}
+
+.close {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--nl-sheet);
+  color: var(--nl-ink-2);
+  cursor: pointer;
+}
+
+.close:hover {
+  color: var(--nl-ink);
+}
+
+.close:focus-visible {
+  outline: 2px solid var(--nl-niro);
+  outline-offset: 2px;
+}
+
+.body {
+  min-height: 220px;
+  padding: 4px 16px calc(20px + env(safe-area-inset-bottom));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+@media (min-width: 720px) {
+  .backdrop {
+    align-items: center;
+    padding: 24px;
+  }
+
+  .sheet {
+    max-height: min(80vh, 720px);
+    border-radius: var(--nl-r-lg);
+  }
+}
+
+@keyframes fade {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes rise {
+  from {
+    transform: translateY(24px);
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .backdrop,
+  .sheet {
+    animation: none;
+  }
+}

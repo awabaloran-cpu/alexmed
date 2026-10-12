@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { signOut, useSession } from "next-auth/react";
 import {
+  Ban,
   BarChart3,
   BookOpen,
   Compass,
@@ -11,6 +12,7 @@ import {
   CreditCard,
   FileText,
   GraduationCap,
+  History,
   LifeBuoy,
   LogOut,
   Send,
@@ -244,6 +246,7 @@ export default function AccountPage() {
             </details>
           </li>
           <TelegramRow />
+          <BlockedRow />
         </Group>
 
         {/* ── Pages ─────────────────────────────────────────────────── */}
@@ -253,6 +256,7 @@ export default function AccountPage() {
               <LinkRowItem {...link} />
             </li>
           ))}
+          <PastSessionsRow />
         </Group>
 
         {isAdmin || isDoctor ? (
@@ -390,6 +394,138 @@ function TelegramRow() {
               </span>
             ) : null}
           </div>
+        </div>
+      </details>
+    </li>
+  );
+}
+
+// 👥 The rooms the student sat in and that are over (or that they left):
+// each opens its summary. Asked for only while Study Rooms is on, and the
+// list itself only once the row is opened.
+function PastSessionsRow() {
+  const [opened, setOpened] = useState(false);
+  const roomsOn =
+    trpc.rooms.enabled.useQuery(undefined, {
+      staleTime: Infinity,
+      retry: false,
+    }).data?.enabled === true;
+  const history = trpc.rooms.history.useQuery(undefined, {
+    enabled: roomsOn && opened,
+  });
+  if (!roomsOn) return null;
+
+  return (
+    <li>
+      <details
+        className={s.expand}
+        onToggle={event => {
+          if (event.currentTarget.open) setOpened(true);
+        }}
+      >
+        <RowSummary icon={History} label="جلساتي السابقة" value="" />
+        <div className={s.panel}>
+          {history.isError ? (
+            <p className={s.hint} role="alert">
+              تعذّر تحميل جلساتك. حاول مرة أخرى.
+            </p>
+          ) : !history.data ? (
+            <p className={s.hint}>جاري التحميل…</p>
+          ) : !history.data.length ? (
+            <p className={s.hint}>
+              لا جلسات سابقة بعد. الغرف التي تنتهي أو تغادرها تظهر هنا مع
+              ملخّصها.
+            </p>
+          ) : (
+            <ul className={s.sessions}>
+              {history.data.map(past => (
+                <li key={past.id}>
+                  <Link href={`/rooms/${past.id}/summary`}>
+                    <b dir="auto">{past.title}</b>
+                    <span>
+                      {sessionDate.format(new Date(past.when))} · {past.minutes}{" "}
+                      دقيقة · {peopleLabel(past.people)}
+                    </span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </details>
+    </li>
+  );
+}
+
+const sessionDate = new Intl.DateTimeFormat("ar-EG-u-nu-latn", {
+  day: "numeric",
+  month: "short",
+});
+
+function peopleLabel(people: number) {
+  if (people === 1) return "مشارك واحد";
+  if (people === 2) return "مشاركان";
+  return people <= 10 ? `${people} مشاركين` : `${people} مشاركًا`;
+}
+
+// 🚫 The students this account blocked, and taking a block back.
+function BlockedRow() {
+  const utils = trpc.useUtils();
+  const [opened, setOpened] = useState(false);
+  const blocked = trpc.sharing.blocked.useQuery(undefined, { enabled: opened });
+  const unblock = trpc.sharing.unblock.useMutation({
+    onSuccess: () => {
+      utils.sharing.blocked.invalidate();
+      utils.colleagues.invalidate();
+    },
+  });
+
+  return (
+    <li>
+      <details
+        className={s.expand}
+        onToggle={event => {
+          if (event.currentTarget.open) setOpened(true);
+        }}
+      >
+        <RowSummary icon={Ban} label="المحظورون" value="" />
+        <div className={s.panel}>
+          {blocked.isError ? (
+            <p className={s.hint} role="alert">
+              تعذّر تحميل القائمة. حاول مرة أخرى.
+            </p>
+          ) : !blocked.data ? (
+            <p className={s.hint}>جاري التحميل…</p>
+          ) : !blocked.data.length ? (
+            <p className={s.hint}>
+              لم تحظر أحدًا. من تحظره لا يجدك في البحث ولا يصلك منه طلب أو دعوة
+              أو ملف.
+            </p>
+          ) : (
+            <ul className={s.people}>
+              {blocked.data.map(person => (
+                <li key={person.id}>
+                  <bdi>
+                    {person.name ||
+                      (person.username ? `@${person.username}` : "طالب")}
+                  </bdi>
+                  <button
+                    type="button"
+                    className={s.save}
+                    disabled={unblock.isPending}
+                    onClick={() => unblock.mutate({ userId: person.id })}
+                  >
+                    إلغاء الحظر
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+          {unblock.error ? (
+            <p className={s.hint} role="alert">
+              تعذّر إلغاء الحظر. حاول مرة أخرى.
+            </p>
+          ) : null}
         </div>
       </details>
     </li>

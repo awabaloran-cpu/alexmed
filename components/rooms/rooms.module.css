@@ -1608,40 +1608,6 @@
   gap: 8px;
   flex-wrap: wrap;
 }
-.historyList {
-  display: grid;
-  gap: 6px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-.historyList a {
-  display: grid;
-  gap: 2px;
-  min-height: 52px;
-  padding: 10px 12px;
-  border: 1px solid var(--rule);
-  border-radius: 14px;
-  background: var(--sheet);
-  color: var(--ink);
-  text-decoration: none;
-}
-.historyList a:focus-visible {
-  outline: 2px solid var(--niro);
-  outline-offset: 2px;
-}
-.historyList b {
-  overflow: hidden;
-  font-weight: 600;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  text-align: start;
-}
-.historyList span {
-  color: var(--ink2);
-  font-size: 0.84rem;
-  font-variant-numeric: tabular-nums;
-}
 
 /* ── the room's voice ── */
 .voice {

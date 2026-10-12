@@ -311,3 +311,66 @@
 .quietLink:hover {
   color: var(--nl-ink-2);
 }
+
+/* جلساتي السابقة / المحظورون: plain lists inside an opened row. */
+.hint {
+  margin: 0;
+  color: var(--nl-ink-3);
+  font-size: 14px;
+  line-height: 1.7;
+}
+.sessions,
+.people {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.sessions a {
+  display: grid;
+  gap: 2px;
+  min-height: 52px;
+  padding: 10px 12px;
+  border: 1px solid var(--nl-rule);
+  border-radius: var(--nl-r-md);
+  color: var(--nl-ink);
+  text-decoration: none;
+}
+.sessions a:hover {
+  background: #f7f8fc;
+}
+.sessions a:focus-visible {
+  outline: 2px solid var(--nl-niro);
+  outline-offset: 2px;
+}
+.sessions b {
+  overflow: hidden;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sessions span {
+  color: var(--nl-ink-3);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.people li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+.people bdi {
+  min-width: 0;
+  overflow: hidden;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.people .save {
+  flex: none;
+  padding: 8px 14px;
+  font-size: 14px;
+}

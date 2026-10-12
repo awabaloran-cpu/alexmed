@@ -140,7 +140,6 @@ export default function RoomsHome() {
     refetchInterval: 30_000,
   });
   const mine = trpc.rooms.mine.useQuery();
-  const history = trpc.rooms.history.useQuery();
   const live = trpc.rooms.explore.useQuery(filters.input, {
     enabled: adult,
     refetchInterval: 20_000,
@@ -270,41 +269,6 @@ export default function RoomsHome() {
           </Link>
         </div>
       )}
-
-      {history.data?.length ? (
-        <>
-          <p className={s.sub}>{t("rooms.history")}</p>
-          <ul className={s.historyList}>
-            {history.data.map(past => (
-              <li key={past.id}>
-                <Link href={`/rooms/${past.id}/summary`}>
-                  <b dir="auto">{past.title}</b>
-                  <span>
-                    {new Intl.DateTimeFormat(
-                      language === "ar" ? "ar-EG-u-nu-latn" : "en",
-                      { day: "numeric", month: "short" }
-                    ).format(new Date(past.when))}
-                    {" · "}
-                    {t("rooms.historyLine", {
-                      minutes: past.minutes,
-                      people: t(
-                        past.people === 1
-                          ? "rooms.people.one"
-                          : past.people === 2
-                            ? "rooms.people.two"
-                            : past.people <= 10
-                              ? "rooms.people.few"
-                              : "rooms.people.many",
-                        { n: past.people }
-                      ),
-                    })}
-                  </span>
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </>
-      ) : null}
     </>
   );
 }

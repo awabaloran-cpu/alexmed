@@ -1,0 +1,99 @@
+/* The home's top bar (components/home/HomeTop.tsx). */
+.bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+/* The wordmark: "Niro" in ink, "Learn" in the highlighter's yellow, deepened
+   so it holds on the paper. */
+.brand {
+  font-size: clamp(1.35rem, 5.4vw, 1.6rem);
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.niro {
+  color: var(--nl-ink);
+}
+
+.learn {
+  color: #f5b400;
+}
+
+.acts {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.add,
+.bell {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 42px;
+  border: 1px solid var(--nl-rule-strong);
+  background: var(--nl-sheet);
+  color: var(--nl-ink);
+  font: inherit;
+  cursor: pointer;
+  transition:
+    background-color 0.15s var(--nl-ease),
+    border-color 0.15s var(--nl-ease);
+}
+
+.add {
+  gap: 7px;
+  padding: 0 14px;
+  border-radius: 999px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.add svg {
+  color: var(--nl-niro);
+}
+
+.bell {
+  position: relative;
+  width: 42px;
+  border-radius: 50%;
+}
+
+.add:hover,
+.bell:hover {
+  border-color: var(--nl-niro);
+  background: var(--nl-niro-soft);
+}
+
+.add:focus-visible,
+.bell:focus-visible {
+  outline: 2px solid var(--nl-niro);
+  outline-offset: 2px;
+}
+
+.count {
+  position: absolute;
+  top: -5px;
+  inset-inline-end: -5px;
+  display: grid;
+  place-items: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  border: 2px solid var(--nl-paper);
+  border-radius: 10px;
+  background: var(--nl-wrong);
+  color: #fff;
+  font-size: 0.68rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
