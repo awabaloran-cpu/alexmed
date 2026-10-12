@@ -103,6 +103,7 @@ function SiteFooter() {
             <h2 className={s.footerHeading}>NiroLearn</h2>
             <Link href="/">الرئيسية</Link>
             <Link href="/learn">Learn</Link>
+            <Link href="/quizzes">اختبارات جاهزة</Link>
             <Link href={BOT_PAGE_PATH}>بوت Telegram</Link>
             <Link href={PAST_QUESTIONS_PATH}>أسئلة سنوات سابقة</Link>
             <Link href={SOLVE_QUESTIONS_PATH}>حل أسئلة بالذكاء الاصطناعي</Link>

@@ -1,0 +1,262 @@
+/* "من نحن" (app/about/page.tsx), inside the marketing site's frame. Ink &
+   highlighter tokens from app/base.css. */
+.wrap {
+  max-width: var(--w, 1120px);
+  margin-inline: auto;
+  padding: 0 var(--gutter, 16px) 72px;
+}
+
+.hero {
+  display: grid;
+  gap: 28px;
+  align-items: center;
+  padding-block: 44px 36px;
+}
+.eyebrow {
+  justify-self: start;
+  padding: 5px 12px;
+  border-radius: 999px;
+  background: var(--nl-marker-soft);
+  color: #5c4700;
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+.heroText {
+  display: grid;
+  gap: 16px;
+}
+.hero h1 {
+  max-width: 18ch;
+  margin: 0;
+  font-size: clamp(2.1rem, 5.6vw, 3.3rem);
+  font-weight: 700;
+  line-height: 1.22;
+  text-wrap: balance;
+}
+.hero h1 mark {
+  padding: 0 0.15em;
+  background: linear-gradient(transparent 58%, var(--nl-marker) 58%);
+  color: inherit;
+}
+.lede {
+  max-width: 54ch;
+  margin: 0;
+  color: var(--nl-ink-2);
+  font-size: clamp(1.05rem, 2.4vw, 1.2rem);
+  line-height: 1.9;
+}
+.figure {
+  position: relative;
+  display: grid;
+  place-items: center;
+  min-height: 240px;
+  border-radius: var(--nl-r-lg);
+  background:
+    radial-gradient(circle at 80% 15%, var(--nl-niro-soft) 0, transparent 55%),
+    radial-gradient(
+      circle at 15% 90%,
+      var(--nl-marker-soft) 0,
+      transparent 50%
+    ),
+    var(--nl-sheet);
+  box-shadow: 0 1px 8px rgba(27, 35, 64, 0.08);
+  overflow: hidden;
+}
+
+/* Three plain facts about the platform. */
+.facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr));
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.facts li {
+  display: grid;
+  gap: 4px;
+  padding: 18px;
+  border: 1px solid var(--nl-rule);
+  border-radius: var(--nl-r-md);
+  background: var(--nl-sheet);
+}
+.facts b {
+  font-size: 1.9rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.15;
+}
+.facts span {
+  color: var(--nl-ink-2);
+  font-size: 0.95rem;
+  line-height: 1.6;
+}
+
+.block {
+  display: grid;
+  gap: 18px;
+  padding-block: 40px;
+  border-top: 1px solid var(--nl-rule);
+  margin-top: 40px;
+}
+.block:first-of-type {
+  margin-top: 28px;
+}
+.block h2 {
+  margin: 0;
+  font-size: clamp(1.45rem, 3.6vw, 1.95rem);
+  font-weight: 700;
+  text-wrap: balance;
+}
+.prose {
+  display: grid;
+  gap: 14px;
+  max-width: 68ch;
+}
+.prose p {
+  margin: 0;
+  color: var(--nl-ink-2);
+  font-size: 1.05rem;
+  line-height: 1.95;
+}
+.prose a,
+.card a,
+.principle a {
+  color: var(--nl-niro-deep);
+  font-weight: 600;
+}
+
+/* What the platform offers: a card a tool. */
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
+  gap: 14px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.card {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  padding: 20px;
+  border: 1px solid var(--nl-rule);
+  border-radius: var(--nl-r-md);
+  background: var(--nl-sheet);
+}
+.icon {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: var(--nl-niro-soft);
+  color: var(--nl-niro-deep);
+}
+.card h3,
+.principle h3 {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 700;
+}
+.card p,
+.principle p {
+  margin: 0;
+  color: var(--nl-ink-2);
+  line-height: 1.8;
+}
+
+/* What we hold to. */
+.principles {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: principle;
+}
+.principle {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 4px 16px;
+  padding: 18px 0;
+  border-bottom: 1px solid var(--nl-rule);
+  counter-increment: principle;
+}
+.principle::before {
+  content: counter(principle);
+  grid-row: 1 / span 2;
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: var(--nl-ink);
+  color: #fff;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.principle:last-child {
+  border-bottom: 0;
+}
+
+.team {
+  display: grid;
+  gap: 12px;
+  padding: 26px;
+  border-radius: var(--nl-r-lg);
+  background: var(--nl-ink);
+  color: #fff;
+}
+.team h2 {
+  margin: 0;
+  font-size: clamp(1.35rem, 3.4vw, 1.7rem);
+}
+.team p {
+  max-width: 62ch;
+  margin: 0;
+  color: rgba(255, 255, 255, 0.84);
+  line-height: 1.9;
+}
+.team a {
+  color: var(--nl-marker);
+  font-weight: 700;
+}
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 6px;
+}
+.button,
+.buttonMain {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 50px;
+  padding: 0 22px;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  border-radius: var(--nl-r-md);
+  color: #fff;
+  font-weight: 700;
+  text-decoration: none;
+}
+.team .buttonMain {
+  border-color: var(--nl-marker);
+  background: var(--nl-marker);
+  color: #1b2340;
+}
+.wrap :is(a):focus-visible {
+  outline: 2px solid var(--nl-niro);
+  outline-offset: 2px;
+}
+
+@media (min-width: 860px) {
+  .hero {
+    grid-template-columns: minmax(0, 7fr) minmax(0, 4fr);
+    padding-block: 68px 44px;
+  }
+  .figure {
+    min-height: 320px;
+  }
+}

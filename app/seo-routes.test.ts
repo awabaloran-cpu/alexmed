@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import robots from "./robots";
 import sitemap from "./sitemap";
 import { INDEXABLE_LEARN_ARTICLES, learnPath } from "@/content/learn/articles";
+import { PUBLIC_QUIZZES, quizPath } from "@/lib/discover/public";
 import { PUBLIC_BASE_PATHS, SITE_URL } from "@/lib/site";
 
 describe("public SEO route contract", () => {
@@ -13,6 +14,9 @@ describe("public SEO route contract", () => {
       "/learn",
       "/learn/glossary",
       ...INDEXABLE_LEARN_ARTICLES.map(article => learnPath(article.slug)),
+      // The catalogue's quizzes are public reading (app/quizzes).
+      "/quizzes",
+      ...PUBLIC_QUIZZES.map(quiz => quizPath(quiz.slug)),
     ];
 
     expect(urls).toEqual(expectedPaths.map(path => `${SITE_URL}${path}`));

@@ -1,0 +1,518 @@
+/* 🌍 The public quiz pages (app/quizzes): the catalogue for anyone to read
+   and play, inside the marketing site's frame. Ink & highlighter tokens
+   from app/base.css; a quiz carries its own colour in --card. Logical
+   properties throughout — an English quiz's page reads left to right. */
+.wrap {
+  max-width: var(--w, 1120px);
+  margin-inline: auto;
+  padding: 0 var(--gutter, 16px) 72px;
+}
+
+/* ── The index ── */
+.hero {
+  display: grid;
+  gap: 14px;
+  padding-block: 44px 28px;
+}
+.eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  justify-self: start;
+  padding: 5px 12px;
+  border-radius: 999px;
+  background: var(--nl-marker-soft);
+  color: #5c4700;
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+.hero h1 {
+  max-width: 20ch;
+  margin: 0;
+  font-size: clamp(2rem, 5.4vw, 3.1rem);
+  font-weight: 700;
+  line-height: 1.2;
+  text-wrap: balance;
+}
+.hero h1 mark {
+  padding: 0 0.15em;
+  background: linear-gradient(transparent 58%, var(--nl-marker) 58%);
+  color: inherit;
+}
+.lede {
+  max-width: 56ch;
+  margin: 0;
+  color: var(--nl-ink-2);
+  font-size: clamp(1.02rem, 2.3vw, 1.15rem);
+  line-height: 1.8;
+}
+.facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 28px;
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.facts li {
+  display: grid;
+  gap: 2px;
+}
+.facts b {
+  font-size: 1.7rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+.facts span {
+  color: var(--nl-ink-3);
+  font-size: 0.88rem;
+}
+.jump {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 6px;
+}
+.chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 40px;
+  padding: 0 14px;
+  border: 1px solid var(--nl-rule-strong);
+  border-radius: 999px;
+  background: var(--nl-sheet);
+  color: var(--nl-ink);
+  font-size: 0.92rem;
+  font-weight: 600;
+  text-decoration: none;
+}
+.chip:hover {
+  border-color: var(--nl-ink);
+}
+.group {
+  display: grid;
+  gap: 16px;
+  padding-block: 28px;
+  border-top: 1px solid var(--nl-rule);
+  scroll-margin-top: 80px;
+}
+.groupHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px 16px;
+}
+.groupHead h2 {
+  margin: 0;
+  font-size: clamp(1.35rem, 3.4vw, 1.7rem);
+  font-weight: 700;
+}
+.groupHead span {
+  color: var(--nl-ink-3);
+  font-size: 0.92rem;
+}
+.subject {
+  display: grid;
+  gap: 10px;
+  scroll-margin-top: 80px;
+}
+.subject h3 {
+  margin: 8px 0 0;
+  color: var(--nl-ink-2);
+  font-size: 1rem;
+  font-weight: 700;
+}
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 250px), 1fr));
+  gap: 14px;
+}
+
+/* A quiz in the grid: its cover on its own colour, the words under. */
+.card {
+  display: grid;
+  grid-template-rows: auto 1fr;
+  border-radius: var(--nl-r-md);
+  background: var(--nl-sheet);
+  color: var(--nl-ink);
+  box-shadow: 0 1px 6px rgba(27, 35, 64, 0.1);
+  text-decoration: none;
+  overflow: hidden;
+  transition:
+    transform 0.18s var(--nl-ease),
+    box-shadow 0.18s var(--nl-ease);
+}
+.card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 10px 26px rgba(27, 35, 64, 0.16);
+}
+.card:focus-visible,
+.chip:focus-visible,
+.back:focus-visible,
+.button:focus-visible,
+.buttonMain:focus-visible,
+.option:focus-visible,
+.again:focus-visible {
+  outline: 2px solid var(--nl-niro);
+  outline-offset: 2px;
+}
+.cardCover {
+  aspect-ratio: 16 / 9;
+}
+.cardBody {
+  display: grid;
+  align-content: start;
+  gap: 6px;
+  padding: 14px;
+}
+.cardBody b {
+  font-size: 1.08rem;
+  font-weight: 700;
+  line-height: 1.4;
+  text-wrap: balance;
+}
+.cardBody p {
+  display: -webkit-box;
+  margin: 0;
+  color: var(--nl-ink-2);
+  font-size: 0.9rem;
+  line-height: 1.65;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+}
+.tag {
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--nl-paper);
+  color: var(--nl-ink-2);
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+/* ── One quiz ── */
+.quizHero {
+  display: grid;
+  gap: 22px;
+  padding-block: 28px 30px;
+}
+.back {
+  justify-self: start;
+  color: var(--nl-ink-2);
+  font-size: 0.92rem;
+  font-weight: 600;
+  text-decoration: none;
+}
+.back:hover {
+  color: var(--nl-ink);
+  text-decoration: underline;
+}
+.quizHead {
+  display: grid;
+  gap: 22px;
+  align-items: center;
+}
+.quizCover {
+  aspect-ratio: 16 / 9;
+  border-radius: var(--nl-r-lg);
+  box-shadow: 0 14px 36px color-mix(in srgb, var(--card) 38%, transparent);
+}
+.quizText {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+.quizText h1 {
+  margin: 0;
+  font-size: clamp(1.8rem, 5vw, 2.7rem);
+  font-weight: 700;
+  line-height: 1.25;
+  text-wrap: balance;
+}
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 4px;
+}
+.button,
+.buttonMain {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 50px;
+  padding: 0 22px;
+  border: 1px solid var(--nl-rule-strong);
+  border-radius: var(--nl-r-md);
+  background: var(--nl-sheet);
+  color: var(--nl-ink);
+  font-weight: 700;
+  text-decoration: none;
+}
+.buttonMain {
+  border-color: var(--nl-ink);
+  background: var(--nl-ink);
+  color: #fff;
+}
+.hint {
+  margin: 0;
+  color: var(--nl-ink-3);
+  font-size: 0.88rem;
+}
+.block {
+  display: grid;
+  gap: 16px;
+  padding-block: 30px;
+  border-top: 1px solid var(--nl-rule);
+}
+.block > h2 {
+  margin: 0;
+  font-size: clamp(1.3rem, 3.2vw, 1.6rem);
+  font-weight: 700;
+}
+
+/* The questions, each a card; the answers two by two. */
+.questions {
+  display: grid;
+  gap: 14px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.question {
+  display: grid;
+  gap: 12px;
+  padding: 18px;
+  border: 1px solid var(--nl-rule);
+  border-radius: var(--nl-r-md);
+  background: var(--nl-sheet);
+}
+.question h3 {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin: 0;
+  font-size: 1.08rem;
+  font-weight: 700;
+  line-height: 1.6;
+}
+.number {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: var(--nl-ink);
+  color: #fff;
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+}
+.options {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+  gap: 8px;
+}
+.option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 52px;
+  padding: 10px 12px;
+  border: 2px solid transparent;
+  border-radius: var(--nl-r-sm);
+  background: color-mix(in srgb, var(--a) 12%, var(--nl-sheet));
+  color: var(--nl-ink);
+  font: inherit;
+  font-weight: 600;
+  line-height: 1.45;
+  text-align: start;
+  cursor: pointer;
+  transition:
+    background-color 0.15s var(--nl-ease),
+    opacity 0.2s var(--nl-ease);
+}
+.option:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--a) 22%, var(--nl-sheet));
+}
+.option:disabled {
+  cursor: default;
+}
+.option0 {
+  --a: #5b4bdb;
+}
+.option1 {
+  --a: #0f8f80;
+}
+.option2 {
+  --a: #b86a0e;
+}
+.option3 {
+  --a: #c93a70;
+}
+.mark {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  background: var(--a);
+  color: #fff;
+}
+.mark svg {
+  fill: currentColor;
+}
+.optionRight {
+  border-color: var(--nl-correct);
+  background: var(--nl-correct-soft);
+}
+.optionRight .mark {
+  background: var(--nl-correct);
+}
+.optionWrong {
+  border-color: var(--nl-wrong);
+  background: var(--nl-wrong-soft);
+}
+.optionWrong .mark {
+  background: var(--nl-wrong);
+}
+.optionRight .mark svg,
+.optionWrong .mark svg {
+  fill: none;
+  stroke-width: 3.2;
+}
+.optionDim {
+  opacity: 0.5;
+}
+.reveal summary {
+  width: max-content;
+  color: var(--nl-ink-3);
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.reveal p {
+  margin: 8px 0 0;
+  padding: 10px 12px;
+  border-radius: var(--nl-r-sm);
+  background: var(--nl-correct-soft);
+  color: var(--nl-ink);
+  font-weight: 600;
+}
+
+/* The score stays in sight at the foot of the screen. */
+.score {
+  position: sticky;
+  bottom: 12px;
+  z-index: 4;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+  margin-top: 14px;
+  padding: 12px 16px;
+  border: 1px solid var(--nl-rule);
+  border-radius: var(--nl-r-md);
+  background: var(--nl-sheet);
+  box-shadow: 0 10px 30px rgba(27, 35, 64, 0.18);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.scoreBar {
+  flex: 1 0 100%;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--nl-rule);
+  overflow: hidden;
+}
+.scoreBar i {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--nl-niro);
+  transition: inline-size 0.25s var(--nl-ease);
+}
+.stars {
+  display: inline-flex;
+  gap: 3px;
+}
+.starOn {
+  fill: var(--nl-marker);
+  color: #c79a00;
+}
+.starOff {
+  color: var(--nl-rule-strong);
+}
+.again {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-inline-start: auto;
+  min-height: 38px;
+  padding: 0 12px;
+  border: 1px solid var(--nl-rule-strong);
+  border-radius: var(--nl-r-sm);
+  background: transparent;
+  color: var(--nl-ink);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* What the app adds, under the questions. */
+.invite {
+  display: grid;
+  gap: 12px;
+  padding: 22px;
+  border-radius: var(--nl-r-lg);
+  background: var(--nl-ink);
+  color: #fff;
+}
+.invite h2 {
+  margin: 0;
+  font-size: clamp(1.25rem, 3.4vw, 1.6rem);
+}
+.invite p {
+  max-width: 60ch;
+  margin: 0;
+  color: rgba(255, 255, 255, 0.82);
+  line-height: 1.8;
+}
+.invite .buttonMain {
+  border-color: var(--nl-marker);
+  background: var(--nl-marker);
+  color: #1b2340;
+}
+.invite .button {
+  border-color: rgba(255, 255, 255, 0.4);
+  background: transparent;
+  color: #fff;
+}
+
+@media (min-width: 820px) {
+  .hero {
+    padding-block: 64px 36px;
+  }
+  .quizHead {
+    grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .card,
+  .scoreBar i {
+    transition: none;
+  }
+  .card:hover {
+    transform: none;
+  }
+}
