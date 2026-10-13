@@ -1,0 +1,86 @@
+/* The home's "add" cards (components/home/HomeAdd.tsx): one row, a card a
+   thing to add, each with its own tint. */
+.add {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  gap: 10px;
+  margin-bottom: 18px;
+}
+
+.card {
+  --tint: var(--nl-niro-soft);
+  --mark: var(--nl-niro-deep);
+  display: grid;
+  align-content: start;
+  justify-items: start;
+  gap: 6px;
+  min-width: 0;
+  padding: 14px 12px;
+  border: 1px solid var(--nl-rule);
+  border-radius: var(--nl-r-lg);
+  background: var(--nl-sheet);
+  color: var(--nl-ink);
+  text-decoration: none;
+  transition:
+    border-color 0.15s var(--nl-ease),
+    transform 0.15s var(--nl-ease);
+}
+
+.card:hover {
+  border-color: var(--mark);
+}
+
+.card:active {
+  transform: scale(0.98);
+}
+
+.card:focus-visible {
+  outline: 2px solid var(--nl-niro);
+  outline-offset: 2px;
+}
+
+.icon {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  margin-bottom: 4px;
+  border-radius: 14px;
+  background: var(--tint);
+  color: var(--mark);
+}
+
+.card strong {
+  font-size: 0.98rem;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.hint {
+  color: var(--nl-ink-3);
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+
+.questions {
+  --tint: var(--nl-marker-soft);
+  --mark: #8a6a00;
+}
+
+.code {
+  --tint: var(--nl-correct-soft);
+  --mark: var(--nl-correct);
+}
+
+@media (min-width: 560px) {
+  .card {
+    padding: 18px 16px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card {
+    transition: none;
+  }
+}

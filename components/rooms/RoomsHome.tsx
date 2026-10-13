@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useDeferredValue, useState } from "react";
-import { Compass, Plus, Search } from "lucide-react";
+import { Plus, Search } from "lucide-react";
 import { COUNTRIES } from "@/lib/study-rooms/countries";
 import { trpc } from "@/lib/trpc-client";
 import {
@@ -168,16 +168,6 @@ export default function RoomsHome() {
       )}
 
       {filters.active ? null : <MyInvites />}
-
-      {filters.active ? null : (
-        <Link className={s.promo} href="/discover">
-          <Compass size={22} aria-hidden="true" />
-          <span>
-            <b>{t("rooms.discover")}</b>
-            <small>{t("rooms.discoverHint")}</small>
-          </span>
-        </Link>
-      )}
 
       {filters.active ? null : (
         <>

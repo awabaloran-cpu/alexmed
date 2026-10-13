@@ -9,6 +9,7 @@ import { useSession } from "next-auth/react";
 import { CalendarClock, ChevronLeft, Loader2, Upload } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { bookDisplayTitle } from "@/lib/book-title";
+import { HomeAdd } from "./HomeAdd";
 
 function greeting(hour: number) {
   if (hour < 5) return "سهرة دراسة";
@@ -181,6 +182,8 @@ export function StudyNext() {
           {firstName ? `، ${firstName}` : ""}
         </h1>
       </header>
+
+      <HomeAdd />
 
       <NextTaskCard state={state} />
 

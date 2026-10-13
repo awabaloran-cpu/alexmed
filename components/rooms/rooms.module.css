@@ -2362,27 +2362,3 @@ body:has(.present) :global(.student-bottom-nav) {
 .podium3 span {
   height: 42px;
 }
-.promo {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 12px 14px;
-  border: 1px solid var(--rule);
-  border-radius: 14px;
-  background: var(--niro-soft);
-  color: var(--ink);
-  text-decoration: none;
-}
-.promo svg {
-  flex: none;
-  color: var(--niro-deep);
-}
-.promo span {
-  display: grid;
-  gap: 2px;
-  min-width: 0;
-}
-.promo small {
-  color: var(--ink2);
-  font-size: 12.5px;
-}
