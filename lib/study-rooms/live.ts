@@ -3,18 +3,32 @@
 // member and the permission on the server (requireAction); the room's `seq`
 // moves on with every change, so a page that polls — or, later, listens —
 // knows when to read again.
-import { and, asc, count, eq, gt, sql } from "drizzle-orm";
+import { and, asc, count, eq, gt, inArray, sql } from "drizzle-orm";
 import {
   books,
   studyRoomMarks,
   studyRoomMessages,
   studyRooms,
   users,
+  type StudyInkPoint,
   type StudyMarkRect,
 } from "../../drizzle/schema";
 import { getDb, requireDb } from "../db";
 import { studyRoomsEnabled } from "./config";
 import { RoomError } from "./errors";
+import {
+  cleanPoints,
+  INK_COLORS,
+  INK_EDIT_MAX,
+  INK_PER_MEMBER,
+  INK_PER_MINUTE,
+  INK_PER_PAGE,
+  isInkColor,
+  isInkWidth,
+  movePoints,
+  moveRects,
+  type InkTool,
+} from "./ink";
 import { can } from "./permissions";
 import type { Viewer } from "./profile";
 import { logRoomEvent, requireAction, requireMember } from "./rooms";
@@ -358,7 +372,8 @@ export async function addMark(
   ) {
     throw new RoomError("rate_limited");
   }
-  const live = sql`${studyRoomMarks.deletedAt} is null`;
+  // Highlights count against highlights only; strokes have their own.
+  const live = sql`${studyRoomMarks.deletedAt} is null and ${studyRoomMarks.kind} = 'rect'`;
   const [mine] = await db
     .select({ n: count() })
     .from(studyRoomMarks)
@@ -426,6 +441,8 @@ export async function listMarks(viewer: Viewer, roomId: string, page?: number) {
         // Highlights belong to the file they were made on.
         eq(studyRoomMarks.bookId, room.bookId),
         sql`${studyRoomMarks.deletedAt} is null`,
+        // An app that knows only rectangles is never handed a stroke.
+        eq(studyRoomMarks.kind, "rect"),
         page ? eq(studyRoomMarks.pageNumber, page) : undefined,
         notBlocked(viewer.userId, sql`"study_room_marks"."userId"`)
       )
@@ -459,5 +476,261 @@ export async function deleteMark(
     .update(studyRoomMarks)
     .set({ deletedAt: new Date() })
     .where(eq(studyRoomMarks.id, markId));
+  await nextSeq(db, roomId);
+}
+
+// ── Ink: the pen and the highlighter ──────────────────────────────────────
+// Strokes are rows of study_room_marks too (kind "pen" / "highlighter"), so
+// they share the highlights' file, page, author and removal rules. A stroke
+// is drawn by whoever may highlight; it is moved, restyled or rubbed out by
+// its author, the host or a co-host — like a highlight.
+
+export async function addStroke(
+  viewer: Viewer,
+  roomId: string,
+  input: {
+    page: number;
+    tool: InkTool;
+    color: string;
+    width: number;
+    points: StudyInkPoint[];
+    clientId: string;
+  }
+) {
+  const db = requireDb();
+  const { room } = await requireAction(db, roomId, viewer.userId, "mark");
+  if (!room.bookId) throw new RoomError("no_file");
+  const points = cleanPoints(input.points);
+  if (
+    !points ||
+    input.page < 1 ||
+    !isInkColor(input.tool, input.color) ||
+    !isInkWidth(input.width)
+  ) {
+    throw new RoomError("bad_page");
+  }
+
+  const [again] = await db
+    .select({ id: studyRoomMarks.id })
+    .from(studyRoomMarks)
+    .where(
+      and(
+        eq(studyRoomMarks.roomId, roomId),
+        eq(studyRoomMarks.userId, viewer.userId),
+        eq(studyRoomMarks.clientId, input.clientId)
+      )
+    )
+    .limit(1);
+  if (again) return again;
+
+  const strokes = sql`${studyRoomMarks.kind} <> 'rect'`;
+  const [recent] = await db
+    .select({ n: count() })
+    .from(studyRoomMarks)
+    .where(
+      and(
+        eq(studyRoomMarks.roomId, roomId),
+        eq(studyRoomMarks.userId, viewer.userId),
+        strokes,
+        gt(studyRoomMarks.createdAt, new Date(Date.now() - 60_000))
+      )
+    );
+  if (Number(recent?.n ?? 0) >= INK_PER_MINUTE) {
+    throw new RoomError("rate_limited");
+  }
+  const live = sql`${studyRoomMarks.deletedAt} is null and ${strokes}`;
+  const [mine] = await db
+    .select({ n: count() })
+    .from(studyRoomMarks)
+    .where(
+      and(
+        eq(studyRoomMarks.roomId, roomId),
+        eq(studyRoomMarks.userId, viewer.userId),
+        live
+      )
+    );
+  const [onPage] = await db
+    .select({ n: count() })
+    .from(studyRoomMarks)
+    .where(
+      and(
+        eq(studyRoomMarks.roomId, roomId),
+        eq(studyRoomMarks.bookId, room.bookId),
+        eq(studyRoomMarks.pageNumber, input.page),
+        live
+      )
+    );
+  if (
+    Number(mine?.n ?? 0) >= INK_PER_MEMBER ||
+    Number(onPage?.n ?? 0) >= INK_PER_PAGE
+  ) {
+    throw new RoomError("limit_reached");
+  }
+
+  const [stroke] = await db
+    .insert(studyRoomMarks)
+    .values({
+      roomId,
+      userId: viewer.userId,
+      bookId: room.bookId,
+      pageNumber: input.page,
+      kind: input.tool,
+      color: input.color,
+      rects: [],
+      points,
+      width: Math.round(input.width * 10) / 10,
+      clientId: input.clientId,
+    })
+    .returning({ id: studyRoomMarks.id });
+  await nextSeq(db, roomId);
+  return stroke;
+}
+
+// Everything drawn on a page — highlights and strokes — with its author.
+export async function listInk(viewer: Viewer, roomId: string, page: number) {
+  const db = requireDb();
+  const { room } = await requireMember(db, roomId, viewer.userId);
+  if (!room.bookId) return [];
+  return db
+    .select({
+      id: studyRoomMarks.id,
+      userId: studyRoomMarks.userId,
+      name: users.name,
+      pageNumber: studyRoomMarks.pageNumber,
+      kind: studyRoomMarks.kind,
+      color: studyRoomMarks.color,
+      rects: studyRoomMarks.rects,
+      points: studyRoomMarks.points,
+      width: studyRoomMarks.width,
+      text: studyRoomMarks.text,
+      createdAt: studyRoomMarks.createdAt,
+    })
+    .from(studyRoomMarks)
+    .leftJoin(users, eq(users.id, studyRoomMarks.userId))
+    .where(
+      and(
+        eq(studyRoomMarks.roomId, roomId),
+        eq(studyRoomMarks.bookId, room.bookId),
+        sql`${studyRoomMarks.deletedAt} is null`,
+        eq(studyRoomMarks.pageNumber, page),
+        notBlocked(viewer.userId, sql`"study_room_marks"."userId"`)
+      )
+    )
+    .orderBy(asc(studyRoomMarks.createdAt))
+    .limit(INK_PER_PAGE + 400);
+}
+
+// The marks named, on the room's file, each one the viewer may change —
+// or nothing at all.
+async function ownedInk(viewer: Viewer, roomId: string, ids: string[]) {
+  const db = requireDb();
+  const { actor, room } = await requireMember(db, roomId, viewer.userId);
+  const unique = [...new Set(ids)];
+  if (!unique.length || unique.length > INK_EDIT_MAX || !room.bookId) {
+    throw new RoomError("not_available");
+  }
+  const rows = await db
+    .select({
+      id: studyRoomMarks.id,
+      userId: studyRoomMarks.userId,
+      kind: studyRoomMarks.kind,
+      color: studyRoomMarks.color,
+      rects: studyRoomMarks.rects,
+      points: studyRoomMarks.points,
+      width: studyRoomMarks.width,
+    })
+    .from(studyRoomMarks)
+    .where(
+      and(
+        eq(studyRoomMarks.roomId, roomId),
+        eq(studyRoomMarks.bookId, room.bookId),
+        inArray(studyRoomMarks.id, unique),
+        sql`${studyRoomMarks.deletedAt} is null`
+      )
+    );
+  if (rows.length !== unique.length) throw new RoomError("not_available");
+  const anyone = can(actor, room.settings, "delete_any_mark");
+  if (!anyone && rows.some(row => row.userId !== viewer.userId)) {
+    throw new RoomError("not_allowed");
+  }
+  return { db, rows };
+}
+
+// Moves the marks named, and gives the strokes among them another look:
+// a colour, a width, or the other tool (the pen's writing turned into a
+// highlight, or back).
+export async function editInk(
+  viewer: Viewer,
+  roomId: string,
+  input: {
+    ids: string[];
+    dx?: number;
+    dy?: number;
+    tool?: InkTool;
+    color?: string;
+    width?: number;
+  }
+) {
+  const dx = input.dx ?? 0;
+  const dy = input.dy ?? 0;
+  if (
+    !Number.isFinite(dx) ||
+    !Number.isFinite(dy) ||
+    Math.abs(dx) > 1 ||
+    Math.abs(dy) > 1 ||
+    (input.width !== undefined && !isInkWidth(input.width))
+  ) {
+    throw new RoomError("bad_page");
+  }
+  const { db, rows } = await ownedInk(viewer, roomId, input.ids);
+  await db.transaction(async tx => {
+    for (const row of rows) {
+      if (row.kind === "rect") {
+        // A highlight only moves; it keeps its own colours.
+        if (dx || dy) {
+          await tx
+            .update(studyRoomMarks)
+            .set({ rects: moveRects(row.rects, dx, dy) })
+            .where(eq(studyRoomMarks.id, row.id));
+        }
+        continue;
+      }
+      const tool = input.tool ?? (row.kind as InkTool);
+      const wanted = input.color ?? row.color;
+      // A colour the other tool does not have becomes that tool's first.
+      const color = isInkColor(tool, wanted) ? wanted : INK_COLORS[tool][0];
+      await tx
+        .update(studyRoomMarks)
+        .set({
+          kind: tool,
+          color,
+          width:
+            input.width !== undefined
+              ? Math.round(input.width * 10) / 10
+              : row.width,
+          points:
+            (dx || dy) && row.points
+              ? movePoints(row.points, dx, dy)
+              : row.points,
+        })
+        .where(eq(studyRoomMarks.id, row.id));
+    }
+    await nextSeq(tx, roomId);
+  });
+}
+
+// Rubs out the marks named: all of them, or — when one is not the
+// viewer's to remove — none.
+export async function deleteInk(viewer: Viewer, roomId: string, ids: string[]) {
+  const { db, rows } = await ownedInk(viewer, roomId, ids);
+  await db
+    .update(studyRoomMarks)
+    .set({ deletedAt: new Date() })
+    .where(
+      inArray(
+        studyRoomMarks.id,
+        rows.map(row => row.id)
+      )
+    );
   await nextSeq(db, roomId);
 }

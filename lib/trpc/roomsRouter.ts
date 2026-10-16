@@ -24,8 +24,12 @@ import {
 } from "../study-rooms/invites";
 import {
   addMark,
+  addStroke,
+  deleteInk,
   deleteMark,
   deleteMessage,
+  editInk,
+  listInk,
   listMarks,
   listMessages,
   MARK_COLORS,
@@ -36,6 +40,12 @@ import {
   sendMessage,
   setSharedPage,
 } from "../study-rooms/live";
+import {
+  INK_EDIT_MAX,
+  INK_MAX_POINTS,
+  INK_TOOLS,
+  type InkTool,
+} from "../study-rooms/ink";
 import {
   advanceQuiz,
   answerQuiz,
@@ -520,6 +530,64 @@ export const roomsRouter = router({
     )
     .mutation(({ ctx, input: { roomId, ...mark } }) =>
       guard(async () => addMark(await getViewer(ctx.user.id), roomId, mark))
+    ),
+
+  // 🖊 The pen and the highlighter (lib/study-rooms/ink.ts): everything
+  // drawn on a page, a new stroke, and changing or rubbing out several.
+  ink: roomsProcedure
+    .input(z.object({ roomId: uuid, page: z.number().int().min(1) }))
+    .query(({ ctx, input }) =>
+      guard(async () =>
+        listInk(await getViewer(ctx.user.id), input.roomId, input.page)
+      )
+    ),
+
+  addStroke: roomsProcedure
+    .input(
+      z.object({
+        roomId: uuid,
+        page: z.number().int().min(1).max(100_000),
+        tool: z.enum(INK_TOOLS as [InkTool, ...InkTool[]]),
+        color: z.string().regex(/^#[0-9a-f]{6}$/),
+        width: z.number(),
+        points: z
+          .array(z.tuple([z.number(), z.number()]))
+          .min(1)
+          .max(INK_MAX_POINTS),
+        clientId: z.string().regex(/^[\w-]{8,40}$/),
+      })
+    )
+    .mutation(({ ctx, input: { roomId, ...stroke } }) =>
+      guard(async () => addStroke(await getViewer(ctx.user.id), roomId, stroke))
+    ),
+
+  editInk: roomsProcedure
+    .input(
+      z.object({
+        roomId: uuid,
+        ids: z.array(uuid).min(1).max(INK_EDIT_MAX),
+        dx: z.number().optional(),
+        dy: z.number().optional(),
+        tool: z.enum(INK_TOOLS as [InkTool, ...InkTool[]]).optional(),
+        color: z
+          .string()
+          .regex(/^#[0-9a-f]{6}$/)
+          .optional(),
+        width: z.number().optional(),
+      })
+    )
+    .mutation(({ ctx, input: { roomId, ...edit } }) =>
+      guard(async () => editInk(await getViewer(ctx.user.id), roomId, edit))
+    ),
+
+  deleteInk: roomsProcedure
+    .input(
+      z.object({ roomId: uuid, ids: z.array(uuid).min(1).max(INK_EDIT_MAX) })
+    )
+    .mutation(({ ctx, input }) =>
+      guard(async () =>
+        deleteInk(await getViewer(ctx.user.id), input.roomId, input.ids)
+      )
     ),
 
   deleteMark: roomsProcedure
