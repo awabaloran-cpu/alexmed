@@ -3630,10 +3630,18 @@ export const studyRoomMessages = pgTable(
 );
 
 export type StudyMarkRect = { x: number; y: number; w: number; h: number };
+// A stroke's points, [x, y] fractions (0–1) of the page's width and height.
+export type StudyInkPoint = [number, number];
 
 // A highlight everyone in the room sees. Rectangles are fractions (0–1) of
 // the page, so they sit right on any screen; the PDF itself is never
 // changed. A student's PRIVATE highlights stay in book_page_marks.
+//
+// 🖊 Since 0052 a row may also be a stroke of the pen or the highlighter
+// (`kind`), drawn through `points` with a `width` in thousandths of the
+// page's width and a colour of the room's palette ("#rrggbb"). Its `rects`
+// is then empty, and the old `marks` list never returns it, so an app that
+// knows only rectangles is not shown strokes as boxes.
 export const studyRoomMarks = pgTable(
   "study_room_marks",
   {
@@ -3649,6 +3657,10 @@ export const studyRoomMarks = pgTable(
     // "yellow" | "green" | "pink" | "blue"
     color: varchar("color", { length: 8 }).notNull(),
     rects: jsonb("rects").$type<StudyMarkRect[]>().notNull(),
+    // "rect" | "pen" | "highlighter"
+    kind: varchar("kind", { length: 12 }).default("rect").notNull(),
+    points: jsonb("points").$type<StudyInkPoint[]>(),
+    width: real("width"),
     text: text("text"),
     clientId: varchar("clientId", { length: 40 }).notNull(),
     deletedAt: timestamp("deletedAt", { withTimezone: true }),

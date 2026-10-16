@@ -625,15 +625,12 @@ export default function LiveRoom({ roomId }: { roomId: string }) {
           {room.bookId ? (
             <div hidden={watching} className={s.presentMain}>
               <RoomDesk
-                present
                 onInfo={onDeskInfo}
                 roomId={roomId}
                 bookId={room.bookId}
                 sharedPage={room.sharedPage}
                 canLead={me.can.lead_page}
                 canMoveFreely={me.can.free_nav}
-                canChoose={me.can.edit_room}
-                onChoose={() => setSheet({ kind: "file" })}
                 onPage={onPage}
                 jump={jump}
                 roomSeq={room.seq}

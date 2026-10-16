@@ -2090,6 +2090,179 @@ body:has(.present) :global(.student-bottom-nav) {
   display: block;
   background: #fff;
 }
+/* The pages one under the other, centred when narrower than the screen. */
+.pColumn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  width: max-content;
+  min-width: 100%;
+  margin-inline: auto;
+  box-sizing: border-box;
+}
+/* A tool in hand: the page does not bounce under the pen. */
+.pStageInk {
+  overscroll-behavior: none;
+}
+.pageSlot {
+  position: relative;
+  flex: none;
+  background: #fff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18);
+  line-height: 0;
+}
+.pageSlot canvas {
+  width: 100%;
+  height: 100%;
+}
+
+/* 🖊 The room's ink over a page. */
+.inkLayer {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+.inkLayerOn {
+  pointer-events: auto;
+  /* One finger writes; two move the page (RoomDesk). */
+  touch-action: none;
+  cursor: crosshair;
+}
+.inkErase {
+  cursor: cell;
+}
+.inkSoft {
+  opacity: 0.42;
+  mix-blend-mode: multiply;
+}
+.inkFrame {
+  fill: rgba(51, 85, 255, 0.06);
+  stroke: #3355ff;
+  stroke-width: 2;
+  stroke-dasharray: 8 6;
+  vector-effect: non-scaling-stroke;
+}
+.inkLasso {
+  stroke: #3355ff;
+  stroke-width: 2;
+  stroke-dasharray: 6 5;
+  vector-effect: non-scaling-stroke;
+}
+/* The writing tools: one small bar over the top of the pages. */
+.inkBar {
+  position: absolute;
+  top: 8px;
+  inset-inline: 0;
+  z-index: 3;
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  padding-inline: 8px;
+  pointer-events: none;
+}
+.inkRow {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  max-width: 100%;
+  min-height: 44px;
+  padding: 3px;
+  border: 1px solid var(--rule);
+  border-radius: 14px;
+  background: var(--sheet);
+  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.18);
+  overflow-x: auto;
+  scrollbar-width: none;
+  pointer-events: auto;
+}
+.inkRowWrap {
+  flex-wrap: wrap;
+  justify-content: center;
+  overflow-x: visible;
+}
+.inkRow::-webkit-scrollbar {
+  display: none;
+}
+.inkBtn {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 40px;
+  height: 38px;
+  padding: 0;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--ink2);
+  cursor: pointer;
+}
+.inkBtn:hover {
+  background: var(--raised);
+}
+.inkBtn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.inkBtn:focus-visible,
+.inkSwatch:focus-visible {
+  outline: 2px solid var(--niro);
+  outline-offset: 1px;
+}
+.inkBtnOn {
+  background: var(--niro-soft);
+  color: var(--niro);
+}
+.inkDone {
+  color: var(--ok);
+}
+.inkDot {
+  display: block;
+  border-radius: 50%;
+  /* A dark ink still shows on the night bar. */
+  box-shadow:
+    0 0 0 2px var(--sheet),
+    0 0 0 3px var(--ink3);
+}
+.inkSwatch {
+  flex: none;
+  width: 30px;
+  height: 30px;
+  margin: 4px;
+  padding: 0;
+  border: 2px solid var(--sheet);
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px var(--rule);
+  cursor: pointer;
+}
+.inkSwatchOn {
+  box-shadow: 0 0 0 2px var(--ink);
+}
+.inkCount {
+  flex: none;
+  padding-inline: 8px;
+  color: var(--ink2);
+  font-size: 0.82rem;
+  white-space: nowrap;
+}
+.inkHint {
+  margin: 0;
+  padding: 6px 12px;
+  border-radius: 10px;
+  background: var(--ink);
+  color: var(--sheet);
+  font-size: 0.8rem;
+  line-height: 1.4;
+  pointer-events: none;
+}
+@media (max-width: 380px) {
+  .inkBtn {
+    width: 36px;
+  }
+}
 .stageNote {
   display: grid;
   justify-items: center;
@@ -2126,6 +2299,9 @@ body:has(.present) :global(.student-bottom-nav) {
   max-width: calc(100% - 24px);
   margin-inline: auto;
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.2);
+}
+.pRejoinLow {
+  top: 62px;
 }
 .pTools {
   position: absolute;

@@ -310,6 +310,189 @@ describe("shared highlights", () => {
     expect(cleanRects(Array.from({ length: 41 }, () => rect))).toBeNull();
   });
 
+  it("the pen and the highlighter: drawn, seen with the author, never shown to an old app", async () => {
+    const stroke = await as(SARA).addStroke({
+      roomId,
+      page: 2,
+      tool: "pen",
+      color: "#3355ff",
+      width: 4,
+      points: [
+        [0.1, 0.1],
+        [0.2, 0.15],
+      ],
+      clientId: cid(),
+    });
+    await as(SARA).addMark({
+      roomId,
+      page: 2,
+      color: "yellow",
+      rects: [rect],
+      clientId: cid(),
+    });
+    const ink = await as(OMAR).ink({ roomId, page: 2 });
+    expect(ink.map(mark => mark.kind)).toEqual(["pen", "rect"]);
+    expect(ink[0]).toMatchObject({
+      id: stroke.id,
+      name: "سارة",
+      color: "#3355ff",
+      width: 4,
+      points: [
+        [0.1, 0.1],
+        [0.2, 0.15],
+      ],
+    });
+    // The highlights' own list (what an older app reads) has no strokes.
+    expect(
+      (await as(OMAR).marks({ roomId, page: 2 })).map(mark => mark.color)
+    ).toEqual(["yellow"]);
+    expect(await refusal(as(OUTSIDER).ink({ roomId, page: 2 }))).toBe(
+      "NOT_FOUND:not_available"
+    );
+  });
+
+  it("refuses a colour off the palette, a point off the page and a resend twice", async () => {
+    const stroke = {
+      roomId,
+      page: 1,
+      tool: "highlighter" as const,
+      color: "#ffd43b",
+      width: 22,
+      points: [[0.5, 0.5]] as [number, number][],
+      clientId: cid(),
+    };
+    expect(
+      await refusal(as(SARA).addStroke({ ...stroke, color: "#3355ff" }))
+    ).toBe("BAD_REQUEST:bad_page");
+    expect(
+      await refusal(as(SARA).addStroke({ ...stroke, points: [[1.2, 0.5]] }))
+    ).toBe("BAD_REQUEST:bad_page");
+    expect(await refusal(as(SARA).addStroke({ ...stroke, width: 80 }))).toBe(
+      "BAD_REQUEST:bad_page"
+    );
+    const first = await as(SARA).addStroke(stroke);
+    const again = await as(SARA).addStroke(stroke);
+    expect(again.id).toBe(first.id);
+    expect(await as(SARA).ink({ roomId, page: 1 })).toHaveLength(1);
+  });
+
+  it("moves and restyles the author's own; another's only for the host", async () => {
+    const pen = await as(SARA).addStroke({
+      roomId,
+      page: 1,
+      tool: "pen",
+      color: "#1b2340",
+      width: 4,
+      points: [
+        [0.1, 0.1],
+        [0.95, 0.2],
+      ],
+      clientId: cid(),
+    });
+    const box = await as(SARA).addMark({
+      roomId,
+      page: 1,
+      color: "green",
+      rects: [rect],
+      clientId: cid(),
+    });
+    await as(SARA).editInk({ roomId, ids: [pen.id, box.id], dx: 0.1, dy: 0.1 });
+    let ink = await as(SARA).ink({ roomId, page: 1 });
+    // Kept on the page: the far end stops at the edge.
+    expect(ink[0].points).toEqual([
+      [0.2, 0.2],
+      [1, 0.3],
+    ]);
+    expect(ink[1].rects).toEqual([{ ...rect, x: 0.2, y: 0.3 }]);
+    expect(ink[1].color).toBe("green");
+    // The pen's writing turned into a highlight takes a highlighter colour.
+    await as(SARA).editInk({
+      roomId,
+      ids: [pen.id],
+      tool: "highlighter",
+      width: 22,
+    });
+    ink = await as(SARA).ink({ roomId, page: 1 });
+    expect(ink[0]).toMatchObject({
+      kind: "highlighter",
+      color: "#ffd43b",
+      width: 22,
+    });
+    expect(
+      await refusal(as(OMAR).editInk({ roomId, ids: [pen.id], dx: 0.1 }))
+    ).toBe("FORBIDDEN:not_allowed");
+    expect(
+      await refusal(
+        as(AHMED).editInk({ roomId, ids: [pen.id], color: "#ffa94d" })
+      )
+    ).toBe("allowed");
+    expect(
+      await refusal(as(SARA).editInk({ roomId, ids: [pen.id], dx: 3 }))
+    ).toBe("BAD_REQUEST:bad_page");
+  });
+
+  it("rubs out all the marks named, or none when one is not the viewer's", async () => {
+    const stroke = (userId: string) =>
+      as(userId).addStroke({
+        roomId,
+        page: 3,
+        tool: "pen",
+        color: "#dc3f46",
+        width: 2,
+        points: [[0.3, 0.3]],
+        clientId: cid(),
+      });
+    const mine = await stroke(SARA);
+    const omars = await stroke(OMAR);
+    expect(
+      await refusal(as(SARA).deleteInk({ roomId, ids: [mine.id, omars.id] }))
+    ).toBe("FORBIDDEN:not_allowed");
+    expect(await as(SARA).ink({ roomId, page: 3 })).toHaveLength(2);
+    await as(SARA).deleteInk({ roomId, ids: [mine.id] });
+    await as(AHMED).deleteInk({ roomId, ids: [omars.id] });
+    expect(await as(SARA).ink({ roomId, page: 3 })).toEqual([]);
+    expect(await refusal(as(SARA).deleteInk({ roomId, ids: [mine.id] }))).toBe(
+      "NOT_FOUND:not_available"
+    );
+  });
+
+  it("strokes are not held to the highlights' limit, nor highlights to theirs", async () => {
+    await test.client.query(
+      `INSERT INTO study_room_marks ("roomId", "userId", "bookId", "pageNumber", color, rects, kind, points, width, "clientId", "createdAt")
+       SELECT $1, $2, $3, 1, '#1b2340', '[]'::jsonb, 'pen', '[[0.1,0.1]]'::jsonb, 4, 'ink-' || n, now() - interval '1 hour'
+       FROM generate_series(1, 100) n`,
+      [roomId, SARA, BOOK]
+    );
+    expect(
+      await refusal(
+        as(SARA).addMark({
+          roomId,
+          page: 1,
+          color: "yellow",
+          rects: [rect],
+          clientId: cid(),
+        })
+      )
+    ).toBe("allowed");
+  });
+
+  it("drawing needs the right to highlight", async () => {
+    await as(AHMED).update({ roomId, settings: { marks: false } });
+    expect(
+      await refusal(
+        as(SARA).addStroke({
+          roomId,
+          page: 1,
+          tool: "pen",
+          color: "#1b2340",
+          width: 4,
+          points: [[0.2, 0.2]],
+          clientId: cid(),
+        })
+      )
+    ).toBe("FORBIDDEN:not_allowed");
+  });
+
   it("holds a member to a number of highlights", async () => {
     await test.client.query(
       `INSERT INTO study_room_marks ("roomId", "userId", "bookId", "pageNumber", color, rects, "clientId", "createdAt")
