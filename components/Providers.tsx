@@ -1,6 +1,7 @@
 "use client";
 
 import ErrorBoundary from "@/components/ErrorBoundary";
+import ActiveRoomProvider from "@/components/rooms/ActiveRoom";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ThemeProvider } from "@/contexts/ThemeContext";
@@ -38,7 +39,8 @@ export default function Providers({ children }: { children: React.ReactNode }) {
             <ThemeProvider defaultTheme="light">
               <TooltipProvider>
                 <Toaster />
-                {children}
+                {/* The study room the student is in, over every page. */}
+                <ActiveRoomProvider>{children}</ActiveRoomProvider>
               </TooltipProvider>
             </ThemeProvider>
           </QueryClientProvider>

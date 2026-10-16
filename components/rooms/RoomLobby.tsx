@@ -3,14 +3,31 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
+import { Headphones, MicOff } from "lucide-react";
+import type { RoomsKey } from "@/lib/study-rooms/i18n";
 import { trpc } from "@/lib/trpc-client";
-import { Avatar, SubjectLine } from "./parts";
-import { RulesScreen } from "./RoomCreate";
+import {
+  Avatar,
+  AvatarStack,
+  Sheet,
+  SubjectLine,
+  sectionColor,
+  sectionIcon,
+  sectionName,
+} from "./parts";
 import { useRooms } from "./RoomsProvider";
 import s from "./rooms.module.css";
 
-// The lobby: who is inside and what they study, before stepping in. Every
-// refusal (full, locked, ended, banned, not available) is said here.
+const LANGUAGE_KEYS: Record<string, RoomsKey> = {
+  ar: "lang.ar",
+  en: "lang.en",
+  mixed: "lang.mixed",
+};
+
+// The lobby (design ز2): what the room is, who is inside and who leads,
+// before stepping in. Every refusal (full, locked, ended, banned, not
+// available) is said here; a public room asks for its rules once, right
+// here, with the rules a tap away.
 export default function RoomLobby({
   roomId,
   invite: inviteProp,
@@ -18,19 +35,23 @@ export default function RoomLobby({
   roomId?: string;
   invite?: string;
 }) {
-  const { t, tError } = useRooms();
+  const { t, tError, language, refreshViewer } = useRooms();
   const router = useRouter();
   const invite = useSearchParams().get("i") ?? inviteProp ?? undefined;
-  const [rules, setRules] = useState(false);
+  const [agreed, setAgreed] = useState(false);
+  const [readingRules, setReadingRules] = useState(false);
   const preview = trpc.rooms.preview.useQuery(
     roomId ? { roomId, invite } : { invite },
     { retry: false, refetchInterval: 8000 }
   );
+  const sections = trpc.rooms.sections.useQuery(undefined, {
+    staleTime: 60_000,
+  });
   const join = trpc.rooms.join.useMutation({
     onSuccess: result => router.replace(`/rooms/${result.roomId}/live`),
-    onError: error => {
-      if (error.message === "rules_required") setRules(true);
-    },
+  });
+  const accept = trpc.rooms.setProfile.useMutation({
+    onSuccess: () => refreshViewer(),
   });
   const room = preview.data;
 
@@ -66,16 +87,6 @@ export default function RoomLobby({
       </div>
     );
   }
-  if (rules && room.needsRules) {
-    return (
-      <RulesScreen
-        onAccepted={() => {
-          setRules(false);
-          join.mutate({ roomId: room.id, invite });
-        }}
-      />
-    );
-  }
 
   const blocked = room.banned
     ? t("error.banned_from_room")
@@ -84,21 +95,74 @@ export default function RoomLobby({
       : room.full
         ? t("error.room_full")
         : null;
+  const section = sections.data?.find(item => item.id === room.sectionId);
+  const Icon = sectionIcon(section?.icon ?? "");
+  const host = room.members.find(member => member.role === "host");
+  const busy = join.isPending || accept.isPending;
+  const canJoin = !blocked && !busy && (!room.needsRules || agreed);
+  const error = join.error ?? accept.error;
+
+  const enter = async () => {
+    if (room.needsRules) {
+      try {
+        await accept.mutateAsync({ acceptRules: true });
+      } catch {
+        return;
+      }
+    }
+    join.mutate({ roomId: room.id, invite });
+  };
 
   return (
-    <div className={s.panel}>
-      <div className={s.row}>
-        <SubjectLine room={room} />
-        <span className={s.tag}>
-          {room.visibility === "private" ? t("card.private") : t("card.public")}
+    <div className={s.door}>
+      <header
+        className={`${s.doorHead} ${sectionColor(section?.color ?? "med")}`}
+      >
+        <span className={s.doorSection}>
+          <i aria-hidden="true">
+            <Icon size={16} />
+          </i>
+          {section ? sectionName(section, language) : null}
+          <SubjectLine room={room} />
+        </span>
+        <h1 dir="auto">{room.title}</h1>
+      </header>
+
+      <div className={s.doorFacts}>
+        <span>
+          <b dir="ltr">
+            {room.memberCount} / {room.capacity}
+          </b>
+          <small>{t("app.factInside")}</small>
+        </span>
+        <span>
+          <b>
+            {room.visibility === "private"
+              ? t("card.private")
+              : t("card.public")}
+          </b>
+          <small>{t("app.factKind")}</small>
+        </span>
+        <span>
+          <b>{t(LANGUAGE_KEYS[room.language] ?? "lang.ar")}</b>
+          <small>{t("app.factLanguage")}</small>
         </span>
       </div>
-      <h1 dir="auto">{room.title}</h1>
-      <p className={s.sub}>
-        {t("lobby.inside")} ·{" "}
-        {t("card.members", { n: room.memberCount, max: room.capacity })}
-      </p>
+
       {room.members.length ? (
+        <div className={s.doorWho}>
+          <AvatarStack people={room.members.slice(0, 4)} />
+          <span>
+            {host
+              ? t("app.leading", { name: host.name ?? "" })
+              : t("lobby.inside")}
+          </span>
+        </div>
+      ) : (
+        <p className={s.meta}>{t("lobby.nobody")}</p>
+      )}
+
+      {room.members.length > 4 ? (
         <div className={s.seats}>
           {room.members.map(member => (
             <span
@@ -112,9 +176,8 @@ export default function RoomLobby({
             </span>
           ))}
         </div>
-      ) : (
-        <p className={s.meta}>{t("lobby.nobody")}</p>
-      )}
+      ) : null}
+
       {room.womenOnly ? (
         <span
           className={`${s.chip} ${s.chipWomen}`}
@@ -123,28 +186,81 @@ export default function RoomLobby({
           {t("filter.womenOnly")}
         </span>
       ) : null}
+
+      {room.needsRules ? (
+        <div className={s.doorRules}>
+          <label>
+            <input
+              type="checkbox"
+              checked={agreed}
+              onChange={event => setAgreed(event.target.checked)}
+            />
+            {t("app.agreeRules")}
+          </label>
+          <button
+            type="button"
+            className={s.readerLink}
+            onClick={() => setReadingRules(true)}
+          >
+            {t("app.readRules")}
+          </button>
+        </div>
+      ) : null}
+
       {blocked ? (
         <p className={s.note} role="status">
           {blocked}
         </p>
       ) : null}
-      {join.error && join.error.message !== "rules_required" ? (
+      {error ? (
         <p className={s.errorNote} role="alert">
-          {tError(join.error)}
+          {tError(error)}
         </p>
       ) : null}
-      <button
-        type="button"
-        className={`${s.btn} ${s.primary} ${s.wide}`}
-        disabled={!!blocked || join.isPending}
-        onClick={() => {
-          if (room.needsRules) setRules(true);
-          else join.mutate({ roomId: room.id, invite });
-        }}
-      >
-        {t("lobby.join")}
-      </button>
-      {back}
+
+      <div className={s.doorBar}>
+        <div className={s.doorActions}>
+          <Link className={s.btn} href="/rooms">
+            {t("app.notNow")}
+          </Link>
+          <button
+            type="button"
+            className={`${s.btn} ${s.primary}`}
+            disabled={!canJoin}
+            onClick={() => void enter()}
+          >
+            <Headphones size={17} aria-hidden="true" />
+            {t("app.joinListen")}
+          </button>
+        </div>
+        <p className={s.meta}>
+          <MicOff size={13} aria-hidden="true" /> {t("app.micNote")}
+        </p>
+      </div>
+
+      {readingRules ? (
+        <Sheet title={t("rules.title")} onClose={() => setReadingRules(false)}>
+          <p className={s.meta}>{t("rules.intro")}</p>
+          <ul className={s.rules}>
+            {(
+              ["rules.1", "rules.2", "rules.3", "rules.4", "rules.5"] as const
+            ).map(key => (
+              <li key={key}>{t(key)}</li>
+            ))}
+          </ul>
+          <p className={s.meta}>{t("rules.once")}</p>
+          <button
+            type="button"
+            className={`${s.btn} ${s.primary} ${s.wide}`}
+            onClick={() => {
+              setAgreed(true);
+              setReadingRules(false);
+            }}
+          >
+            {t("rules.agree")}
+          </button>
+        </Sheet>
+      ) : null}
     </div>
   );
 }

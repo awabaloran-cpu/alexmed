@@ -11,7 +11,11 @@ const h = vi.hoisted(() => ({
   errors: {} as Record<string, { message: string }>,
 }));
 
+vi.mock("next-auth/react", () => ({
+  useSession: () => ({ status: "authenticated", data: null }),
+}));
 vi.mock("next/navigation", () => ({
+  usePathname: () => "/rooms/r1/live",
   useRouter: () => ({ push: () => {}, replace: () => {} }),
   useSearchParams: () => new URLSearchParams(),
   useParams: () => ({}),
@@ -67,6 +71,7 @@ vi.mock("@/lib/trpc-client", () => {
   };
 });
 
+import ActiveRoomProvider from "./ActiveRoom";
 import LiveRoom from "./LiveRoom";
 import RoomLobby from "./RoomLobby";
 import RoomsHome, { SectionRooms } from "./RoomsHome";
@@ -129,6 +134,14 @@ const room = (overrides: Record<string, unknown> = {}) => ({
   ...overrides,
 });
 
+// The room page under the room engine, as the app has it (Providers.tsx).
+const inRoom = () =>
+  createElement(
+    ActiveRoomProvider,
+    null,
+    createElement(LiveRoom, { roomId: "r1" })
+  );
+
 function page(node: ReactNode, night = false) {
   return renderToStaticMarkup(createElement(RoomsProvider, { night }, node));
 }
@@ -173,8 +186,10 @@ describe("the Rooms tab", () => {
     expect(html).toContain("12 live");
     expect(html).toContain("Live now");
     expect(html).toContain("أدوية الكلى قبل الميدتيرم");
-    // No women-only filter for a man.
-    expect(html).not.toContain("Women only");
+    // No women-only filter for a man (a women-only room still says so).
+    expect(html).not.toMatch(
+      /<button[^>]*aria-pressed[^>]*>Women only<\/button>/
+    );
   });
 
   it("a minor: no discovery at all — their section and their own rooms", () => {
@@ -250,11 +265,14 @@ describe("the lobby", () => {
   it("shows who is inside and lets the student in", () => {
     h.answers["rooms.preview"] = preview();
     const html = page(createElement(RoomLobby, { roomId: "r1" }));
-    expect(html).toContain("أحمد");
-    expect(html).toContain("قائد");
-    expect(html).toContain("2 من 8");
-    expect(html).toMatch(/<button[^>]*>ادخل<\/button>/);
-    expect(html).not.toMatch(/<button[^>]*disabled[^>]*>ادخل<\/button>/);
+    // Who leads, how many are inside, and the way in (design ز2).
+    expect(html).toContain("يقود: أحمد");
+    expect(html).toContain("2 / 8");
+    expect(html).toContain("ميكروفونك مغلق حتى تفتحه");
+    expect(html).toMatch(/<button[^>]*>(<svg.*?<\/svg>)?ادخل واسمع<\/button>/);
+    expect(html).not.toMatch(
+      /<button[^>]*disabled[^>]*>(<svg.*?<\/svg>)?ادخل واسمع<\/button>/
+    );
   });
 
   it("a full, a locked or a banned room cannot be entered, and says why", () => {
@@ -266,7 +284,9 @@ describe("the lobby", () => {
       h.answers["rooms.preview"] = preview(state);
       const html = page(createElement(RoomLobby, { roomId: "r1" }));
       expect(html).toContain(sentence);
-      expect(html).toMatch(/<button[^>]*disabled[^>]*>ادخل<\/button>/);
+      expect(html).toMatch(
+        /<button[^>]*disabled[^>]*>(<svg.*?<\/svg>)?ادخل واسمع<\/button>/
+      );
     }
   });
 
@@ -275,7 +295,7 @@ describe("the lobby", () => {
     h.errors["rooms.preview"] = { message: "not_available" };
     const html = page(createElement(RoomLobby, { roomId: "r1" }));
     expect(html).toContain("هذه الغرفة غير متاحة");
-    expect(html).not.toContain("ادخل</button>");
+    expect(html).not.toContain("ادخل واسمع</button>");
   });
 });
 
@@ -353,7 +373,7 @@ describe("inside a room", () => {
 
   it("the host sees the room's controls", () => {
     h.answers["rooms.state"] = state("host");
-    const html = page(createElement(LiveRoom, { roomId: "r1" }), true);
+    const html = page(inRoom(), true);
     expect(html).toContain('data-theme="dark"');
     expect(html).toContain("2 حاضرون");
     expect(html).toContain("أنت");
@@ -365,7 +385,7 @@ describe("inside a room", () => {
 
   it("a member sees none of them — only the way out and the report", () => {
     h.answers["rooms.state"] = state("member");
-    const html = page(createElement(LiveRoom, { roomId: "r1" }), true);
+    const html = page(inRoom(), true);
     expect(html).not.toContain("الإعدادات");
     expect(html).not.toContain("دعوة");
     expect(html).toContain("إبلاغ");
@@ -376,7 +396,7 @@ describe("inside a room", () => {
   it("a student taken out of the room is told, with the way back", () => {
     h.answers["rooms.state"] = undefined;
     h.errors["rooms.state"] = { message: "not_available" };
-    const html = page(createElement(LiveRoom, { roomId: "r1" }), true);
+    const html = page(inRoom(), true);
     expect(html).toContain("أُخرجت من هذه الغرفة");
     expect(html).toContain('href="/rooms"');
   });
