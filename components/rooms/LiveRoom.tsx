@@ -10,6 +10,7 @@ import {
   Crown,
   FileText,
   Flag,
+  Gamepad2,
   Hand,
   Headphones,
   ListChecks,
@@ -38,6 +39,7 @@ import { ColleagueItems, InviteColleagues } from "./RoomColleagues";
 import { InviteBox } from "./RoomCreate";
 import RoomDesk, { type DeskInfo } from "./RoomDesk";
 import RoomFilePicker from "./RoomFilePicker";
+import RoomGames from "./RoomGames";
 import RoomVideo from "./RoomVideo";
 import RoomVideoAdd from "./RoomVideoAdd";
 import RoomVoice from "./RoomVoice";
@@ -100,6 +102,7 @@ export default function LiveRoom({ roomId }: { roomId: string }) {
     | { kind: "end" }
     | { kind: "file" }
     | { kind: "quiz" }
+    | { kind: "games" }
     | { kind: "video" }
     | { kind: "videoRemove" }
     | { kind: "more" }
@@ -426,6 +429,9 @@ export default function LiveRoom({ roomId }: { roomId: string }) {
       ? members.find(member => member.userId === sheet.userId)
       : undefined;
   const close = () => setSheet(null);
+  // 🎮 The leader brings a game of Discover into the room (in the dock in
+  // place of the reactions, and in "more"), never over a quiz running.
+  const canGames = me.can.start_quiz && !quiz.active;
   const roleLabel = (role: string) =>
     role === "host"
       ? t("live.host")
@@ -773,7 +779,16 @@ export default function LiveRoom({ roomId }: { roomId: string }) {
                 <i className={s.pDockBadge}>{chat.unread}</i>
               ) : null}
             </button>
-            {voice.phase === "live" ? (
+            {canGames ? (
+              <button
+                type="button"
+                className={s.pDockItem}
+                onClick={() => setSheet({ kind: "games" })}
+              >
+                <Gamepad2 size={21} aria-hidden="true" />
+                <span>{t("games.title")}</span>
+              </button>
+            ) : voice.phase === "live" ? (
               <button
                 type="button"
                 className={`${s.pDockItem} ${reacting ? s.pDockOn : ""}`}
@@ -904,6 +919,19 @@ export default function LiveRoom({ roomId }: { roomId: string }) {
                 ) : null}
               </button>
             )}
+            {canGames ? (
+              <button
+                type="button"
+                className={s.item}
+                onClick={() => setSheet({ kind: "games" })}
+              >
+                <Gamepad2 size={18} aria-hidden="true" />
+                <span>
+                  {t("games.title")}
+                  <small>{t("games.hint")}</small>
+                </span>
+              </button>
+            ) : null}
             <button
               type="button"
               className={s.item}
@@ -1060,6 +1088,18 @@ export default function LiveRoom({ roomId }: { roomId: string }) {
 
       {sheet?.kind === "quiz" ? (
         <QuizStartSheet roomId={roomId} onClose={close} />
+      ) : null}
+
+      {sheet?.kind === "games" ? (
+        <RoomGames
+          onPick={slug => {
+            close();
+            router.replace(
+              `/rooms/${roomId}/live?quiz=${encodeURIComponent(slug)}`
+            );
+          }}
+          onClose={close}
+        />
       ) : null}
 
       {sheet?.kind === "file" ? (
