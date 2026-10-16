@@ -37,6 +37,18 @@ const TOOLS_HIDE_MS = 2800;
 
 export type DeskInfo = { page: number; pageCount: number; away: boolean };
 
+// The room's controls over the file, held by the room's page so that the
+// header, the dock and these tools step aside and come back together: a
+// tap on the page shows / hides them all.
+export type DeskChrome = {
+  shown: boolean;
+  wake: () => void;
+  onStagePointerDown: (event: React.PointerEvent) => void;
+  onStagePointerUp: (event: React.PointerEvent) => void;
+  // A highlight is being drawn or chosen: everything stays in sight.
+  onBusy: (busy: boolean) => void;
+};
+
 // 📄 The room's desk: the shared file, one page at a time, and the page
 // everyone follows.
 //
@@ -70,6 +82,7 @@ export default function RoomDesk({
   canDeleteAnyMark,
   present = false,
   onInfo,
+  chrome,
 }: {
   roomId: string;
   bookId: string | null;
@@ -90,6 +103,7 @@ export default function RoomDesk({
   present?: boolean;
   // Where this member is, for the presentation's header.
   onInfo?: (info: DeskInfo) => void;
+  chrome?: DeskChrome;
 }) {
   const { t, tError } = useRooms();
   const utils = trpc.useUtils();
@@ -273,11 +287,21 @@ export default function RoomDesk({
     );
   }, []);
   useEffect(() => {
-    if (present) wake();
+    // The room's page holds them when it shares them (`chrome`).
+    if (present && !chrome) wake();
     return () => {
       if (hideTimer.current !== null) window.clearTimeout(hideTimer.current);
     };
-  }, [present, wake, page]);
+  }, [present, wake, page, chrome]);
+  // Drawing or choosing a highlight, or a problem the tools explain: the
+  // room keeps every control in sight.
+  const onBusy = chrome?.onBusy;
+  const busy =
+    drawing || !!selectedMark || !!markError || setPage.error !== null;
+  useEffect(() => {
+    onBusy?.(busy);
+  }, [onBusy, busy]);
+  useEffect(() => () => onBusy?.(false), [onBusy]);
 
   // Two fingers zoom the page: it follows the fingers at once, and is
   // drawn sharp at the new size when they lift. One finger scrolls (pans),
@@ -446,13 +470,16 @@ export default function RoomDesk({
       ref={stageRef}
       className={present ? s.pStage : s.stage}
       dir="ltr"
-      onPointerDown={present ? wake : undefined}
+      onPointerDown={
+        present ? (chrome ? chrome.onStagePointerDown : wake) : undefined
+      }
+      onPointerUp={present && chrome ? chrome.onStagePointerUp : undefined}
       onPointerMove={
         present
           ? event => {
               // A mouse moving is a reader reaching for the tools; a finger
               // moving is a reader reading.
-              if (event.pointerType === "mouse") wake();
+              if (event.pointerType === "mouse") (chrome?.wake ?? wake)();
             }
           : undefined
       }
@@ -619,18 +646,25 @@ export default function RoomDesk({
     // The tools stay while a highlight is being drawn or one is chosen,
     // and while something went wrong that they explain.
     const shown =
-      toolsShown || drawing || !!selectedMark || !!markError || !!setPage.error;
+      (chrome ? chrome.shown : toolsShown) ||
+      drawing ||
+      !!selectedMark ||
+      !!markError ||
+      !!setPage.error;
+    const touch = chrome?.wake ?? wake;
     return (
       <div ref={frameRef} className={s.pReader}>
         {stage}
         {rejoinButton}
         <div
-          className={`${s.pTools} ${shown ? "" : s.pToolsHidden}`}
+          className={`${s.pTools} ${chrome ? s.pToolsDocked : ""} ${
+            shown ? "" : s.pToolsHidden
+          }`}
           // Hidden tools are out of the way of the finger and the keyboard.
           inert={!shown}
-          onPointerDown={wake}
-          onPointerMove={wake}
-          onFocus={wake}
+          onPointerDown={touch}
+          onPointerMove={touch}
+          onFocus={touch}
         >
           {errors}
           {drawing || selectedMark ? (

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useDeferredValue, useState } from "react";
+import { useDeferredValue, useEffect, useState } from "react";
 import { Plus, Search } from "lucide-react";
 import { COUNTRIES } from "@/lib/study-rooms/countries";
 import { trpc } from "@/lib/trpc-client";
@@ -12,6 +12,7 @@ import {
   sectionIcon,
   sectionName,
 } from "./parts";
+import { useActiveRoomMaybe } from "./ActiveRoom";
 import { MyInvites } from "./RoomColleagues";
 import { useRooms } from "./RoomsProvider";
 import s from "./rooms.module.css";
@@ -133,13 +134,19 @@ const Skeletons = ({ n }: { n: number }) => (
 // their live counts, then "live now" in two rows. A minor: their section
 // and their own private rooms — no discovery at all.
 export default function RoomsHome() {
-  const { t, viewer, language } = useRooms();
+  const { t, viewer } = useRooms();
   const adult = viewer.audience === "adult";
   const filters = useRoomFilters();
+  const [tab, setTab] = useState<"discover" | "mine" | "invites">(
+    adult ? "discover" : "mine"
+  );
   const sections = trpc.rooms.sections.useQuery(undefined, {
     refetchInterval: 30_000,
   });
   const mine = trpc.rooms.mine.useQuery();
+  const invites = trpc.rooms.myInvites.useQuery(undefined, {
+    refetchInterval: 30_000,
+  });
   const live = trpc.rooms.explore.useQuery(filters.input, {
     enabled: adult,
     refetchInterval: 20_000,
@@ -148,14 +155,37 @@ export default function RoomsHome() {
   const colorOf = new Map(
     (sections.data ?? []).map(section => [section.id, section.color])
   );
+  // Searching is discovering.
+  // Starting a search goes to discovering, once; the tabs stay free.
+  const searching = filters.active && adult;
+  useEffect(() => {
+    if (searching) setTab("discover");
+  }, [searching]);
+  const shown = tab;
+  const mineCount = mine.data?.length ?? 0;
+  const inviteCount = invites.data?.length ?? 0;
+  const tabs = [
+    ...(adult
+      ? [{ key: "discover" as const, label: t("app.tabDiscover"), badge: 0 }]
+      : []),
+    {
+      key: "mine" as const,
+      label: mineCount ? `${t("rooms.mine")} · ${mineCount}` : t("rooms.mine"),
+      badge: 0,
+    },
+    { key: "invites" as const, label: t("app.tabInvites"), badge: inviteCount },
+  ];
 
   return (
     <>
       <div className={s.top}>
-        <h1>{t("rooms.title")}</h1>
+        <div className={s.topText}>
+          <h1>{t("rooms.title")}</h1>
+          <p className={s.meta}>{t("app.tagline")}</p>
+        </div>
         <Link className={`${s.btn} ${s.primary}`} href="/rooms/new">
           <Plus size={17} aria-hidden="true" />
-          {adult ? t("rooms.new") : t("rooms.newPrivate")}
+          {adult ? t("app.openRoom") : t("rooms.newPrivate")}
         </Link>
       </div>
 
@@ -167,42 +197,83 @@ export default function RoomsHome() {
         </p>
       )}
 
-      {filters.active ? null : <MyInvites />}
+      <div className={s.tabs} role="tablist">
+        {tabs.map(item => (
+          <button
+            key={item.key}
+            type="button"
+            role="tab"
+            aria-selected={shown === item.key}
+            className={`${s.tab} ${shown === item.key ? s.tabOn : ""}`}
+            onClick={() => setTab(item.key)}
+          >
+            {item.label}
+            {item.badge ? <span className={s.badge}>{item.badge}</span> : null}
+          </button>
+        ))}
+      </div>
 
-      {filters.active ? null : (
+      <BackIn />
+
+      {shown === "invites" ? (
+        inviteCount ? (
+          <MyInvites />
+        ) : (
+          <div className={s.empty}>
+            <b>{t("app.noInvites")}</b>
+          </div>
+        )
+      ) : shown === "mine" ? (
         <>
-          <p className={s.sub}>{t("rooms.sections")}</p>
-          {sections.isLoading ? (
-            <Skeletons n={4} />
-          ) : sections.error ? (
-            <LoadError onRetry={() => sections.refetch()} />
-          ) : (
+          {/* A minor's own section (private rooms only), where theirs open. */}
+          {!adult && sections.data?.length ? (
             <div className={s.secs}>
-              {(sections.data ?? []).map(section => (
+              {sections.data.map(section => (
                 <SectionCard key={section.id} section={section} />
               ))}
             </div>
+          ) : null}
+          {mineCount ? (
+            <div className={s.cards}>
+              {mine.data!.map(room => (
+                <RoomCard
+                  key={room.id}
+                  room={room}
+                  sectionColorName={colorOf.get(room.sectionId)}
+                />
+              ))}
+            </div>
+          ) : (
+            <div className={s.empty}>
+              <b>{adult ? t("app.noMine") : t("rooms.inviteFriends")}</b>
+              {adult ? null : (
+                <span className={s.meta}>{t("rooms.inviteFriendsHint")}</span>
+              )}
+              <Link className={`${s.btn} ${s.primary}`} href="/rooms/new">
+                {adult ? t("app.openRoom") : t("rooms.newPrivate")}
+              </Link>
+            </div>
           )}
         </>
-      )}
-
-      {mine.data?.length ? (
+      ) : (
         <>
-          <p className={s.sub}>{t("rooms.mine")}</p>
-          <div className={s.cards}>
-            {mine.data.map(room => (
-              <RoomCard
-                key={room.id}
-                room={room}
-                sectionColorName={colorOf.get(room.sectionId)}
-              />
-            ))}
-          </div>
-        </>
-      ) : null}
+          {filters.active ? null : (
+            <>
+              <p className={s.sub}>{t("rooms.sections")}</p>
+              {sections.isLoading ? (
+                <Skeletons n={4} />
+              ) : sections.error ? (
+                <LoadError onRetry={() => sections.refetch()} />
+              ) : (
+                <div className={s.secs}>
+                  {(sections.data ?? []).map(section => (
+                    <SectionCard key={section.id} section={section} />
+                  ))}
+                </div>
+              )}
+            </>
+          )}
 
-      {adult ? (
-        <>
           <div className={s.row}>
             <span className={s.live}>
               <i />
@@ -227,7 +298,7 @@ export default function RoomsHome() {
                 {t("rooms.openOne")}
               </Link>
             </div>
-          ) : filters.active ? (
+          ) : (
             <div className={s.cards}>
               {live.data.map(room => (
                 <RoomCard
@@ -237,29 +308,40 @@ export default function RoomsHome() {
                 />
               ))}
             </div>
-          ) : (
-            <div className={s.hrows}>
-              {live.data.map(room => (
-                <RoomCard
-                  key={room.id}
-                  room={room}
-                  mini
-                  sectionColorName={colorOf.get(room.sectionId)}
-                />
-              ))}
-            </div>
           )}
         </>
-      ) : mine.data?.length ? null : (
-        <div className={s.empty}>
-          <b>{t("rooms.inviteFriends")}</b>
-          <span className={s.meta}>{t("rooms.inviteFriendsHint")}</span>
-          <Link className={`${s.btn} ${s.primary}`} href="/rooms/new">
-            {t("rooms.newPrivate")}
-          </Link>
-        </div>
       )}
     </>
+  );
+}
+
+// The room the student is in, one tap from going back (design ز1).
+function BackIn() {
+  const { t } = useRooms();
+  const active = useActiveRoomMaybe();
+  const roomId = active?.roomId ?? null;
+  const state = trpc.rooms.state.useQuery(
+    { roomId: roomId ?? "" },
+    { enabled: !!roomId, retry: false }
+  );
+  if (!active || !roomId || !state.data) return null;
+  const names = new Map(state.data.members.map(m => [m.userId, m.name]));
+  const speaking = [...active.voice.speaking]
+    .map(id => names.get(id))
+    .filter(Boolean)
+    .slice(0, 2);
+  return (
+    <Link className={s.backIn} href={`/rooms/${roomId}/live`}>
+      <span className={s.backInText}>
+        <small>
+          {speaking.length
+            ? `${t("voice.speaking")}: ${speaking.join("، ")}`
+            : t("app.youAreIn")}
+        </small>
+        <b dir="auto">{state.data.room.title}</b>
+      </span>
+      <span className={s.backInGo}>{t("app.backIn")}</span>
+    </Link>
   );
 }
 

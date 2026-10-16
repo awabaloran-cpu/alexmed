@@ -2066,7 +2066,7 @@ body:has(.present) :global(.student-bottom-nav) {
   min-width: 0;
   min-height: 0;
 }
-.present > :not(.pHead):not(.presentMain):not(.side) {
+.present > :not(.pHead):not(.presentMain):not(.side):not(.pDock):not(.pHand) {
   overflow-y: auto;
   padding: 12px;
 }
@@ -2361,4 +2361,725 @@ body:has(.present) :global(.student-bottom-nav) {
 }
 .podium3 span {
   height: 42px;
+}
+
+/* ✋ The room's controls over the file (design ز / ح, 2026-10-16): the
+   header, the dock and the desk's tools step aside together after a few
+   quiet seconds; a tap on the file brings them back (LiveRoom.tsx). Away,
+   the header leaves the grid so the file takes its height too. */
+.pHead.chromeAway {
+  position: absolute;
+  inset-inline: 0;
+  top: 0;
+  z-index: 4;
+  opacity: 0;
+  transform: translateY(-100%);
+  pointer-events: none;
+}
+.pHead {
+  transition:
+    opacity 0.24s var(--ease),
+    transform 0.24s var(--ease);
+}
+
+/* The floating dock: the voice's big button, then chat, reactions, quiz,
+   more. */
+.present > .pDock {
+  position: absolute;
+  inset-inline: 10px;
+  bottom: calc(14px + env(safe-area-inset-bottom, 0px));
+  z-index: 3;
+  display: grid;
+  gap: 8px;
+  justify-items: stretch;
+  max-width: 560px;
+  margin-inline: auto;
+  padding: 0;
+  overflow: visible;
+  transition:
+    opacity 0.24s var(--ease),
+    transform 0.24s var(--ease);
+}
+.present > .pDock.chromeAway {
+  opacity: 0;
+  transform: translateY(calc(100% + 24px));
+  pointer-events: none;
+}
+.presentSide > .pDock {
+  inset-inline-end: calc(340px + 10px);
+}
+.pDockRow {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 8px;
+  border: 1px solid var(--rule);
+  border-radius: 26px;
+  background: var(--sheet);
+  box-shadow: 0 12px 32px rgba(15, 20, 40, 0.24);
+}
+.pVoice {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 60px;
+  height: 60px;
+  margin-inline-end: 4px;
+  border: 0;
+  border-radius: 20px;
+  background: var(--ink);
+  color: var(--bg);
+  cursor: pointer;
+}
+.pVoice:disabled {
+  cursor: default;
+  opacity: 0.7;
+}
+.pVoiceOn {
+  background: var(--ok);
+  color: #fff;
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--ok) 22%, transparent);
+}
+.pVoiceAsked {
+  background: var(--marker-soft);
+  color: var(--ink);
+}
+.pDockItem {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  min-height: 58px;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 3px;
+  border: 0;
+  border-radius: 16px;
+  background: transparent;
+  color: var(--ink2);
+  font: inherit;
+  cursor: pointer;
+}
+.pDockItem span {
+  max-width: 100%;
+  overflow: hidden;
+  font-size: 0.68rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pDockItem:hover,
+.pDockOn {
+  background: var(--raised);
+  color: var(--ink);
+}
+.pVoice:focus-visible,
+.pDockItem:focus-visible,
+.reactBtn:focus-visible,
+.pHandAllow:focus-visible,
+.pHandLater:focus-visible {
+  outline: 2px solid var(--niro);
+  outline-offset: 2px;
+}
+.pDockBadge {
+  position: absolute;
+  top: 5px;
+  inset-inline-end: calc(50% - 22px);
+  min-width: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--niro);
+  color: var(--on-niro);
+  font-size: 0.68rem;
+  font-style: normal;
+  font-weight: 700;
+  line-height: 18px;
+  text-align: center;
+}
+/* The desk's tools sit above the dock, and the page scrolls clear of both. */
+.pToolsDocked {
+  bottom: calc(104px + env(safe-area-inset-bottom, 0px));
+}
+.pReader:has(.pToolsDocked) .pStage {
+  padding-bottom: calc(176px + env(safe-area-inset-bottom, 0px));
+}
+
+/* Reactions: four words to send, and who sent what, for a few seconds. */
+.reactRow,
+.reactPicker {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+.reactPicker {
+  padding: 8px;
+  border: 1px solid var(--rule);
+  border-radius: 20px;
+  background: var(--sheet);
+  box-shadow: 0 10px 30px rgba(15, 20, 40, 0.2);
+}
+.reactBtn {
+  min-height: 44px;
+  border: 0;
+  border-radius: 14px;
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.react-got {
+  background: color-mix(in srgb, var(--ok) 16%, var(--sheet));
+  color: var(--ok);
+}
+.react-again {
+  background: var(--marker-soft);
+  color: var(--marker-ink);
+}
+.react-question {
+  background: var(--niro-soft);
+  color: var(--niro-deep);
+}
+.react-bravo {
+  background: var(--rose-soft);
+  color: var(--rose);
+}
+.reactToasts {
+  position: fixed;
+  inset-inline-end: 16px;
+  bottom: calc(150px + env(safe-area-inset-bottom, 0px));
+  z-index: 58;
+  display: grid;
+  justify-items: end;
+  gap: 6px;
+  pointer-events: none;
+}
+.reactToast {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: rgba(15, 20, 40, 0.88);
+  color: #fff;
+  font-size: 0.8rem;
+  animation: reactIn 0.22s var(--ease) both;
+}
+.reactToast b {
+  font-weight: 700;
+}
+@keyframes reactIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
+/* A raised hand over the file, for whoever may let it speak. */
+.present > .pHand {
+  position: absolute;
+  top: calc(64px + env(safe-area-inset-top, 0px));
+  inset-inline: 10px;
+  z-index: 3;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  max-width: 560px;
+  margin-inline: auto;
+  padding: 8px 10px;
+  border-radius: 16px;
+  background: var(--nl-ink);
+  color: #fff;
+  box-shadow: 0 8px 24px rgba(15, 20, 40, 0.3);
+  overflow: visible;
+}
+.pHand span {
+  flex: 1;
+  min-width: 0;
+}
+.pHand small {
+  flex-basis: 100%;
+  color: #ffb3b6;
+}
+.pHandLater {
+  min-height: 44px;
+  padding: 0 10px;
+  border: 0;
+  background: transparent;
+  color: #c9cedb;
+  font: inherit;
+  cursor: pointer;
+}
+.pHandAllow {
+  min-height: 44px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 12px;
+  background: var(--nl-marker);
+  color: var(--nl-ink);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pHead,
+  .present > .pDock,
+  .reactToast {
+    transition: none;
+    animation: none;
+  }
+}
+
+/* 🏁 The group quiz as a card game (design ط): ink all round, the question
+   on a white card, the answers as four coloured cards (white text on each
+   passes AA), a ring for the time, one segment per question. The same in
+   both looks — a game board is dark. */
+.quizGame {
+  --g-bg: #1b2340;
+  --g-raised: #262d4a;
+  --g-text: #ffffff;
+  --g-soft: #c9cedb;
+  background: var(--g-bg);
+  border-color: transparent;
+  border-radius: 24px;
+  color: var(--g-text);
+  gap: 14px;
+}
+.quizGame .quizHead {
+  color: var(--g-text);
+}
+.quizHeadText {
+  display: grid;
+  gap: 1px;
+}
+.quizHeadText small {
+  color: var(--g-soft);
+  font-size: 0.78rem;
+}
+.quizHeadText b {
+  font-size: 1rem;
+}
+.ring {
+  --share: 1;
+  position: relative;
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 54px;
+  height: 54px;
+  border-radius: 50%;
+  background: conic-gradient(
+    var(--nl-marker) calc(var(--share) * 360deg),
+    rgba(255, 255, 255, 0.12) 0
+  );
+}
+.ring::before {
+  content: "";
+  position: absolute;
+  inset: 5px;
+  border-radius: 50%;
+  background: var(--g-bg, #1b2340);
+}
+.ring b {
+  position: relative;
+  font-size: 1.15rem;
+  font-variant-numeric: tabular-nums;
+}
+.ringLow {
+  background: conic-gradient(
+    var(--nl-wrong) calc(var(--share) * 360deg),
+    rgba(255, 255, 255, 0.12) 0
+  );
+}
+.quizResult {
+  max-width: 60%;
+  padding: 8px 12px;
+  border-radius: 18px;
+  background: var(--nl-ink-3);
+  color: #fff;
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+.quizResultRight {
+  background: var(--nl-correct);
+}
+.quizResultWrong {
+  background: var(--nl-wrong);
+}
+.quizSegments {
+  display: flex;
+  gap: 4px;
+}
+.quizSegments i {
+  flex: 1;
+  height: 5px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.12);
+}
+.quizSegments i.segNow {
+  background: var(--nl-marker);
+}
+.quizSegments i.segRight {
+  background: var(--nl-correct);
+}
+.quizSegments i.segWrong {
+  background: var(--nl-wrong);
+}
+.quizSegments i.segNone {
+  background: var(--nl-ink-3);
+}
+.quizCard {
+  display: grid;
+  gap: 4px;
+  padding: 18px;
+  border-radius: 22px;
+  background: #ffffff;
+  color: var(--nl-ink);
+}
+.quizGame .quizText {
+  color: var(--nl-ink);
+}
+.quizGame .options:not(.optionsRevealed) {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+  gap: 10px;
+}
+.quizGame .options:not(.optionsRevealed) .option {
+  min-height: 96px;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 12px;
+  border: 0;
+  border-radius: 20px;
+  color: #fff;
+  font-weight: 600;
+}
+.quizGame .options:not(.optionsRevealed) .option > b {
+  background: rgba(255, 255, 255, 0.2);
+  color: inherit;
+}
+.quizGame .tile0 {
+  background: #3355ff;
+}
+.quizGame .tile1 {
+  background: #0b7468;
+}
+.quizGame .tile2 {
+  background: var(--nl-marker);
+}
+.quizGame .options:not(.optionsRevealed) .tile2 {
+  color: var(--nl-ink);
+}
+.quizGame .tile3 {
+  background: #b0304f;
+}
+.quizGame .options:not(.optionsRevealed) .option:disabled:not(.optionMine) {
+  opacity: 0.45;
+}
+.quizGame .options:not(.optionsRevealed) .optionMine {
+  box-shadow: 0 0 0 3px #ffffff;
+}
+/* At the reveal: one row per answer, how many chose it as a bar, the right
+   one in green. */
+.quizGame .optionsRevealed .option {
+  position: relative;
+  overflow: hidden;
+  border: 0;
+  background: var(--g-raised);
+  color: var(--g-soft);
+}
+.quizGame .optionsRevealed .option::before {
+  content: "";
+  position: absolute;
+  inset-block: 0;
+  inset-inline-start: 0;
+  width: calc(var(--share, 0) * 100%);
+  background: rgba(255, 255, 255, 0.1);
+}
+.quizGame .optionsRevealed .option > * {
+  position: relative;
+}
+.quizGame .optionsRevealed .option > b {
+  background: transparent;
+  color: inherit;
+}
+.quizGame .optionsRevealed .option > small {
+  color: inherit;
+}
+.quizGame .optionsRevealed .optionRight {
+  background: var(--nl-correct);
+  color: #fff;
+  font-weight: 700;
+}
+.quizGame .optionsRevealed .optionWrong {
+  box-shadow: inset 0 0 0 2px var(--nl-wrong);
+}
+.quizGame .quizNote,
+.quizGame .meta {
+  color: var(--g-soft);
+}
+.quizGame .quizExplain {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--g-text);
+}
+.quizGame .readerLink {
+  justify-self: start;
+}
+.standings {
+  display: grid;
+  gap: 6px;
+  padding: 12px;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.08);
+}
+.standings > small {
+  color: var(--g-soft);
+  font-weight: 600;
+}
+.quizGame .board li {
+  color: var(--g-text);
+}
+.quizGame .board li > span {
+  color: var(--nl-marker);
+}
+.quizGame .board li > i {
+  color: var(--g-soft);
+}
+.quizGame .boardMe {
+  background: rgba(255, 212, 59, 0.14);
+}
+.movedUp {
+  color: var(--nl-correct);
+  font-style: normal;
+}
+.movedDown {
+  color: var(--nl-wrong);
+  font-style: normal;
+}
+.quizGame .quizDone {
+  color: var(--g-text);
+}
+.quizGame .quizDone p {
+  color: var(--g-soft);
+}
+.quizGame .podium b,
+.quizGame .podium i {
+  color: var(--g-text);
+}
+.quizGame .podium span {
+  background: var(--g-raised);
+  color: var(--g-text);
+}
+.quizGame .podium1 span {
+  background: var(--nl-marker);
+  color: var(--nl-ink);
+}
+.quizGame .quizCancel {
+  color: #ffb3b6;
+}
+
+/* 🏠 The rooms home (design ز1): a line under the title, three tabs, and
+   the room the student is in one tap from going back. */
+.topText {
+  display: grid;
+  gap: 2px;
+}
+.topText .meta {
+  margin: 0;
+}
+.tabs {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  gap: 4px;
+  padding: 4px;
+  border-radius: 14px;
+  background: var(--rule);
+}
+.tab {
+  min-height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--ink2);
+  font: inherit;
+  font-size: 0.88rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.tabOn {
+  background: var(--sheet);
+  color: var(--ink);
+  font-weight: 700;
+  box-shadow: 0 1px 2px rgba(15, 20, 40, 0.12);
+}
+.tab:focus-visible,
+.backIn:focus-visible {
+  outline: 2px solid var(--marker);
+  outline-offset: 2px;
+}
+.backIn {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px;
+  border-radius: 20px;
+  background: var(--nl-ink);
+  color: #fff;
+  text-decoration: none;
+}
+.backInText {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+}
+.backInText small {
+  color: var(--nl-marker);
+  font-weight: 600;
+  font-size: 0.78rem;
+}
+.backInText b {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.backInGo {
+  flex: none;
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: var(--nl-marker);
+  color: var(--nl-ink);
+  font-weight: 700;
+  font-size: 0.85rem;
+}
+
+/* 🚪 A room's door (design ز2): the section's colour across the top, three
+   facts, who leads, the rules agreed here, and the way in that stays at the
+   bottom of the screen. */
+.door {
+  display: grid;
+  gap: 16px;
+  padding-bottom: 140px;
+}
+.doorHead {
+  display: grid;
+  gap: 10px;
+  padding: 18px;
+  border-radius: 20px;
+  background: color-mix(in srgb, var(--c) 14%, var(--sheet));
+}
+.doorHead h1 {
+  margin: 0;
+  font-size: 1.5rem;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+.doorSection {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  color: color-mix(in srgb, var(--c) 70%, var(--ink));
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+.doorSection i {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 10px;
+  background: var(--c);
+  color: #fff;
+}
+.doorFacts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+.doorFacts span {
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+  padding: 10px 6px;
+  border-radius: 14px;
+  background: var(--raised);
+  text-align: center;
+}
+.doorFacts b {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.doorFacts small {
+  color: var(--ink3);
+  font-size: 0.72rem;
+}
+.doorWho {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.doorWho > span:last-child {
+  flex: 1;
+  min-width: 0;
+}
+.doorRules {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  border: 1px solid var(--rule);
+  border-radius: 14px;
+}
+.doorRules label {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  cursor: pointer;
+}
+.doorRules input {
+  width: 20px;
+  height: 20px;
+  accent-color: var(--ink);
+}
+.doorBar {
+  position: fixed;
+  inset-inline: 0;
+  bottom: 0;
+  z-index: 50;
+  display: grid;
+  gap: 6px;
+  padding: 12px max(16px, env(safe-area-inset-right, 0px))
+    calc(12px + env(safe-area-inset-bottom, 0px));
+  border-top: 1px solid var(--rule);
+  background: var(--sheet);
+}
+.doorBar .meta {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin: 0;
+  text-align: center;
+}
+.doorActions {
+  display: flex;
+  gap: 10px;
+  width: 100%;
+  max-width: 560px;
+  margin-inline: auto;
+}
+.doorActions > :last-child {
+  flex: 1;
+}
+body:has(.doorBar) :global(.student-bottom-nav) {
+  display: none;
 }

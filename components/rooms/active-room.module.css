@@ -1,0 +1,117 @@
+/* 🎧 The minimised study room's card, over every page of the app (design
+   ز8). Its own small sheet so that pages outside the rooms do not load the
+   rooms' stylesheet; ink & highlighter tokens from app/base.css. Above the
+   bottom bar, below every dialog and sheet (they cover it). */
+.mini {
+  position: fixed;
+  inset-inline-end: 14px;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 84px);
+  z-index: 40;
+  width: 232px;
+  max-width: calc(100vw - 28px);
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 22px;
+  background: var(--nl-ink);
+  color: #fff;
+  font-family: var(--nl-font-ui);
+  box-shadow: 0 16px 36px rgba(27, 35, 64, 0.38);
+  animation: miniIn 0.24s var(--nl-ease) both;
+}
+@keyframes miniIn {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mini {
+    animation: none;
+  }
+}
+.head {
+  all: unset;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  cursor: pointer;
+  border-radius: 12px;
+}
+.head:focus-visible,
+.btn:focus-visible {
+  outline: 2px solid var(--nl-marker);
+  outline-offset: 2px;
+}
+.dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--nl-ink-3);
+  flex: none;
+}
+.dot[data-speaking="true"] {
+  background: var(--nl-marker);
+  box-shadow: 0 0 0 4px rgba(255, 212, 59, 0.25);
+}
+.text {
+  display: grid;
+  min-width: 0;
+}
+.text b {
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.text small {
+  font-size: 11px;
+  color: var(--nl-rule-strong);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.text small[data-problem="true"] {
+  color: var(--nl-marker);
+}
+.row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.row > span {
+  flex: 1;
+  font-size: 13px;
+}
+.btn {
+  flex: 1;
+  min-height: 40px;
+  border: 0;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.row > span ~ .btn {
+  flex: none;
+  width: 44px;
+}
+.btn:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+.on {
+  background: var(--nl-correct);
+}
+.back {
+  background: var(--nl-marker);
+  color: var(--nl-ink);
+}
+.out {
+  background: var(--nl-wrong);
+}

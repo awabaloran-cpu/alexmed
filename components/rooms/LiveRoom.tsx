@@ -6,23 +6,25 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   Ban,
-  ChevronLeft,
-  ChevronRight,
+  ChevronDown,
   Crown,
   FileText,
   Flag,
+  Hand,
   Headphones,
   LayoutList,
   ListChecks,
   LogOut,
   Maximize2,
   MessageCircle,
+  Mic,
   MicOff,
   MoreVertical,
   PanelLeftClose,
   PanelLeftOpen,
   Settings,
   ShieldCheck,
+  Smile,
   UserMinus,
   UserPlus,
   Users,
@@ -30,7 +32,9 @@ import {
 } from "lucide-react";
 import { REPORT_REASONS, type ReportReason } from "@/lib/study-rooms/config";
 import type { RoomsKey } from "@/lib/study-rooms/i18n";
+import { isTap, REACTION_KINDS } from "@/lib/study-rooms/reactions";
 import { trpc } from "@/lib/trpc-client";
+import { IDLE_VOICE, useActiveRoom } from "./ActiveRoom";
 import { Avatar, Sheet, SubjectLine } from "./parts";
 import RoomChat, { useRoomChat } from "./RoomChat";
 import { ColleagueItems, InviteColleagues } from "./RoomColleagues";
@@ -39,7 +43,7 @@ import RoomDesk, { type DeskInfo } from "./RoomDesk";
 import RoomFilePicker from "./RoomFilePicker";
 import RoomVideo from "./RoomVideo";
 import RoomVideoAdd from "./RoomVideoAdd";
-import RoomVoice, { type VoicePresence } from "./RoomVoice";
+import RoomVoice from "./RoomVoice";
 import {
   QuizPanel,
   QuizResults,
@@ -50,13 +54,16 @@ import { useRooms } from "./RoomsProvider";
 import s from "./rooms.module.css";
 
 const POLL_MS = 4000;
+// Over the file, the room's controls step aside after this long untouched
+// (design ح) and come back with a tap.
+const CHROME_HIDE_MS = 4000;
 
 // 👥 Inside a room: who is here and who leads, the host's controls, and the
 // way out. The room is read every few seconds — that reading is also the
 // student's heartbeat. (The shared file, voice and chat join this screen in
 // the next stages of docs/study-rooms.)
 export default function LiveRoom({ roomId }: { roomId: string }) {
-  const { t, tError, language } = useRooms();
+  const { t, tError } = useRooms();
   const router = useRouter();
   const utils = trpc.useUtils();
   const state = trpc.rooms.state.useQuery(
@@ -100,8 +107,38 @@ export default function LiveRoom({ roomId }: { roomId: string }) {
     | { kind: "videoRemove" }
     | { kind: "more" }
     | { kind: "members" }
+    | { kind: "leave" }
+    | { kind: "switch"; from: string }
     | null
   >(null);
+  // 🎧 The room lives above the pages (ActiveRoom.tsx): this page makes it
+  // the active one. Another room the student is in is left only if they
+  // say so; otherwise they go back to it.
+  const active = useActiveRoom();
+  const { enter, autoJoin } = active;
+  const otherRoom =
+    active.roomId && active.roomId !== roomId ? active.roomId : null;
+  const leaveOther = trpc.rooms.leave.useMutation();
+  const leaveThis = trpc.rooms.leave.useMutation();
+  const asked = useRef(false);
+  useEffect(() => {
+    if (otherRoom) {
+      if (!asked.current) {
+        asked.current = true;
+        setSheet({ kind: "switch", from: otherRoom });
+      }
+      return;
+    }
+    enter(roomId);
+  }, [otherRoom, roomId, enter]);
+  // This room is the active one (not still the other one, while the
+  // student is asked): only then is the voice on this page this room's.
+  const here = active.roomId === roomId;
+  // Joining is listening: the voice is joined by itself, once per entry
+  // into the room (ActiveRoom.autoJoin); otherwise they press "join".
+  useEffect(() => {
+    if (here) autoJoin();
+  }, [here, autoJoin]);
   const [notice, setNotice] = useState<string | null>(null);
   // The chat sits beside the file on a wide screen, and opens over it on a
   // phone.
@@ -191,10 +228,7 @@ export default function LiveRoom({ roomId }: { roomId: string }) {
       return utils.rooms.state.invalidate({ roomId });
     },
   });
-  const [voice, setVoice] = useState<VoicePresence>({
-    inVoice: new Set(),
-    speaking: new Set(),
-  });
+  const voice = here ? active.voice : IDLE_VOICE;
   const memberList = state.data?.members;
   const names = useMemo(
     () => new Map((memberList ?? []).map(m => [m.userId, m.name])),
@@ -204,10 +238,110 @@ export default function LiveRoom({ roomId }: { roomId: string }) {
   const leave = trpc.rooms.leave.useMutation({
     onSuccess: () => router.replace(`/rooms/${roomId}/summary`),
     onError: () => router.replace("/rooms"),
+    // Out of the room: its voice and its reading stop here too.
+    onSettled: () => active.forget(),
   });
   const end = trpc.rooms.end.useMutation({
-    onSuccess: () => router.replace(`/rooms/${roomId}/summary`),
+    onSuccess: () => {
+      active.forget();
+      router.replace(`/rooms/${roomId}/summary`);
+    },
   });
+
+  // ✋ The controls over the file (design ح): the header, the desk's tools
+  // and the dock step aside after a few quiet seconds; a tap on the file
+  // brings them back, and any touch or key on them keeps them. Never while
+  // something on them is in use (see `chromeHeld` below).
+  const [chromeShown, setChromeShown] = useState(true);
+  const [deskBusy, setDeskBusy] = useState(false);
+  const [reacting, setReacting] = useState(false);
+  const hideTimer = useRef<number | null>(null);
+  const holdRef = useRef(false);
+  const wakeChrome = useCallback(() => {
+    setChromeShown(true);
+    if (hideTimer.current !== null) window.clearTimeout(hideTimer.current);
+    hideTimer.current = window.setTimeout(() => {
+      if (!holdRef.current) setChromeShown(false);
+    }, CHROME_HIDE_MS);
+  }, []);
+  useEffect(
+    () => () => {
+      if (hideTimer.current !== null) window.clearTimeout(hideTimer.current);
+      if (tapWait.current !== null) window.clearTimeout(tapWait.current);
+    },
+    []
+  );
+  // A second tap soon after the first is a double tap (zoom), not two.
+  const tapWait = useRef<number | null>(null);
+  const tapDown = useRef<{ x: number; y: number; at: number } | null>(null);
+  const onStagePointerDown = useCallback((event: React.PointerEvent) => {
+    if (tapWait.current !== null) {
+      window.clearTimeout(tapWait.current);
+      tapWait.current = null;
+      tapDown.current = null;
+      return;
+    }
+    tapDown.current = { x: event.clientX, y: event.clientY, at: Date.now() };
+  }, []);
+  const onStagePointerUp = useCallback(
+    (event: React.PointerEvent) => {
+      const down = tapDown.current;
+      tapDown.current = null;
+      if (
+        !down ||
+        !isTap(down, { x: event.clientX, y: event.clientY, at: Date.now() })
+      ) {
+        return;
+      }
+      tapWait.current = window.setTimeout(() => {
+        tapWait.current = null;
+        if (chromeShownRef.current && !holdRef.current) {
+          if (hideTimer.current !== null)
+            window.clearTimeout(hideTimer.current);
+          setChromeShown(false);
+        } else {
+          wakeChrome();
+        }
+      }, 280);
+    },
+    [wakeChrome]
+  );
+  const chromeShownRef = useRef(chromeShown);
+  chromeShownRef.current = chromeShown;
+  // In use, so in sight: a menu, the chat, the reactions, a highlight being
+  // drawn, the quiz, or a raised hand waiting for whoever may allow it. A
+  // video keeps them too: a tap on YouTube's player never reaches the page,
+  // so nothing could bring them back.
+  const chromeHeld =
+    liveVideo ||
+    !!sheet ||
+    chatOpen ||
+    reacting ||
+    deskBusy ||
+    !!quiz.active ||
+    !!quiz.finishedId ||
+    (!!state.data?.me.can.edit_room && voice.hands.length > 0);
+  holdRef.current = chromeHeld;
+  // One object while nothing in it changes: the desk does not redo its
+  // work on every reading of the room or every word spoken.
+  const deskChrome = useMemo(
+    () => ({
+      shown: chromeShown,
+      wake: wakeChrome,
+      onStagePointerDown,
+      onStagePointerUp,
+      onBusy: setDeskBusy,
+    }),
+    [chromeShown, wakeChrome, onStagePointerDown, onStagePointerUp]
+  );
+  useEffect(() => {
+    if (!presenting || chromeHeld) {
+      if (hideTimer.current !== null) window.clearTimeout(hideTimer.current);
+      setChromeShown(true);
+      return;
+    }
+    wakeChrome();
+  }, [presenting, chromeHeld, wakeChrome]);
   const setMember = trpc.rooms.setMember.useMutation({ onSuccess: refresh });
   const remove = trpc.rooms.remove.useMutation({ onSuccess: refresh });
   const transfer = trpc.rooms.transferHost.useMutation({ onSuccess: refresh });
@@ -397,12 +531,9 @@ export default function LiveRoom({ roomId }: { roomId: string }) {
         </AnimatePresence>
       </div>
 
-      <RoomVoice
-        roomId={roomId}
-        canGrant={me.can.edit_room}
-        names={names}
-        onPresence={setVoice}
-      />
+      {here ? (
+        <RoomVoice roomId={roomId} canGrant={me.can.edit_room} names={names} />
+      ) : null}
 
       {me.can.edit_room || video.videoId ? (
         <div className={s.contentBar}>
@@ -560,19 +691,22 @@ export default function LiveRoom({ roomId }: { roomId: string }) {
         data-present={presenting ? "" : undefined}
       >
         {presenting ? (
-          <header className={s.pHead}>
+          <header
+            className={`${s.pHead} ${chromeShown ? "" : s.chromeAway}`}
+            // Away, the header is out of the way of the finger and the keys.
+            inert={!chromeShown}
+            onPointerDown={wakeChrome}
+            onFocus={wakeChrome}
+          >
             <button
               type="button"
               className={s.pHeadBtn}
-              aria-label={t("present.back")}
-              title={t("present.back")}
-              onClick={() => setFocus(false)}
+              aria-label={t("app.minimize")}
+              title={t("app.minimize")}
+              // The page goes, the room stays (its card on every page).
+              onClick={() => router.push("/rooms")}
             >
-              {language === "ar" ? (
-                <ChevronRight size={22} aria-hidden="true" />
-              ) : (
-                <ChevronLeft size={22} aria-hidden="true" />
-              )}
+              <ChevronDown size={22} aria-hidden="true" />
             </button>
             <div className={s.pHeadInfo}>
               <b dir="auto">
@@ -696,6 +830,7 @@ export default function LiveRoom({ roomId }: { roomId: string }) {
               myUserId={me.userId}
               canMark={me.can.mark}
               canDeleteAnyMark={me.can.delete_any_mark}
+              chrome={presenting ? deskChrome : undefined}
             />
           </div>
         </div>
@@ -717,7 +852,109 @@ export default function LiveRoom({ roomId }: { roomId: string }) {
             />
           </aside>
         ) : null}
+        {presenting && me.can.edit_room && voice.hands.length ? (
+          // The first raised hand, for whoever may let it speak (design ز4).
+          <HandCard
+            // A fresh card per hand: no state carried from the one before.
+            key={voice.hands[0]}
+            roomId={roomId}
+            userId={voice.hands[0]}
+            name={names.get(voice.hands[0]) ?? t("chat.someone")}
+          />
+        ) : null}
+        {presenting ? (
+          <nav
+            className={`${s.pDock} ${chromeShown ? "" : s.chromeAway}`}
+            aria-label={t("app.more")}
+            inert={!chromeShown}
+            onPointerDown={wakeChrome}
+            onFocus={wakeChrome}
+          >
+            {reacting ? (
+              <div className={s.reactPicker} role="group">
+                {REACTION_KINDS.map(kind => (
+                  <button
+                    key={kind}
+                    type="button"
+                    className={`${s.reactBtn} ${s[`react-${kind}`]}`}
+                    onClick={() => {
+                      active.react(kind);
+                      setReacting(false);
+                    }}
+                  >
+                    {t(`react.${kind}` as RoomsKey)}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+            <div className={s.pDockRow}>
+              {here ? <VoiceMainButton /> : null}
+              <button
+                type="button"
+                className={s.pDockItem}
+                aria-label={
+                  chat.unread
+                    ? t("live.chatUnread", { n: chat.unread })
+                    : t("live.chat")
+                }
+                onClick={() =>
+                  wide ? setSideOpen(open => !open) : setChatOpen(true)
+                }
+              >
+                <MessageCircle size={21} aria-hidden="true" />
+                <span>{t("live.chat")}</span>
+                {chat.unread && !(wide && sideOpen) ? (
+                  <i className={s.pDockBadge}>{chat.unread}</i>
+                ) : null}
+              </button>
+              {voice.phase === "live" ? (
+                <button
+                  type="button"
+                  className={`${s.pDockItem} ${reacting ? s.pDockOn : ""}`}
+                  aria-pressed={reacting}
+                  onClick={() => setReacting(open => !open)}
+                >
+                  <Smile size={21} aria-hidden="true" />
+                  <span>{t("app.react")}</span>
+                </button>
+              ) : null}
+              {me.can.start_quiz && !quiz.active ? (
+                <button
+                  type="button"
+                  className={s.pDockItem}
+                  onClick={() => setSheet({ kind: "quiz" })}
+                >
+                  <ListChecks size={21} aria-hidden="true" />
+                  <span>{t("app.quiz")}</span>
+                </button>
+              ) : null}
+              <button
+                type="button"
+                className={s.pDockItem}
+                onClick={() => setSheet({ kind: "more" })}
+              >
+                <MoreVertical size={21} aria-hidden="true" />
+                <span>{t("app.more")}</span>
+              </button>
+            </div>
+          </nav>
+        ) : null}
       </div>
+
+      {here && active.reactions.length ? (
+        <div className={s.reactToasts} aria-live="polite">
+          {active.reactions.map(reaction => (
+            <span key={reaction.id} className={s.reactToast}>
+              <b dir="auto">
+                {reaction.userId === me.userId
+                  ? t("live.you")
+                  : (names.get(reaction.userId) ?? t("chat.someone"))}
+              </b>
+              {t(`react.${reaction.kind}` as RoomsKey)}
+            </span>
+          ))}
+        </div>
+      ) : null}
 
       {mutationError ? (
         <p className={s.errorNote} role="alert">
@@ -781,7 +1018,7 @@ export default function LiveRoom({ roomId }: { roomId: string }) {
           type="button"
           className={`${s.btn} ${s.danger}`}
           disabled={leave.isPending}
-          onClick={() => leave.mutate({ roomId })}
+          onClick={() => setSheet({ kind: "leave" })}
         >
           <LogOut size={17} aria-hidden="true" /> {t("live.leave")}
         </button>
@@ -994,7 +1231,7 @@ export default function LiveRoom({ roomId }: { roomId: string }) {
               type="button"
               className={`${s.item} ${s.danger}`}
               disabled={leave.isPending}
-              onClick={() => leave.mutate({ roomId })}
+              onClick={() => setSheet({ kind: "leave" })}
             >
               <LogOut size={18} aria-hidden="true" /> {t("live.leave")}
             </button>
@@ -1262,7 +1499,193 @@ export default function LiveRoom({ roomId }: { roomId: string }) {
           </button>
         </Sheet>
       ) : null}
+
+      {sheet?.kind === "switch" ? (
+        <SwitchSheet
+          from={sheet.from}
+          busy={leaveOther.isPending || leaveThis.isPending}
+          onLeaveIt={() => {
+            const from = sheet.from;
+            // Out of the other room, then in this one — whatever the
+            // server said about the other (it tidies up anyway).
+            leaveOther.mutate(
+              { roomId: from },
+              {
+                onSettled: () => {
+                  enter(roomId);
+                  close();
+                },
+              }
+            );
+          }}
+          onStay={() => {
+            // Staying in the other room: out of this one, which the lobby
+            // already joined, so no seat is kept here.
+            const from = sheet.from;
+            leaveThis.mutate(
+              { roomId },
+              { onSettled: () => router.replace(`/rooms/${from}/live`) }
+            );
+          }}
+        />
+      ) : null}
+
+      {sheet?.kind === "leave" ? (
+        // Leaving is only ever on purpose (the arrow at the top only
+        // minimises the room).
+        <Sheet title={t("live.leave")} onClose={close}>
+          <p className={s.meta}>{t("app.leaveConfirm")}</p>
+          {leave.error ? (
+            <p className={s.errorNote} role="alert">
+              {tError(leave.error)}
+            </p>
+          ) : null}
+          <button
+            type="button"
+            className={`${s.btn} ${s.danger} ${s.wide}`}
+            disabled={leave.isPending}
+            onClick={() => leave.mutate({ roomId })}
+          >
+            <LogOut size={17} aria-hidden="true" /> {t("live.leave")}
+          </button>
+          <button
+            type="button"
+            className={`${s.btn} ${s.wide}`}
+            onClick={close}
+          >
+            {t("live.cancel")}
+          </button>
+        </Sheet>
+      ) : null}
     </>
+  );
+}
+
+// Entering a room while in another (design: one room at a time).
+function SwitchSheet({
+  from,
+  busy,
+  onLeaveIt,
+  onStay,
+}: {
+  from: string;
+  busy: boolean;
+  onLeaveIt: () => void;
+  onStay: () => void;
+}) {
+  const { t } = useRooms();
+  // Already read for the room's card: no new request.
+  const other = trpc.rooms.state.useQuery({ roomId: from }, { retry: false });
+  return (
+    <Sheet title={t("app.switchTitle")} onClose={onStay}>
+      <p className={s.meta}>
+        {t("app.switchBody", { room: other.data?.room.title ?? "…" })}
+      </p>
+      <button
+        type="button"
+        className={`${s.btn} ${s.primary} ${s.wide}`}
+        disabled={busy}
+        onClick={onLeaveIt}
+      >
+        {t("live.confirm")}
+      </button>
+      <button type="button" className={`${s.btn} ${s.wide}`} onClick={onStay}>
+        {t("live.cancel")}
+      </button>
+    </Sheet>
+  );
+}
+
+// The voice's big button in the dock: join, open / close the microphone,
+// or ask to speak — whichever fits the student now.
+function VoiceMainButton() {
+  const { t } = useRooms();
+  const active = useActiveRoom();
+  const voice = active.voice;
+  if (voice.unavailable) return null;
+  const connected = voice.phase === "live" || voice.phase === "reconnecting";
+  // Not on a half-connected line (as on the room's own page).
+  const mic =
+    voice.phase === "reconnecting" ? null : () => void active.toggleMic();
+  const [Icon, label, tone, onClick]: [
+    typeof Mic,
+    string,
+    string,
+    (() => void) | null,
+  ] =
+    voice.phase === "connecting"
+      ? [Headphones, t("voice.joining"), "", null]
+      : !connected
+        ? [
+            Headphones,
+            voice.phase === "lost" ? t("voice.rejoin") : t("voice.join"),
+            "",
+            () => void active.join(),
+          ]
+        : voice.maySpeak
+          ? voice.micOn
+            ? [Mic, t("voice.micOn"), s.pVoiceOn, mic]
+            : [MicOff, t("voice.micOff"), "", mic]
+          : voice.asked
+            ? [Hand, t("voice.asked"), s.pVoiceAsked, null]
+            : [Hand, t("voice.ask"), "", () => void active.raiseHand()];
+  return (
+    <button
+      type="button"
+      className={`${s.pVoice} ${tone}`}
+      aria-label={label}
+      title={label}
+      aria-pressed={connected && voice.maySpeak ? voice.micOn : undefined}
+      disabled={!onClick || voice.micBusy}
+      onClick={onClick ?? undefined}
+    >
+      <Icon size={24} aria-hidden="true" />
+    </button>
+  );
+}
+
+// The first raised hand over the file, for whoever may let it speak.
+function HandCard({
+  roomId,
+  userId,
+  name,
+}: {
+  roomId: string;
+  userId: string;
+  name: string;
+}) {
+  const { t, tError } = useRooms();
+  const active = useActiveRoom();
+  const utils = trpc.useUtils();
+  const allow = trpc.rooms.setMember.useMutation({
+    onSuccess: () => {
+      active.dropHand(userId);
+      return utils.rooms.state.invalidate({ roomId });
+    },
+  });
+  return (
+    <div className={s.pHand} role="status">
+      <Hand size={18} aria-hidden="true" />
+      <span dir="auto">{t("voice.wantsToSpeak", { name })}</span>
+      <button
+        type="button"
+        className={s.pHandLater}
+        onClick={() => active.dropHand(userId)}
+      >
+        {t("app.later")}
+      </button>
+      <button
+        type="button"
+        className={s.pHandAllow}
+        disabled={allow.isPending}
+        onClick={() =>
+          allow.mutate({ roomId, userId, grants: { speak: true } })
+        }
+      >
+        {t("voice.allow")}
+      </button>
+      {allow.error ? <small role="alert">{tError(allow.error)}</small> : null}
+    </div>
   );
 }
 

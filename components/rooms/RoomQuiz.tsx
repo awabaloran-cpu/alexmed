@@ -261,52 +261,143 @@ export function QuizPanel({
     null;
   const error = answer.error ?? advance.error ?? cancel.error;
 
+  // What this student has seen of this quiz (design ط): right / wrong / no
+  // answer per question, and their points and place at the last reveal.
+  const seen = useRef<{
+    quizId: string;
+    results: Record<number, boolean | null>;
+    revealed: string | null;
+    points: number | null;
+    rank: number | null;
+    gained: number | null;
+    moved: number | null;
+  }>({
+    quizId: quiz.quizId,
+    results: {},
+    revealed: null,
+    points: null,
+    rank: null,
+    gained: null,
+    moved: null,
+  });
+  if (seen.current.quizId !== quiz.quizId) {
+    seen.current = {
+      quizId: quiz.quizId,
+      results: {},
+      revealed: null,
+      points: null,
+      rank: null,
+      gained: null,
+      moved: null,
+    };
+  }
+  if (revealed && seen.current.revealed !== quiz.question.id) {
+    const mark = seen.current;
+    mark.revealed = quiz.question.id;
+    mark.results[quiz.index] =
+      selected === null ? null : selected === quiz.correctIndex;
+    const rank = board.findIndex(row => row.userId === myUserId);
+    const points = rank < 0 ? null : board[rank].points;
+    // Gained only against a score this screen saw before (or the very first
+    // question): someone back mid-quiz is not shown their whole score.
+    mark.gained =
+      points === null
+        ? null
+        : mark.points !== null
+          ? points - mark.points
+          : quiz.index === 0
+            ? points
+            : null;
+    mark.moved = rank < 0 || mark.rank === null ? null : mark.rank - rank;
+    if (points !== null) mark.points = points;
+    if (rank >= 0) mark.rank = rank;
+  }
+  const { results, gained, moved } = seen.current;
+  const share = Math.max(0, Math.min(1, left / (quiz.seconds * 1000 || 1)));
+
   return (
-    <section className={s.quiz} aria-label={t("quiz.title")}>
+    <section className={`${s.quiz} ${s.quizGame}`} aria-label={t("quiz.title")}>
       <div className={s.quizHead}>
-        <span>
-          {t("quiz.progress", { n: quiz.index + 1, total: quiz.total })}
+        <span className={s.quizHeadText}>
+          <small>{revealed ? t("quiz.timeUp") : t("quiz.title")}</small>
+          <b>{t("quiz.progress", { n: quiz.index + 1, total: quiz.total })}</b>
         </span>
         {revealed ? (
-          <span>{t("quiz.timeUp")}</span>
+          <span
+            className={`${s.quizResult} ${
+              selected === null
+                ? ""
+                : selected === quiz.correctIndex
+                  ? s.quizResultRight
+                  : s.quizResultWrong
+            }`}
+          >
+            {selected === null
+              ? t("quiz.noAnswer")
+              : selected === quiz.correctIndex
+                ? [
+                    t("quiz.youRight"),
+                    gained && gained > 0
+                      ? t("app.plusPoints", { n: gained })
+                      : "",
+                  ]
+                    .filter(Boolean)
+                    .join(" ")
+                : t("quiz.youWrong")}
+          </span>
         ) : (
           <span
-            className={`${s.clock} ${secondsLeft <= 5 ? s.clockLow : ""}`}
+            className={`${s.ring} ${secondsLeft <= 5 ? s.ringLow : ""}`}
+            style={{ "--share": share } as React.CSSProperties}
             role="timer"
             aria-label={t("quiz.secondsLeft", { n: secondsLeft })}
           >
-            {secondsLeft}
+            <b>{secondsLeft}</b>
           </span>
         )}
       </div>
       <div
-        className={s.quizBar}
+        className={s.quizSegments}
         role="progressbar"
         aria-valuemin={0}
         aria-valuemax={quiz.total}
         aria-valuenow={quiz.index + (revealed ? 1 : 0)}
+        dir="ltr"
       >
-        <i
-          style={{
-            width: `${((quiz.index + (revealed ? 1 : 0)) / quiz.total) * 100}%`,
-          }}
-        />
+        {Array.from({ length: quiz.total }, (_, i) => (
+          <i
+            key={i}
+            className={
+              i === quiz.index
+                ? s.segNow
+                : !(i in results)
+                  ? ""
+                  : results[i] === true
+                    ? s.segRight
+                    : results[i] === false
+                      ? s.segWrong
+                      : s.segNone
+            }
+          />
+        ))}
       </div>
 
-      <h2 className={s.quizText} dir="auto">
-        {text}
-      </h2>
-      {arabic ? (
-        <button
-          type="button"
-          className={s.readerLink}
-          onClick={() => setShowArabic(value => !value)}
-        >
-          {showArabic ? t("quiz.showOriginal") : t("quiz.showArabic")}
-        </button>
-      ) : null}
+      <div className={s.quizCard}>
+        <h2 className={s.quizText} dir="auto">
+          {text}
+        </h2>
+        {arabic ? (
+          <button
+            type="button"
+            className={s.readerLink}
+            onClick={() => setShowArabic(value => !value)}
+          >
+            {showArabic ? t("quiz.showOriginal") : t("quiz.showArabic")}
+          </button>
+        ) : null}
+      </div>
 
-      <div className={s.options}>
+      <div className={`${s.options} ${revealed ? s.optionsRevealed : ""}`}>
         {options.map((option, index) => {
           const mine = selected === index;
           const right = revealed && quiz.correctIndex === index;
@@ -315,9 +406,18 @@ export function QuizPanel({
             <button
               key={index}
               type="button"
-              className={`${s.option} ${mine ? s.optionMine : ""} ${
-                right ? s.optionRight : ""
-              } ${wrong ? s.optionWrong : ""}`}
+              className={`${s.option} ${s[`tile${index % 4}`]} ${
+                mine ? s.optionMine : ""
+              } ${right ? s.optionRight : ""} ${wrong ? s.optionWrong : ""}`}
+              style={
+                revealed && quiz.distribution
+                  ? ({
+                      "--share":
+                        (quiz.distribution[index] ?? 0) /
+                        Math.max(1, answeredCount),
+                    } as React.CSSProperties)
+                  : undefined
+              }
               disabled={revealed || selected !== null || answer.isPending}
               aria-pressed={mine}
               onClick={() => {
@@ -358,20 +458,37 @@ export function QuizPanel({
             </p>
           ) : null}
           {board.length ? (
-            <ol className={s.board}>
-              {board.slice(0, 5).map((row, position) => (
-                <li
-                  key={row.userId}
-                  className={row.userId === myUserId ? s.boardMe : ""}
-                >
-                  <span>{position + 1}</span>
-                  <b dir="auto">
-                    {row.userId === myUserId ? t("live.you") : row.name}
-                  </b>
-                  <i>{t("quiz.points", { n: row.points })}</i>
-                </li>
-              ))}
-            </ol>
+            <div className={s.standings}>
+              <small>{t("app.standings")}</small>
+              <ol className={s.board}>
+                {board
+                  .map((row, position) => ({ row, position }))
+                  .filter(
+                    ({ row, position }) =>
+                      position < 3 || row.userId === myUserId
+                  )
+                  .map(({ row, position }) => (
+                    <li
+                      key={row.userId}
+                      className={row.userId === myUserId ? s.boardMe : ""}
+                    >
+                      <span>{position + 1}</span>
+                      <b dir="auto">
+                        {row.userId === myUserId ? t("live.you") : row.name}
+                        {row.userId === myUserId && moved ? (
+                          <em
+                            className={moved > 0 ? s.movedUp : s.movedDown}
+                            aria-hidden="true"
+                          >
+                            {moved > 0 ? " ▲" : " ▼"}
+                          </em>
+                        ) : null}
+                      </b>
+                      <i>{t("quiz.points", { n: row.points })}</i>
+                    </li>
+                  ))}
+              </ol>
+            </div>
           ) : null}
           {canLead || quiz.canAdvance ? (
             <button
@@ -452,7 +569,10 @@ export function QuizResults({
   }
   const { ranking, me, hardest, total } = results.data;
   return (
-    <section className={s.quiz} aria-label={t("quiz.resultsTitle")}>
+    <section
+      className={`${s.quiz} ${s.quizGame}`}
+      aria-label={t("quiz.resultsTitle")}
+    >
       <div className={s.quizDone}>
         <Trophy size={30} aria-hidden="true" />
         <h2>{t("quiz.resultsTitle")}</h2>
