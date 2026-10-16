@@ -12,16 +12,13 @@ import {
   Flag,
   Hand,
   Headphones,
-  LayoutList,
   ListChecks,
   LogOut,
-  Maximize2,
   MessageCircle,
   Mic,
   MicOff,
   MoreVertical,
   PanelLeftClose,
-  PanelLeftOpen,
   Settings,
   ShieldCheck,
   Smile,
@@ -35,7 +32,7 @@ import type { RoomsKey } from "@/lib/study-rooms/i18n";
 import { isTap, REACTION_KINDS } from "@/lib/study-rooms/reactions";
 import { trpc } from "@/lib/trpc-client";
 import { IDLE_VOICE, useActiveRoom } from "./ActiveRoom";
-import { Avatar, Sheet, SubjectLine } from "./parts";
+import { Avatar, Sheet } from "./parts";
 import RoomChat, { useRoomChat } from "./RoomChat";
 import { ColleagueItems, InviteColleagues } from "./RoomColleagues";
 import { InviteBox } from "./RoomCreate";
@@ -107,6 +104,7 @@ export default function LiveRoom({ roomId }: { roomId: string }) {
     | { kind: "videoRemove" }
     | { kind: "more" }
     | { kind: "members" }
+    | { kind: "voice" }
     | { kind: "leave" }
     | { kind: "switch"; from: string }
     | null
@@ -184,11 +182,10 @@ export default function LiveRoom({ roomId }: { roomId: string }) {
   const videoTimeRef = useRef<number | null>(null);
   const [videoSeek, setVideoSeek] = useState<{ seconds: number } | null>(null);
   const [sideOpen, setSideOpen] = useState(true);
-  // 🖥 The presentation: whenever the room has a file or a video, that is
-  // the screen — edge to edge, the rest of the room one tap away. Nobody
-  // presses anything to get it: it is where a member lands, and where a
-  // new file or video puts everyone. "Back" shows the room's own page.
-  const [focus, setFocus] = useState(true);
+  // 🖥 The presentation is the room: its file or video edge to edge (or,
+  // before one is chosen, the screen that asks for it), the rest of the
+  // room one tap away — the dock, the chat and "more". There is no other
+  // page of the room.
   const [deskInfo, setDeskInfo] = useState<DeskInfo | null>(null);
   const onDeskInfo = useCallback((info: DeskInfo) => setDeskInfo(info), []);
   const live = state.data;
@@ -197,18 +194,7 @@ export default function LiveRoom({ roomId }: { roomId: string }) {
     live.video.contentType === "youtube" &&
     !!live.video.videoId &&
     !!live.video.state;
-  const contentKey = !live
-    ? ""
-    : liveVideo
-      ? `video:${live.video.videoId}`
-      : `file:${live.room.bookId ?? ""}`;
-  useEffect(() => {
-    setFocus(true);
-  }, [contentKey]);
-  // A quiz waiting to start is shown on the room's own page, with the
-  // seats and the invite beside it.
-  const presenting =
-    focus && !readySlug && !!live && (liveVideo || !!live.room.bookId);
+  const presenting = !!live;
   // The page behind does not scroll under the presentation.
   useEffect(() => {
     if (!presenting) return;
@@ -312,8 +298,12 @@ export default function LiveRoom({ roomId }: { roomId: string }) {
   // drawn, the quiz, or a raised hand waiting for whoever may allow it. A
   // video keeps them too: a tap on YouTube's player never reaches the page,
   // so nothing could bring them back.
+  // Nothing on the screen yet (no file, a quiz waiting) keeps them too:
+  // there is nothing for them to step aside for.
   const chromeHeld =
     liveVideo ||
+    !live?.room.bookId ||
+    !!readySlug ||
     !!sheet ||
     chatOpen ||
     reacting ||
@@ -472,309 +462,95 @@ export default function LiveRoom({ roomId }: { roomId: string }) {
         ) : null}
       </AnimatePresence>
 
-      <div className={s.liveHead}>
-        <div style={{ display: "grid", gap: 2, minWidth: 0 }}>
-          <SubjectLine room={room} />
-          <h1 dir="auto">{room.title}</h1>
-        </div>
-        <span className={s.live}>
-          <i />
-          {t("live.present", { n: members.length })}
-        </span>
-      </div>
-
       <div
-        className={s.seats}
-        aria-label={t("live.present", { n: members.length })}
+        className={`${s.present} ${wide && sideOpen ? s.presentSide : ""}`}
+        data-present=""
       >
-        <AnimatePresence initial={false}>
-          {members.map(member => (
-            <motion.button
-              key={member.userId}
-              type="button"
-              className={`${s.seat} ${
-                voice.speaking.has(member.userId) ? s.seatSpeaking : ""
-              }`}
-              layout
-              initial={{ scale: 0.6, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.6, opacity: 0 }}
-              transition={{ type: "spring", stiffness: 380, damping: 24 }}
-              onClick={() =>
-                member.userId === me.userId
-                  ? undefined
-                  : setSheet({ kind: "member", userId: member.userId })
-              }
-            >
-              <Avatar person={member} size="lg" />
-              <span dir="auto">
-                {member.userId === me.userId ? t("live.you") : member.name}
-              </span>
-              <small>
-                {roleLabel(member.role)}
-                {member.mutedByHost ? " 🔇" : ""}
-                {voice.inVoice.has(member.userId) ? (
-                  <span
-                    className={s.seatVoice}
-                    title={
-                      voice.speaking.has(member.userId)
-                        ? t("voice.speaking")
-                        : t("voice.inVoice")
-                    }
-                  >
-                    {" 🎧"}
-                  </span>
-                ) : null}
-              </small>
-            </motion.button>
-          ))}
-        </AnimatePresence>
-      </div>
-
-      {here ? (
-        <RoomVoice roomId={roomId} canGrant={me.can.edit_room} names={names} />
-      ) : null}
-
-      {me.can.edit_room || video.videoId ? (
-        <div className={s.contentBar}>
-          {/* Which of the two the room looks at. Members see what was
-              chosen; only who may edit the room chooses. */}
-          <div
-            className={s.segment}
-            role="group"
-            aria-label={t("video.contentChoice")}
-          >
-            <button
-              type="button"
-              className={`${s.segmentBtn} ${watching ? "" : s.segmentOn}`}
-              aria-pressed={!watching}
-              disabled={!me.can.edit_room || setContent.isPending}
-              onClick={() =>
-                watching && setContent.mutate({ roomId, contentType: "pdf" })
-              }
-            >
-              <FileText size={16} aria-hidden="true" /> {t("video.tabFile")}
-            </button>
-            <button
-              type="button"
-              className={`${s.segmentBtn} ${watching ? s.segmentOn : ""}`}
-              aria-pressed={watching}
-              disabled={!me.can.edit_room || setContent.isPending}
-              onClick={() => {
-                if (watching) return;
-                if (video.videoId) {
-                  setContent.mutate({ roomId, contentType: "youtube" });
-                } else {
-                  setSheet({ kind: "video" });
-                }
-              }}
-            >
-              <Video size={16} aria-hidden="true" /> {t("video.tabVideo")}
-            </button>
-          </div>
-          {me.can.edit_room ? (
-            <>
-              <button
-                type="button"
-                className={s.btn}
-                onClick={() => setSheet({ kind: "video" })}
-              >
-                <Video size={16} aria-hidden="true" />
-                {video.videoId ? t("video.change") : t("video.addButton")}
-              </button>
-              {video.videoId ? (
-                <button
-                  type="button"
-                  className={s.btn}
-                  onClick={() => setSheet({ kind: "videoRemove" })}
-                >
-                  {t("video.remove")}
-                </button>
-              ) : null}
-            </>
-          ) : null}
-          {wide ? (
-            <button
-              type="button"
-              className={`${s.btn} ${s.sideToggle}`}
-              aria-pressed={sideOpen}
-              onClick={() => setSideOpen(open => !open)}
-            >
-              {sideOpen ? (
-                <PanelLeftClose size={16} aria-hidden="true" />
-              ) : (
-                <PanelLeftOpen size={16} aria-hidden="true" />
-              )}
-              {sideOpen ? t("video.hideSide") : t("video.showSide")}
-              {!sideOpen && chat.unread ? (
-                <span className={s.badge}>{chat.unread}</span>
-              ) : null}
-            </button>
-          ) : null}
-        </div>
-      ) : null}
-
-      {readySlug && !quiz.active ? (
-        <section className={s.ready} aria-label={t("catalog.readyTitle")}>
-          <ListChecks size={26} aria-hidden="true" />
-          <div>
-            <small>{t("catalog.readyTitle")}</small>
-            <b dir="auto">
-              {readyQuiz.data?.title ??
-                (readyQuiz.error?.message === "not_found"
-                  ? t("catalog.gone")
-                  : readyQuiz.isError
-                    ? t("catalog.loadFailed")
-                    : "…")}
-            </b>
-            <p>{t("catalog.readyHint")}</p>
-          </div>
-          {startCatalog.error ? (
-            <p className={s.errorNote} role="alert">
-              {tError(startCatalog.error)}
-            </p>
-          ) : null}
-          <div className={s.readyActions}>
-            {me.can.start_quiz && readyQuiz.data ? (
-              <button
-                type="button"
-                className={`${s.btn} ${s.primary}`}
-                disabled={startCatalog.isPending}
-                onClick={() => startCatalog.mutate({ roomId, slug: readySlug })}
-              >
-                {t("catalog.start")}
-              </button>
-            ) : null}
-            {room.visibility === "public" || me.can.invite ? (
-              <button
-                type="button"
-                className={s.btn}
-                onClick={() => setSheet({ kind: "invite", code: null })}
-              >
-                <UserPlus size={17} aria-hidden="true" /> {t("live.invite")}
-              </button>
-            ) : null}
-            {readyQuiz.isError && readyQuiz.error.message !== "not_found" ? (
-              <button
-                type="button"
-                className={s.btn}
-                onClick={() => readyQuiz.refetch()}
-              >
-                {t("rooms.retry")}
-              </button>
-            ) : null}
-            <button type="button" className={s.btn} onClick={dropReady}>
-              {t("catalog.dismiss")}
-            </button>
-          </div>
-        </section>
-      ) : null}
-
-      {!presenting && !readySlug && (watching || room.bookId) ? (
-        <button
-          type="button"
-          className={`${s.btn} ${s.primary} ${s.wide}`}
-          onClick={() => setFocus(true)}
+        <header
+          className={`${s.pHead} ${chromeShown ? "" : s.chromeAway}`}
+          // Away, the header is out of the way of the finger and the keys.
+          inert={!chromeShown}
+          onPointerDown={wakeChrome}
+          onFocus={wakeChrome}
         >
-          <Maximize2 size={17} aria-hidden="true" /> {t("present.open")}
-        </button>
-      ) : null}
-
-      <div
-        className={
-          presenting
-            ? `${s.present} ${wide && sideOpen ? s.presentSide : ""}`
-            : `${s.work} ${wide && !sideOpen ? s.workWide : ""} ${
-                watching ? s.workVideo : ""
-              }`
-        }
-        data-present={presenting ? "" : undefined}
-      >
-        {presenting ? (
-          <header
-            className={`${s.pHead} ${chromeShown ? "" : s.chromeAway}`}
-            // Away, the header is out of the way of the finger and the keys.
-            inert={!chromeShown}
-            onPointerDown={wakeChrome}
-            onFocus={wakeChrome}
+          <button
+            type="button"
+            className={s.pHeadBtn}
+            aria-label={t("app.minimize")}
+            title={t("app.minimize")}
+            // The page goes, the room stays (its card on every page).
+            onClick={() => router.push("/rooms")}
           >
-            <button
-              type="button"
-              className={s.pHeadBtn}
-              aria-label={t("app.minimize")}
-              title={t("app.minimize")}
-              // The page goes, the room stays (its card on every page).
-              onClick={() => router.push("/rooms")}
+            <ChevronDown size={22} aria-hidden="true" />
+          </button>
+          <div className={s.pHeadInfo}>
+            <b dir="auto">
+              {watching
+                ? (video.title ?? t("video.untitled"))
+                : deskInfo?.pageCount
+                  ? t("desk.pageOf", {
+                      page: deskInfo.page,
+                      total: deskInfo.pageCount,
+                    })
+                  : room.title}
+            </b>
+            <small
+              className={
+                state.isRefetchError || (!watching && deskInfo?.away)
+                  ? s.pHeadWarn
+                  : ""
+              }
+              role="status"
+              dir="auto"
             >
-              <ChevronDown size={22} aria-hidden="true" />
-            </button>
-            <div className={s.pHeadInfo}>
-              <b dir="auto">
-                {watching
-                  ? (video.title ?? t("video.untitled"))
-                  : deskInfo?.pageCount
-                    ? t("desk.pageOf", {
-                        page: deskInfo.page,
-                        total: deskInfo.pageCount,
-                      })
-                    : room.title}
-              </b>
-              <small
-                className={
-                  state.isRefetchError || (!watching && deskInfo?.away)
-                    ? s.pHeadWarn
-                    : ""
-                }
-                role="status"
-                dir="auto"
-              >
-                {state.isRefetchError
-                  ? t("live.reconnecting")
-                  : watching
-                    ? room.title
+              {state.isRefetchError
+                ? t("live.reconnecting")
+                : watching
+                  ? room.title
+                  : !room.bookId
+                    ? t("live.present", { n: members.length })
                     : deskInfo?.away
                       ? t("present.away")
                       : t("present.synced")}
-              </small>
-            </div>
-            <button
-              type="button"
-              className={s.pHeadBtn}
-              aria-label={
-                chat.unread
-                  ? t("live.chatUnread", { n: chat.unread })
-                  : t("live.chat")
-              }
-              aria-pressed={wide ? sideOpen : undefined}
-              onClick={() =>
-                wide ? setSideOpen(open => !open) : setChatOpen(true)
-              }
-            >
-              {wide && sideOpen ? (
-                <PanelLeftClose size={20} aria-hidden="true" />
-              ) : (
-                <MessageCircle size={20} aria-hidden="true" />
-              )}
-              {chat.unread && !(wide && sideOpen) ? (
-                <span className={s.pHeadBadge}>{chat.unread}</span>
-              ) : null}
-            </button>
-            <button
-              type="button"
-              className={s.pHeadBtn}
-              aria-label={t("present.more")}
-              title={t("present.more")}
-              onClick={() => setSheet({ kind: "more" })}
-            >
-              <MoreVertical size={20} aria-hidden="true" />
-            </button>
-            {mutationError ? (
-              <p className={`${s.errorNote} ${s.pHeadNote}`} role="alert">
-                {tError(mutationError)}
-              </p>
+            </small>
+          </div>
+          <button
+            type="button"
+            className={s.pHeadBtn}
+            aria-label={
+              chat.unread
+                ? t("live.chatUnread", { n: chat.unread })
+                : t("live.chat")
+            }
+            aria-pressed={wide ? sideOpen : undefined}
+            onClick={() =>
+              wide ? setSideOpen(open => !open) : setChatOpen(true)
+            }
+          >
+            {wide && sideOpen ? (
+              <PanelLeftClose size={20} aria-hidden="true" />
+            ) : (
+              <MessageCircle size={20} aria-hidden="true" />
+            )}
+            {chat.unread && !(wide && sideOpen) ? (
+              <span className={s.pHeadBadge}>{chat.unread}</span>
             ) : null}
-          </header>
-        ) : null}
+          </button>
+          <button
+            type="button"
+            className={s.pHeadBtn}
+            aria-label={t("present.more")}
+            title={t("present.more")}
+            onClick={() => setSheet({ kind: "more" })}
+          >
+            <MoreVertical size={20} aria-hidden="true" />
+          </button>
+          {mutationError ? (
+            <p className={`${s.errorNote} ${s.pHeadNote}`} role="alert">
+              {tError(mutationError)}
+            </p>
+          ) : null}
+        </header>
         {quiz.active ? (
           <QuizPanel
             roomId={roomId}
@@ -793,8 +569,38 @@ export default function LiveRoom({ roomId }: { roomId: string }) {
         ) : null}
         <div
           hidden={!!quiz.active || !!quiz.finishedId}
-          className={presenting ? s.presentMain : undefined}
+          className={s.presentMain}
         >
+          {!watching && !room.bookId ? (
+            // Nothing chosen yet: the screen says so, and whoever may
+            // choose does it from here.
+            <div className={s.pEmpty}>
+              <FileText size={30} aria-hidden="true" />
+              <b>
+                {me.can.edit_room ? t("live.noFileHost") : t("live.noFile")}
+              </b>
+              {me.can.edit_room ? (
+                <div className={s.pEmptyActions}>
+                  <button
+                    type="button"
+                    className={`${s.btn} ${s.primary}`}
+                    onClick={() => setSheet({ kind: "file" })}
+                  >
+                    <FileText size={17} aria-hidden="true" />
+                    {t("file.choose")}
+                  </button>
+                  <button
+                    type="button"
+                    className={s.btn}
+                    onClick={() => setSheet({ kind: "video" })}
+                  >
+                    <Video size={17} aria-hidden="true" />
+                    {t("video.addButton")}
+                  </button>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
           {watching ? (
             <RoomVideo
               roomId={roomId}
@@ -810,29 +616,28 @@ export default function LiveRoom({ roomId }: { roomId: string }) {
               localSeek={videoSeek}
             />
           ) : null}
-          <div
-            hidden={watching}
-            className={presenting ? s.presentMain : undefined}
-          >
-            <RoomDesk
-              present={presenting}
-              onInfo={onDeskInfo}
-              roomId={roomId}
-              bookId={room.bookId}
-              sharedPage={room.sharedPage}
-              canLead={me.can.lead_page}
-              canMoveFreely={me.can.free_nav}
-              canChoose={me.can.edit_room}
-              onChoose={() => setSheet({ kind: "file" })}
-              onPage={onPage}
-              jump={jump}
-              roomSeq={room.seq}
-              myUserId={me.userId}
-              canMark={me.can.mark}
-              canDeleteAnyMark={me.can.delete_any_mark}
-              chrome={presenting ? deskChrome : undefined}
-            />
-          </div>
+          {room.bookId ? (
+            <div hidden={watching} className={s.presentMain}>
+              <RoomDesk
+                present
+                onInfo={onDeskInfo}
+                roomId={roomId}
+                bookId={room.bookId}
+                sharedPage={room.sharedPage}
+                canLead={me.can.lead_page}
+                canMoveFreely={me.can.free_nav}
+                canChoose={me.can.edit_room}
+                onChoose={() => setSheet({ kind: "file" })}
+                onPage={onPage}
+                jump={jump}
+                roomSeq={room.seq}
+                myUserId={me.userId}
+                canMark={me.can.mark}
+                canDeleteAnyMark={me.can.delete_any_mark}
+                chrome={deskChrome}
+              />
+            </div>
+          ) : null}
         </div>
         {wide && sideOpen ? (
           <aside className={s.side} aria-label={t("chat.title")}>
@@ -852,7 +657,69 @@ export default function LiveRoom({ roomId }: { roomId: string }) {
             />
           </aside>
         ) : null}
-        {presenting && me.can.edit_room && voice.hands.length ? (
+        {readySlug && !quiz.active ? (
+          // 🧭 A quiz of the Discover catalogue brought to this room: a
+          // card over the screen until the one who brought it starts it.
+          <section
+            className={`${s.ready} ${s.pReady}`}
+            aria-label={t("catalog.readyTitle")}
+          >
+            <ListChecks size={26} aria-hidden="true" />
+            <div>
+              <small>{t("catalog.readyTitle")}</small>
+              <b dir="auto">
+                {readyQuiz.data?.title ??
+                  (readyQuiz.error?.message === "not_found"
+                    ? t("catalog.gone")
+                    : readyQuiz.isError
+                      ? t("catalog.loadFailed")
+                      : "…")}
+              </b>
+              <p>{t("catalog.readyHint")}</p>
+            </div>
+            {startCatalog.error ? (
+              <p className={s.errorNote} role="alert">
+                {tError(startCatalog.error)}
+              </p>
+            ) : null}
+            <div className={s.readyActions}>
+              {me.can.start_quiz && readyQuiz.data ? (
+                <button
+                  type="button"
+                  className={`${s.btn} ${s.primary}`}
+                  disabled={startCatalog.isPending}
+                  onClick={() =>
+                    startCatalog.mutate({ roomId, slug: readySlug })
+                  }
+                >
+                  {t("catalog.start")}
+                </button>
+              ) : null}
+              {room.visibility === "public" || me.can.invite ? (
+                <button
+                  type="button"
+                  className={s.btn}
+                  onClick={() => setSheet({ kind: "invite", code: null })}
+                >
+                  <UserPlus size={17} aria-hidden="true" /> {t("live.invite")}
+                </button>
+              ) : null}
+              {readyQuiz.isError && readyQuiz.error.message !== "not_found" ? (
+                <button
+                  type="button"
+                  className={s.btn}
+                  onClick={() => readyQuiz.refetch()}
+                >
+                  {t("rooms.retry")}
+                </button>
+              ) : null}
+              <button type="button" className={s.btn} onClick={dropReady}>
+                {t("catalog.dismiss")}
+              </button>
+            </div>
+          </section>
+        ) : null}
+        {me.can.edit_room && voice.hands.length ? (
           // The first raised hand, for whoever may let it speak (design ز4).
           <HandCard
             // A fresh card per hand: no state carried from the one before.
@@ -862,83 +729,81 @@ export default function LiveRoom({ roomId }: { roomId: string }) {
             name={names.get(voice.hands[0]) ?? t("chat.someone")}
           />
         ) : null}
-        {presenting ? (
-          <nav
-            className={`${s.pDock} ${chromeShown ? "" : s.chromeAway}`}
-            aria-label={t("app.more")}
-            inert={!chromeShown}
-            onPointerDown={wakeChrome}
-            onFocus={wakeChrome}
-          >
-            {reacting ? (
-              <div className={s.reactPicker} role="group">
-                {REACTION_KINDS.map(kind => (
-                  <button
-                    key={kind}
-                    type="button"
-                    className={`${s.reactBtn} ${s[`react-${kind}`]}`}
-                    onClick={() => {
-                      active.react(kind);
-                      setReacting(false);
-                    }}
-                  >
-                    {t(`react.${kind}` as RoomsKey)}
-                  </button>
-                ))}
-              </div>
-            ) : null}
-            <div className={s.pDockRow}>
-              {here ? <VoiceMainButton /> : null}
-              <button
-                type="button"
-                className={s.pDockItem}
-                aria-label={
-                  chat.unread
-                    ? t("live.chatUnread", { n: chat.unread })
-                    : t("live.chat")
-                }
-                onClick={() =>
-                  wide ? setSideOpen(open => !open) : setChatOpen(true)
-                }
-              >
-                <MessageCircle size={21} aria-hidden="true" />
-                <span>{t("live.chat")}</span>
-                {chat.unread && !(wide && sideOpen) ? (
-                  <i className={s.pDockBadge}>{chat.unread}</i>
-                ) : null}
-              </button>
-              {voice.phase === "live" ? (
+        <nav
+          className={`${s.pDock} ${chromeShown ? "" : s.chromeAway}`}
+          aria-label={t("app.more")}
+          inert={!chromeShown}
+          onPointerDown={wakeChrome}
+          onFocus={wakeChrome}
+        >
+          {reacting ? (
+            <div className={s.reactPicker} role="group">
+              {REACTION_KINDS.map(kind => (
                 <button
+                  key={kind}
                   type="button"
-                  className={`${s.pDockItem} ${reacting ? s.pDockOn : ""}`}
-                  aria-pressed={reacting}
-                  onClick={() => setReacting(open => !open)}
+                  className={`${s.reactBtn} ${s[`react-${kind}`]}`}
+                  onClick={() => {
+                    active.react(kind);
+                    setReacting(false);
+                  }}
                 >
-                  <Smile size={21} aria-hidden="true" />
-                  <span>{t("app.react")}</span>
+                  {t(`react.${kind}` as RoomsKey)}
                 </button>
-              ) : null}
-              {me.can.start_quiz && !quiz.active ? (
-                <button
-                  type="button"
-                  className={s.pDockItem}
-                  onClick={() => setSheet({ kind: "quiz" })}
-                >
-                  <ListChecks size={21} aria-hidden="true" />
-                  <span>{t("app.quiz")}</span>
-                </button>
-              ) : null}
-              <button
-                type="button"
-                className={s.pDockItem}
-                onClick={() => setSheet({ kind: "more" })}
-              >
-                <MoreVertical size={21} aria-hidden="true" />
-                <span>{t("app.more")}</span>
-              </button>
+              ))}
             </div>
-          </nav>
-        ) : null}
+          ) : null}
+          <div className={s.pDockRow}>
+            {here ? <VoiceMainButton /> : null}
+            <button
+              type="button"
+              className={s.pDockItem}
+              aria-label={
+                chat.unread
+                  ? t("live.chatUnread", { n: chat.unread })
+                  : t("live.chat")
+              }
+              onClick={() =>
+                wide ? setSideOpen(open => !open) : setChatOpen(true)
+              }
+            >
+              <MessageCircle size={21} aria-hidden="true" />
+              <span>{t("live.chat")}</span>
+              {chat.unread && !(wide && sideOpen) ? (
+                <i className={s.pDockBadge}>{chat.unread}</i>
+              ) : null}
+            </button>
+            {voice.phase === "live" ? (
+              <button
+                type="button"
+                className={`${s.pDockItem} ${reacting ? s.pDockOn : ""}`}
+                aria-pressed={reacting}
+                onClick={() => setReacting(open => !open)}
+              >
+                <Smile size={21} aria-hidden="true" />
+                <span>{t("app.react")}</span>
+              </button>
+            ) : null}
+            {me.can.start_quiz && !quiz.active ? (
+              <button
+                type="button"
+                className={s.pDockItem}
+                onClick={() => setSheet({ kind: "quiz" })}
+              >
+                <ListChecks size={21} aria-hidden="true" />
+                <span>{t("app.quiz")}</span>
+              </button>
+            ) : null}
+            <button
+              type="button"
+              className={s.pDockItem}
+              onClick={() => setSheet({ kind: "more" })}
+            >
+              <MoreVertical size={21} aria-hidden="true" />
+              <span>{t("app.more")}</span>
+            </button>
+          </div>
+        </nav>
       </div>
 
       {here && active.reactions.length ? (
@@ -955,74 +820,6 @@ export default function LiveRoom({ roomId }: { roomId: string }) {
           ))}
         </div>
       ) : null}
-
-      {mutationError ? (
-        <p className={s.errorNote} role="alert">
-          {tError(mutationError)}
-        </p>
-      ) : null}
-
-      <div className={s.dock}>
-        {wide ? null : (
-          <button
-            type="button"
-            className={s.btn}
-            aria-label={
-              chat.unread
-                ? t("live.chatUnread", { n: chat.unread })
-                : t("live.chat")
-            }
-            onClick={() => setChatOpen(true)}
-          >
-            <MessageCircle size={17} aria-hidden="true" /> {t("live.chat")}
-            {chat.unread ? (
-              <span className={s.badge}>{chat.unread}</span>
-            ) : null}
-          </button>
-        )}
-        {me.can.start_quiz && !quiz.active ? (
-          <button
-            type="button"
-            className={s.btn}
-            onClick={() => setSheet({ kind: "quiz" })}
-          >
-            <ListChecks size={17} aria-hidden="true" /> {t("quiz.open")}
-          </button>
-        ) : null}
-        {room.visibility === "public" || me.can.invite ? (
-          <button
-            type="button"
-            className={s.btn}
-            onClick={() => setSheet({ kind: "invite", code: null })}
-          >
-            <UserPlus size={17} aria-hidden="true" /> {t("live.invite")}
-          </button>
-        ) : null}
-        {me.can.edit_room ? (
-          <button
-            type="button"
-            className={s.btn}
-            onClick={() => setSheet({ kind: "settings" })}
-          >
-            <Settings size={17} aria-hidden="true" /> {t("live.settings")}
-          </button>
-        ) : null}
-        <button
-          type="button"
-          className={s.btn}
-          onClick={() => setSheet({ kind: "report", userId: null })}
-        >
-          <Flag size={17} aria-hidden="true" /> {t("member.report")}
-        </button>
-        <button
-          type="button"
-          className={`${s.btn} ${s.danger}`}
-          disabled={leave.isPending}
-          onClick={() => setSheet({ kind: "leave" })}
-        >
-          <LogOut size={17} aria-hidden="true" /> {t("live.leave")}
-        </button>
-      </div>
 
       {!wide && chatOpen ? (
         <Sheet title={t("chat.title")} onClose={() => setChatOpen(false)}>
@@ -1086,20 +883,6 @@ export default function LiveRoom({ roomId }: { roomId: string }) {
             <button
               type="button"
               className={s.item}
-              onClick={() => {
-                setFocus(false);
-                close();
-              }}
-            >
-              <LayoutList size={18} aria-hidden="true" />
-              <span>
-                {t("present.back")}
-                <small>{t("present.backHint")}</small>
-              </span>
-            </button>
-            <button
-              type="button"
-              className={s.item}
               onClick={() => setSheet({ kind: "members" })}
             >
               <Users size={18} aria-hidden="true" />
@@ -1124,10 +907,8 @@ export default function LiveRoom({ roomId }: { roomId: string }) {
             <button
               type="button"
               className={s.item}
-              onClick={() => {
-                setFocus(false);
-                close();
-              }}
+              disabled={!here}
+              onClick={() => setSheet({ kind: "voice" })}
             >
               <Headphones size={18} aria-hidden="true" />
               <span>
@@ -1264,6 +1045,16 @@ export default function LiveRoom({ roomId }: { roomId: string }) {
               </button>
             ))}
           </div>
+        </Sheet>
+      ) : null}
+
+      {sheet?.kind === "voice" && here ? (
+        <Sheet title={t("voice.title")} onClose={close}>
+          <RoomVoice
+            roomId={roomId}
+            canGrant={me.can.edit_room}
+            names={names}
+          />
         </Sheet>
       ) : null}
 
