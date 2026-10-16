@@ -371,26 +371,34 @@ describe("inside a room", () => {
     };
   };
 
-  it("the host sees the room's controls", () => {
+  // One screen for the room, file or not (no second "room page"): what is
+  // on the screen, the header and the dock. Invite, settings, report and
+  // leave sit in "more", a sheet a static render does not open.
+  it("no file yet: the host is asked for one, on the room's only screen", () => {
     h.answers["rooms.state"] = state("host");
     const html = page(inRoom(), true);
     expect(html).toContain('data-theme="dark"');
+    expect(html).toContain("data-present");
     expect(html).toContain("2 حاضرون");
-    expect(html).toContain("أنت");
-    expect(html).toContain("الإعدادات");
-    expect(html).toContain("دعوة");
-    expect(html).toContain("خروج");
-    expect(html).toContain("🔇");
+    expect(html).toContain("اختر ملفًا لتبدأوا.");
+    expect(html).toContain("اختر ملفًا</button>");
+    expect(html).toContain("إضافة فيديو YouTube");
+    expect(html).toContain("<span>المزيد</span>");
+    // The old page is gone: no seats, no buttons row, no way "back" to it.
+    expect(html).not.toContain("وضع العرض");
+    expect(html).not.toContain("واجهة الغرفة");
+    expect(html).not.toContain("الإعدادات");
+    // Said once: the desk is not there until there is a file.
+    expect(html.split("اختر ملفًا لتبدأوا.")).toHaveLength(2);
   });
 
-  it("a member sees none of them — only the way out and the report", () => {
+  it("no file yet: a member is told the host has not chosen one", () => {
     h.answers["rooms.state"] = state("member");
     const html = page(inRoom(), true);
-    expect(html).not.toContain("الإعدادات");
-    expect(html).not.toContain("دعوة");
-    expect(html).toContain("إبلاغ");
-    expect(html).toContain("خروج");
     expect(html).toContain("القائد لم يختر ملفًا بعد");
+    expect(html).not.toContain("اختر ملفًا</button>");
+    expect(html).not.toContain("إضافة فيديو YouTube");
+    expect(html).toContain("<span>المزيد</span>");
   });
 
   it("a student taken out of the room is told, with the way back", () => {
