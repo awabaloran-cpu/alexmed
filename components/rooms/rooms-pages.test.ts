@@ -73,6 +73,7 @@ vi.mock("@/lib/trpc-client", () => {
 
 import ActiveRoomProvider from "./ActiveRoom";
 import LiveRoom from "./LiveRoom";
+import RoomGames from "./RoomGames";
 import RoomLobby from "./RoomLobby";
 import RoomsHome, { SectionRooms } from "./RoomsHome";
 import RoomsProvider from "./RoomsProvider";
@@ -348,6 +349,7 @@ describe("inside a room", () => {
           kick_member: host,
           ban_member: host,
           manage_roles: host,
+          start_quiz: host,
         },
       },
       members: [
@@ -390,6 +392,9 @@ describe("inside a room", () => {
     expect(html).not.toContain("الإعدادات");
     // Said once: the desk is not there until there is a file.
     expect(html.split("اختر ملفًا لتبدأوا.")).toHaveLength(2);
+    // The leader's games, in the dock where the reactions were.
+    expect(html).toContain("<span>الألعاب</span>");
+    expect(html).not.toContain("<span>تفاعل</span>");
   });
 
   it("no file yet: a member is told the host has not chosen one", () => {
@@ -399,6 +404,7 @@ describe("inside a room", () => {
     expect(html).not.toContain("اختر ملفًا</button>");
     expect(html).not.toContain("إضافة فيديو YouTube");
     expect(html).toContain("<span>المزيد</span>");
+    expect(html).not.toContain("<span>الألعاب</span>");
   });
 
   it("a student taken out of the room is told, with the way back", () => {
@@ -407,5 +413,45 @@ describe("inside a room", () => {
     const html = page(inRoom(), true);
     expect(html).toContain("أُخرجت من هذه الغرفة");
     expect(html).toContain('href="/rooms"');
+  });
+});
+
+describe("the games over a room", () => {
+  it("lists Discover's games with their subject and size, and a search", () => {
+    h.answers["discover.search"] = [
+      {
+        slug: "world-capitals",
+        title: "عواصم العالم",
+        coverImage: null,
+        art: "geography",
+        color: "#3355ff",
+        category: "geography",
+        isFree: true,
+        creatorName: "NiroLearn",
+        creatorVerified: true,
+        playsCount: 0,
+        questionsCount: 12,
+        channelSlug: null,
+      },
+    ];
+    const html = page(
+      createElement(RoomGames, { onPick: () => {}, onClose: () => {} })
+    );
+    expect(html).toContain("الألعاب");
+    expect(html).toContain('placeholder="ابحث عن لعبة"');
+    expect(html).toContain('aria-pressed="true">الكل</button>');
+    expect(html).toContain("علوم</button>");
+    expect(html).toContain("عواصم العالم");
+    expect(html).toContain("جغرافيا · 12 سؤال");
+    // Only the catalogue: no list of the leader's own quizzes here.
+    expect(html).not.toContain("من اختباراتك");
+  });
+
+  it("a search that finds nothing says so", () => {
+    h.answers["discover.search"] = [];
+    const html = page(
+      createElement(RoomGames, { onPick: () => {}, onClose: () => {} })
+    );
+    expect(html).toContain("لا لعبة بهذا الاسم.");
   });
 });

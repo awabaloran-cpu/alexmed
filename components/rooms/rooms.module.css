@@ -1057,6 +1057,91 @@
 .itemOn {
   background: var(--niro-soft);
 }
+/* 🎮 The games of Discover, over the room */
+.gameSearch {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--rule);
+  border-radius: 12px;
+  background: var(--raised);
+  color: var(--ink3);
+}
+.gameSearch input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 15px;
+  outline: none;
+}
+.gameChips {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.gameChips button {
+  flex-shrink: 0;
+  min-height: 36px;
+  padding: 0 14px;
+  border: 1px solid var(--rule);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ink2);
+  font: inherit;
+  font-size: 13.5px;
+  cursor: pointer;
+}
+.gameChips button[aria-pressed="true"] {
+  border-color: var(--marker);
+  background: var(--marker);
+  color: var(--on-marker);
+  font-weight: 600;
+}
+.gameGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.gameCard {
+  display: grid;
+  gap: 4px;
+  align-content: start;
+  min-width: 0;
+  padding: 8px;
+  border: 1px solid var(--rule);
+  border-radius: 14px;
+  background: var(--raised);
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+.gameCard:focus-visible,
+.gameChips button:focus-visible {
+  outline: 2px solid var(--niro);
+  outline-offset: 2px;
+}
+.gameCard b {
+  overflow: hidden;
+  font-size: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.gameCard small {
+  color: var(--ink3);
+  font-size: 12px;
+}
+.gameCover {
+  aspect-ratio: 16 / 10;
+  margin-bottom: 4px;
+  border-radius: 10px;
+}
 .chat {
   display: grid;
   gap: 8px;
