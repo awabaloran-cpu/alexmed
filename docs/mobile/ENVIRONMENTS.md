@@ -17,7 +17,7 @@ variable list must be confirmed in the Railway dashboard (§3).
 | Auth | `AUTH_SECRET`, `AUTH_URL` / `NEXTAUTH_URL`, `TRUSTED_PROXY_HOPS` | `lib/auth.ts`, `lib/mobile-session.ts` (mobile tokens), `lib/db-phone.ts`, `lib/phone-signup-http.ts` |
 | Google sign-in | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | `lib/auth.ts` |
 | SMS sign-up (Vonage Verify v2) | `VONAGE_API_KEY`, `VONAGE_API_SECRET`, `VONAGE_BRAND`, `VONAGE_LOCALE`, `VONAGE_API_BASE`, `SMS_MAX_SENDS_PER_HOUR` | `lib/sms/vonage.ts`, `lib/db-phone.ts` — **no test mode**: unset → sign-up fails with "not configured" |
-| AI | `LLM_PROVIDER`, `OMNIROUTE_*` (base URL, key, default / fallback / vision / fast-text models), `OPENROUTER_API_KEY`, `NVIDIA_OCR_API_KEY`, `EMBEDDING_PROVIDER`, `EMBEDDING_API_KEY`, `EMBEDDING_MODEL`, `EMBEDDING_DIMENSIONS` | `lib/ai/config.ts`, `lib/nemotron-ocr.ts`, embeddings |
+| AI | `LLM_PROVIDER`, `GEMINI_*` (key, default / fallback / vision / fast-text models, reasoning effort), `OMNIROUTE_*` (base URL, key, default / fallback / vision / fast-text models), `OPENROUTER_API_KEY`, `NVIDIA_OCR_API_KEY`, `EMBEDDING_PROVIDER`, `EMBEDDING_API_KEY`, `EMBEDDING_MODEL`, `EMBEDDING_DIMENSIONS` | `lib/ai/config.ts`, `lib/nemotron-ocr.ts`, embeddings |
 | Doctor sets | `DOCTOR_SETS_ENABLED`, `QUESTION_SET_CODE_HMAC_KEY` | `lib/doctor-sets-config.ts`, `lib/question-set-codes.ts` |
 | Misc | `NEXT_PUBLIC_SITE_URL`, `UPLOAD_MAX_MB`, `BILLING_TIMEZONE`, `NODE_ENV`, `PORT`, `LOG_LEVEL` | site metadata, admin upload limit, billing periods |
 
