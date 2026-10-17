@@ -4,11 +4,6 @@
 // content. Sign-up and sign-in go to the existing /register and /login.
 import Link from "next/link";
 import NiroCharacter from "@/components/niro/NiroCharacter";
-import {
-  BOT_PAGE_PATH,
-  PAST_QUESTIONS_PATH,
-  SOLVE_QUESTIONS_PATH,
-} from "@/lib/site";
 import s from "./landing.module.css";
 import {
   AssistantPreview,
@@ -19,6 +14,14 @@ import {
   SummaryPreview,
 } from "./Previews";
 import BeforeAfter from "./BeforeAfter";
+import { HomeReel } from "./Reels";
+import {
+  DiscoverSection,
+  PlayStepsSection,
+  QuestionsSection,
+  RoomsSection,
+  WatchTogetherSection,
+} from "./Showcase";
 import { MarketingPage } from "./SiteChrome";
 import { AfterAll, LecturePage } from "./Transformations";
 
@@ -28,7 +31,7 @@ import { AfterAll, LecturePage } from "./Transformations";
 export const LANDING_FAQ = [
   {
     q: "ما هو NiroLearn؟",
-    a: "NiroLearn منصة مذاكرة عربية تعمل بالذكاء الاصطناعي. ترفع ملف PDF لكتابك أو محاضرتك، فتحصل منه على ملخص منظم، وExam Focus لأهم معلومات الامتحان، وفلاش كارد بمراجعة متباعدة، واختبارات، وخريطة ذهنية، ومساعد دراسة يجيب من صفحات ملفك.",
+    a: "NiroLearn منصة مذاكرة عربية تعمل بالذكاء الاصطناعي. ترفع ملف PDF لكتابك أو محاضرتك، فتحصل منه على ملخص منظم، وExam Focus لأهم معلومات الامتحان، وفلاش كارد بمراجعة متباعدة، واختبارات، وخريطة ذهنية، ومساعد دراسة يجيب من صفحات ملفك. وفيه غرف مذاكرة جماعية مجانية تذاكر فيها مع أصحابك بالصوت والملف المشترك، وتشاهدون فيها شرح يوتيوب معًا، وتلعبون اختبارات جماعية.",
   },
   {
     q: "هل NiroLearn مجاني؟",
@@ -57,6 +60,22 @@ export const LANDING_FAQ = [
   {
     q: "كيف أنشئ حسابًا؟",
     a: "برقم هاتفك ورمز تحقق يصلك برسالة نصية، ثم تبدأ برفع أول ملف.",
+  },
+  {
+    q: "هل غرف المذاكرة مجانية؟",
+    a: "نعم، غرف المذاكرة في NiroLearn مجانية: افتح غرفة، وادعُ أصدقاءك برابطها، وذاكروا بالصوت والملف المشترك والأقلام، والعبوا اختبارات جماعية.",
+  },
+  {
+    q: "كيف نشاهد فيديو يوتيوب معًا؟",
+    a: "في غرفة المذاكرة يلصق القائد رابط فيديو يوتيوب، فيُشغَّل للجميع في نفس اللحظة ويتوقّف معًا، وتتكلّمون بالصوت أو بالمحادثة أثناء المشاهدة، وكل رسالة تحمل لحظة الفيديو التي كُتبت عندها.",
+  },
+  {
+    q: "ما هي ألعاب «استكشف»؟",
+    a: "مكتبة اختبارات ثقافة عامة ومعرفة جاهزة في أقسام وقنوات، تلعبها وحدك بوضع «تعلّم» أو «البطاقات»، أو مع أصدقائك في غرفة: نفس السؤال للجميع في نفس اللحظة، والنقاط للأصحّ والأسرع، وفي النهاية منصة الفائزين.",
+  },
+  {
+    q: "كيف ألعب اختبارًا مع أصدقائي؟",
+    a: "اختر اختبارًا من «استكشف» واضغط «العب مع الأصدقاء»، فتُفتح غرفة خاصة مجانًا. شارك رابطها، وحين يدخل أصدقاؤك اضغط «ابدأ اللعب الآن».",
   },
 ] as const;
 
@@ -93,6 +112,10 @@ const STEPS = [
   {
     title: "ذاكر بذكاء",
     text: "ملخص، وExam Focus، وبطاقات، واختبارات، وخريطة ذهنية، كلها من ملفك.",
+  },
+  {
+    title: "راجع مع أصحابك",
+    text: "غرفة مجانية تعرض فيها الملف، وتتكلّمون، وتختمون بلعبة أسئلة.",
   },
 ] as const;
 
@@ -160,7 +183,15 @@ export default function Landing() {
           <p className={s.fineprint}>حساب مجاني برقم هاتفك، دون بطاقة دفع.</p>
         </div>
 
-        <HeroSheet />
+        <div className={s.heroVisual}>
+          <HomeReel />
+          <NiroCharacter
+            expression="explaining"
+            size={132}
+            animated={false}
+            className={s.heroNiro}
+          />
+        </div>
       </section>
 
       {/* ── Problem → solution ───────────────────────────────────── */}
@@ -205,7 +236,7 @@ export default function Landing() {
       <section id="how" className={s.section} aria-labelledby="how-title">
         <div className={s.sectionHead}>
           <h2 id="how-title">كيف يعمل NiroLearn؟</h2>
-          <p>ثلاث خطوات من الملف إلى المذاكرة.</p>
+          <p>من الملف إلى المذاكرة، ثم المراجعة مع أصحابك.</p>
         </div>
         <ol className={s.steps}>
           {STEPS.map((step, index) => (
@@ -330,34 +361,19 @@ export default function Landing() {
           />
         </div>
 
-        <div className={s.alsoRow}>
-          <h3>وأيضًا</h3>
-          <ul>
-            <li>قارئ PDF مع تظليل وملاحظات على الصفحات.</li>
-            <li>
-              <Link href={PAST_QUESTIONS_PATH}>
-                حوّل ملف أسئلة السنوات السابقة
-              </Link>{" "}
-              إلى اختبار تفاعلي مع شرح.
-            </li>
-            <li>
-              <Link href={SOLVE_QUESTIONS_PATH}>
-                حل أسئلة ملف PDF بالذكاء الاصطناعي
-              </Link>{" "}
-              مع شرح كل إجابة.
-            </li>
-            <li>
-              <Link href={BOT_PAGE_PATH}>بوت Telegram</Link>: أرسل الملف وافتح
-              أسئلته من هاتفك.
-            </li>
-            <li>شارك حزمة مذاكرة مع زملائك.</li>
-            <li>ألعاب مراجعة سريعة مع Niro.</li>
-          </ul>
-        </div>
         <p className={s.caption}>
           المعاينات أمثلة توضيحية بمحتوى تجريبي من واجهة NiroLearn.
         </p>
       </section>
+
+      {/* ── Question files, the Telegram bot and the rest ────────── */}
+      <QuestionsSection />
+
+      {/* ── Studying together (new) ──────────────────────────────── */}
+      <RoomsSection />
+      <WatchTogetherSection />
+      <DiscoverSection />
+      <PlayStepsSection />
 
       {/* ── FAQ ──────────────────────────────────────────────────── */}
       <section className={s.section} aria-labelledby="faq-title">
@@ -384,7 +400,10 @@ export default function Landing() {
         />
         <div>
           <h2 id="cta-title">جاهز تبدأ دراسة أذكى؟</h2>
-          <p>ارفع أول ملف لك مجانًا، وشاهد كيف يتحوّل إلى مذاكرة منظمة.</p>
+          <p>
+            ارفع أول ملف لك مجانًا، وشاهد كيف يتحوّل إلى مذاكرة منظمة، ثم افتح
+            غرفتك المجانية لأصحابك.
+          </p>
           <Link href="/register" className={s.primary}>
             ابدأ مجانًا
           </Link>
@@ -420,58 +439,5 @@ function Feature({
         {preview}
       </div>
     </article>
-  );
-}
-
-// The signature moment: a lecture page with the exam-relevant lines marked,
-// and what NiroLearn makes from it. Decorative; the heading carries meaning.
-function HeroSheet() {
-  return (
-    <div className={s.heroVisual} aria-hidden="true">
-      <div className={s.sheet}>
-        <div className={s.sheetHead}>
-          <span>محاضرة 3 · الخلية العصبية</span>
-          <span>صفحة 12</span>
-        </div>
-        <p className={s.sheetText}>
-          تنقل الخلايا العصبية الإشارات الكهربائية على طول{" "}
-          <mark className={s.mark}>المحور العصبي بعيدًا عن جسم الخلية</mark>.
-          ويبلغ{" "}
-          <mark className={`${s.mark} ${s.markDelay1}`}>
-            جهد الراحة للغشاء نحو {MINUS_70} ملي فولت
-          </mark>
-          ، وتحافظ عليه{" "}
-          <mark className={`${s.mark} ${s.markDelay2}`}>
-            مضخة الصوديوم والبوتاسيوم
-          </mark>{" "}
-          التي تنقل الأيونات عكس تدرّج تركيزها، مستهلكةً الطاقة في كل دورة.
-        </p>
-        <div className={s.sheetLines}>
-          <span />
-          <span />
-          <span />
-        </div>
-      </div>
-
-      <div className={s.outputs}>
-        <div className={s.outCard}>
-          <span className={s.focusTag}>Exam Focus · أرقام وحدود</span>
-          <p>جهد الراحة نحو {MINUS_70} ملي فولت</p>
-        </div>
-        <div className={s.outChips}>
-          <span>ملخص</span>
-          <span>بطاقات</span>
-          <span>اختبار</span>
-          <span>خريطة ذهنية</span>
-        </div>
-      </div>
-
-      <NiroCharacter
-        expression="explaining"
-        size={150}
-        animated={false}
-        className={s.heroNiro}
-      />
-    </div>
   );
 }

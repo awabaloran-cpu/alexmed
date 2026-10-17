@@ -41,6 +41,8 @@ describe("site constants", () => {
       "/telegram-bot",
       "/past-exam-questions",
       "/solve-questions",
+      "/study-rooms",
+      "/quiz-with-friends",
       "/pricing",
       "/register",
       "/about",

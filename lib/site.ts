@@ -26,7 +26,7 @@ export const SITE_TITLE =
   "NiroLearn | تلخيص PDF وفلاش كارد واختبارات بالذكاء الاصطناعي";
 
 export const SITE_DESCRIPTION =
-  "ارفع ملف PDF لكتابك أو محاضرتك، وNiroLearn يلخّصه ويستخرج أهم معلومات الامتحان ويحوّله إلى فلاش كارد واختبارات وخريطة ذهنية. منصة مذاكرة عربية، ابدأ مجانًا.";
+  "ارفع ملف PDF لكتابك أو محاضرتك، وNiroLearn يلخّصه ويستخرج أهم معلومات الامتحان ويحوّله إلى فلاش كارد واختبارات وخريطة ذهنية، وذاكره مع أصحابك في غرف مذاكرة مجانية. ابدأ مجانًا.";
 
 // Public pages worth indexing, in priority order (app pages sit behind
 // sign-in and are kept out of the sitemap; /login is noindex).
@@ -38,6 +38,11 @@ export const BOT_PAGE_PATH = "/telegram-bot";
 export const PAST_QUESTIONS_PATH = "/past-exam-questions";
 // The page for "solve my question file with AI" (app/solve-questions).
 export const SOLVE_QUESTIONS_PATH = "/solve-questions";
+// Studying together: the free study rooms (voice, the shared file and its
+// ink, watching YouTube together, group quizzes), and playing Discover's
+// quizzes with friends (app/study-rooms, app/quiz-with-friends).
+export const ROOMS_PAGE_PATH = "/study-rooms";
+export const QUIZ_FRIENDS_PATH = "/quiz-with-friends";
 
 export const PUBLIC_BASE_PATHS = [
   "/",
@@ -48,6 +53,8 @@ export const PUBLIC_BASE_PATHS = [
   BOT_PAGE_PATH,
   PAST_QUESTIONS_PATH,
   SOLVE_QUESTIONS_PATH,
+  ROOMS_PAGE_PATH,
+  QUIZ_FRIENDS_PATH,
   "/pricing",
   "/register",
   "/about",
@@ -79,6 +86,15 @@ export const QUESTION_PAGES = [
 ] as const;
 
 export type QuestionPagePath = (typeof QUESTION_PAGES)[number]["href"];
+
+// The public pages about studying together, next to the tools in the
+// header, the footer and every page's related links.
+export const TOGETHER_PAGES = [
+  { href: ROOMS_PAGE_PATH, label: "غرف المذاكرة" },
+  { href: QUIZ_FRIENDS_PATH, label: "العب مع أصدقائك" },
+] as const;
+
+export type TogetherPath = (typeof TOGETHER_PAGES)[number]["href"];
 
 // Open Graph fields every page shares. Next.js replaces (not merges) a
 // parent's openGraph when a page sets its own, so pages spread this in.

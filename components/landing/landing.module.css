@@ -62,7 +62,7 @@
 }
 .nav {
   display: none;
-  gap: 22px;
+  gap: 18px;
 }
 .nav a {
   color: var(--nl-ink-2);
@@ -80,7 +80,8 @@
   text-decoration-thickness: 3px;
   text-underline-offset: 6px;
 }
-@media (min-width: 900px) {
+/* Tools and studying together: the full row needs a wide screen. */
+@media (min-width: 1180px) {
   .nav {
     display: flex;
   }
@@ -443,10 +444,15 @@
   padding: 0;
   list-style: none;
 }
-@media (min-width: 768px) {
+@media (min-width: 640px) {
   .steps {
-    grid-template-columns: repeat(3, 1fr);
-    gap: 36px;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 32px;
+  }
+}
+@media (min-width: 1000px) {
+  .steps {
+    grid-template-columns: repeat(4, 1fr);
   }
 }
 .step h3 {
@@ -886,6 +892,11 @@
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
+@media (min-width: 900px) {
+  .footerCols {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
 .footerNav {
   display: grid;
   align-content: start;
@@ -1140,4 +1151,22 @@
 }
 .moreLink {
   margin: 18px 0 0;
+}
+
+/* A narrow phone (360 px): the name and both actions stay on the screen. */
+@media (max-width: 400px) {
+  .bar {
+    gap: 6px;
+  }
+  .brand {
+    font-size: 17px;
+  }
+  .linkButton {
+    padding: 8px 4px;
+    font-size: 14px;
+  }
+  .primarySmall {
+    padding: 0 12px;
+    font-size: 14px;
+  }
 }

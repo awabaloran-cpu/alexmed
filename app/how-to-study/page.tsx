@@ -13,6 +13,8 @@ import {
 import { MarketingPage } from "@/components/landing/SiteChrome";
 import { AfterAll, LecturePage } from "@/components/landing/Transformations";
 import s from "@/components/landing/landing.module.css";
+import { MethodReel } from "@/components/landing/Reels";
+import { TogetherBand } from "@/components/landing/Showcase";
 import { BASE_OPEN_GRAPH } from "@/lib/site";
 
 // Targets "كيف اذاكر" (260/mo) and "طريقة المذاكرة الصحيحة" (90), where the
@@ -124,6 +126,14 @@ export default function HowToStudyPage() {
         }
       />
 
+      <Section
+        id="watch"
+        title="شاهد كيف يعمل"
+        intro="طريقة المذاكرة في أربعة مشاهد."
+      >
+        <MethodReel />
+      </Section>
+
       <Section id="plan" title="خطة المذاكرة في ست خطوات">
         <ol className={s.guide}>
           {PLAN.map(step => (
@@ -174,6 +184,7 @@ export default function HowToStudyPage() {
         </div>
       </Section>
 
+      <TogetherBand />
       <FaqSection items={FAQ} />
       <RelatedPages current="/how-to-study" />
       <CtaBand

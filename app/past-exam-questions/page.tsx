@@ -9,6 +9,8 @@ import {
 } from "@/components/landing/PageBits";
 import { MarketingPage } from "@/components/landing/SiteChrome";
 import s from "@/components/landing/landing.module.css";
+import { PastQuestionsReel } from "@/components/landing/Reels";
+import { TogetherBand } from "@/components/landing/Showcase";
 import {
   BASE_OPEN_GRAPH,
   BOT_PAGE_PATH,
@@ -193,6 +195,14 @@ export default function PastExamQuestionsPage() {
         </ol>
       </Section>
 
+      <Section
+        id="watch"
+        title="شاهد كيف يعمل"
+        intro="من ملف أسئلة إلى اختبار تفاعلي بشرح."
+      >
+        <PastQuestionsReel />
+      </Section>
+
       <Section id="why" title="لماذا لا تكفي قراءة ملف السنوات؟">
         <div className={s.prose}>
           <p>
@@ -265,6 +275,7 @@ export default function PastExamQuestionsPage() {
         </div>
       </Section>
 
+      <TogetherBand />
       <FaqSection items={FAQ} />
       <RelatedPages current={PAST_QUESTIONS_PATH} />
       <section className={s.cta} aria-labelledby="cta-title">
