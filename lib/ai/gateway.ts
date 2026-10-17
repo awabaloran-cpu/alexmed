@@ -1,9 +1,10 @@
 // Central AI gateway. Every AI call in this app goes through the functions
 // here (generateText/generateJSON/streamText/embed/listModels) instead of
 // any page/route talking to a provider directly — resolveProvider() picks
-// OmniRoute or OpenRouter per lib/ai/config.ts, so callers never know which
-// one actually served the request.
+// Gemini, OmniRoute or OpenRouter per lib/ai/config.ts, so callers never
+// know which one actually served the request.
 import { resolveProvider } from "./config";
+import { geminiProvider } from "./providers/gemini";
 import { omnirouteProvider } from "./providers/omniroute";
 import { openrouterProvider } from "./providers/openrouter";
 import type {
@@ -17,9 +18,9 @@ import type {
 } from "./types";
 
 function getProvider(): AiProvider {
-  return resolveProvider() === "omniroute"
-    ? omnirouteProvider
-    : openrouterProvider;
+  const provider = resolveProvider();
+  if (provider === "gemini") return geminiProvider;
+  return provider === "omniroute" ? omnirouteProvider : openrouterProvider;
 }
 
 export async function generateText(
