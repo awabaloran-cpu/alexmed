@@ -15,6 +15,8 @@ import {
   LecturePage,
 } from "@/components/landing/Transformations";
 import s from "@/components/landing/landing.module.css";
+import { SummaryReel } from "@/components/landing/Reels";
+import { TogetherBand } from "@/components/landing/Showcase";
 import { BASE_OPEN_GRAPH } from "@/lib/site";
 
 // Targets the PDF-summary cluster (OpenSEO, Saudi market, 2026-09):
@@ -120,6 +122,14 @@ export default function PdfSummaryPage() {
         </div>
       </Section>
 
+      <Section
+        id="watch"
+        title="شاهد كيف يعمل"
+        intro="من الملف إلى ملخص منظم في ثلاثة مشاهد."
+      >
+        <SummaryReel />
+      </Section>
+
       <Section id="steps" title="كيف تلخّص ملف PDF في NiroLearn؟">
         <ol className={s.steps}>
           <li className={s.step}>
@@ -194,6 +204,7 @@ export default function PdfSummaryPage() {
         </div>
       </Section>
 
+      <TogetherBand />
       <FaqSection items={FAQ} />
       <RelatedPages current="/pdf-summary" />
       <CtaBand

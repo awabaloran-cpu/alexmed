@@ -9,6 +9,8 @@ import {
 } from "@/components/landing/PageBits";
 import { MarketingPage } from "@/components/landing/SiteChrome";
 import s from "@/components/landing/landing.module.css";
+import { SolveReel } from "@/components/landing/Reels";
+import { TogetherBand } from "@/components/landing/Showcase";
 import {
   BASE_OPEN_GRAPH,
   BOT_PAGE_PATH,
@@ -179,6 +181,14 @@ export default function SolveQuestionsPage() {
         </ol>
       </Section>
 
+      <Section
+        id="watch"
+        title="شاهد كيف يعمل"
+        intro="من سؤال في ملفك إلى إجابته وشرحها."
+      >
+        <SolveReel />
+      </Section>
+
       <Section id="honest" title="ما الذي يحلّه، وما الذي لا يحلّه؟">
         <div className={s.prose}>
           <ul>
@@ -224,6 +234,7 @@ export default function SolveQuestionsPage() {
         </div>
       </Section>
 
+      <TogetherBand />
       <FaqSection items={FAQ} />
       <RelatedPages current={SOLVE_QUESTIONS_PATH} />
       <section className={s.cta} aria-labelledby="cta-title">

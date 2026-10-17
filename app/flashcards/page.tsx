@@ -13,6 +13,8 @@ import {
 import { MarketingPage } from "@/components/landing/SiteChrome";
 import { AfterDeck, LecturePage } from "@/components/landing/Transformations";
 import s from "@/components/landing/landing.module.css";
+import { FlashcardsReel } from "@/components/landing/Reels";
+import { TogetherBand } from "@/components/landing/Showcase";
 import { BASE_OPEN_GRAPH } from "@/lib/site";
 
 // Targets "فلاش كارد" (320/mo, KD 0 — Saudi SERP is Canva templates, store
@@ -108,6 +110,14 @@ export default function FlashcardsPage() {
         </div>
       </Section>
 
+      <Section
+        id="watch"
+        title="شاهد كيف يعمل"
+        intro="من الصفحة إلى بطاقة تعود إليك في موعدها."
+      >
+        <FlashcardsReel />
+      </Section>
+
       <Section id="why" title="لماذا بطاقات من ملفك أنت؟">
         <div className={s.prose}>
           <ul>
@@ -131,6 +141,7 @@ export default function FlashcardsPage() {
         </div>
       </Section>
 
+      <TogetherBand />
       <FaqSection items={FAQ} />
       <RelatedPages current="/flashcards" />
       <CtaBand

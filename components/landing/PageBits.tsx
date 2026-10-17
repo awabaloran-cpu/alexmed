@@ -13,8 +13,12 @@ import {
   SITE_NAME,
   SITE_URL,
   QUESTION_PAGES,
+  QUIZ_FRIENDS_PATH,
+  ROOMS_PAGE_PATH,
+  TOGETHER_PAGES,
   TOOL_PAGES,
   type QuestionPagePath,
+  type TogetherPath,
   type ToolPath,
 } from "@/lib/site";
 import s from "./landing.module.css";
@@ -109,7 +113,9 @@ export function CtaBand({ title, text }: { title: string; text: string }) {
   );
 }
 
-const RELATED_BLURB: Record<ToolPath | QuestionPagePath, string> = {
+type RelatedPath = ToolPath | QuestionPagePath | TogetherPath;
+
+const RELATED_BLURB: Record<RelatedPath, string> = {
   "/pdf-summary": "ملخص منظم لكل جزء من الكتاب أو المحاضرة.",
   "/flashcards": "بطاقات سؤال وجواب تعود إليك في موعدها.",
   "/mind-map": "خريطة ذهنية لكل جزء بمفاهيمه وأهم نقاطه.",
@@ -117,18 +123,17 @@ const RELATED_BLURB: Record<ToolPath | QuestionPagePath, string> = {
   [SOLVE_QUESTIONS_PATH]: "أرسل ملف الأسئلة واحصل على إجابة كل سؤال مع شرحها.",
   [PAST_QUESTIONS_PATH]: "حوّل ملف أسئلة السنوات إلى اختبار تحلّه مع شرح.",
   [BOT_PAGE_PATH]: "أرسل ملف PDF في تلغرام وافتح أسئلته من هاتفك.",
+  [ROOMS_PAGE_PATH]:
+    "غرف مذاكرة مجانية: صوت، وملف مشترك بأقلام، ويوتيوب معًا، واختبارات.",
+  [QUIZ_FRIENDS_PATH]: "اختبارات جاهزة تلعبها مع أصدقائك في غرفة بنقاط.",
 };
 
 // `current` is left out by a page that is not itself one of the tools.
-export function RelatedPages({
-  current,
-}: {
-  current?: ToolPath | QuestionPagePath;
-}) {
+export function RelatedPages({ current }: { current?: RelatedPath }) {
   return (
-    <Section id="related" title="أدوات أخرى من الملف نفسه">
+    <Section id="related" title="أدوات أخرى، وذاكروا معًا">
       <ul className={s.related}>
-        {[...TOOL_PAGES, ...QUESTION_PAGES]
+        {[...TOOL_PAGES, ...QUESTION_PAGES, ...TOGETHER_PAGES]
           .filter(page => page.href !== current)
           .map(page => (
             <li key={page.href}>
@@ -151,7 +156,7 @@ export function PageJsonLd({
   faq,
   article,
 }: {
-  path: ToolPath | QuestionPagePath;
+  path: RelatedPath;
   name: string;
   description: string;
   faq: readonly FaqItem[];

@@ -9,17 +9,24 @@ import {
   PAST_QUESTIONS_PATH,
   SOLVE_QUESTIONS_PATH,
   SITE_NAME,
+  TOGETHER_PAGES,
   TOOL_PAGES,
+  type TogetherPath,
   type ToolPath,
 } from "@/lib/site";
 import type { LearnCategory } from "@/content/learn/articles";
 import s from "./landing.module.css";
 
+// The explainer reels (components/landing/Reels.tsx) start once the
+// fonts are in, so the hero is never painted in a fallback face first and
+// then shifted; a style rule is added, nothing in the page is changed.
+const START_REELS = `(function(){var done=false;function go(){if(done)return;done=true;var s=document.createElement("style");s.textContent="[data-reel] *{animation-play-state:running}";document.head.appendChild(s)}(document.fonts&&document.fonts.ready?document.fonts.ready:Promise.resolve()).then(go,go);setTimeout(go,3000)})()`;
+
 export function MarketingPage({
   current,
   children,
 }: {
-  current?: ToolPath | "/" | "/learn" | LearnCategory;
+  current?: ToolPath | TogetherPath | "/" | "/learn" | LearnCategory;
   children: React.ReactNode;
 }) {
   return (
@@ -30,6 +37,7 @@ export function MarketingPage({
       <SiteHeader current={current} />
       <main id="main">{children}</main>
       <SiteFooter />
+      <script dangerouslySetInnerHTML={{ __html: START_REELS }} />
     </div>
   );
 }
@@ -54,6 +62,15 @@ function SiteHeader({ current }: { current?: string }) {
             Learn
           </Link>
           {TOOL_PAGES.map(page => (
+            <Link
+              key={page.href}
+              href={page.href}
+              aria-current={current === page.href ? "page" : undefined}
+            >
+              {page.label}
+            </Link>
+          ))}
+          {TOGETHER_PAGES.map(page => (
             <Link
               key={page.href}
               href={page.href}
@@ -87,7 +104,8 @@ function SiteFooter() {
             <span>{SITE_NAME}</span>
           </span>
           <p>
-            منصة مذاكرة عربية بالذكاء الاصطناعي تحوّل ملفاتك إلى مذاكرة منظمة.
+            منصة مذاكرة عربية بالذكاء الاصطناعي تحوّل ملفاتك إلى مذاكرة منظمة،
+            مع غرف مذاكرة جماعية مجانية.
           </p>
         </div>
         <div className={s.footerCols}>
@@ -98,6 +116,15 @@ function SiteFooter() {
                 {page.label}
               </Link>
             ))}
+          </nav>
+          <nav aria-label="ذاكروا معًا" className={s.footerNav}>
+            <h2 className={s.footerHeading}>ذاكروا معًا</h2>
+            {TOGETHER_PAGES.map(page => (
+              <Link key={page.href} href={page.href}>
+                {page.label}
+              </Link>
+            ))}
+            <Link href="/quizzes">اختبارات جاهزة</Link>
           </nav>
           <nav aria-label="روابط الموقع" className={s.footerNav}>
             <h2 className={s.footerHeading}>NiroLearn</h2>

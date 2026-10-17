@@ -7,6 +7,7 @@ import {
   SOLVE_QUESTIONS_PATH,
   PUBLIC_BASE_PATHS,
   SITE_URL,
+  TOGETHER_PAGES,
   TOOL_PAGES,
 } from "@/lib/site";
 
@@ -42,6 +43,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
               : path === "/pricing" || path === "/register"
                 ? 0.8
                 : TOOL_PAGES.some(page => page.href === path) ||
+                    TOGETHER_PAGES.some(page => page.href === path) ||
                     path === BOT_PAGE_PATH ||
                     path === PAST_QUESTIONS_PATH ||
                     path === SOLVE_QUESTIONS_PATH

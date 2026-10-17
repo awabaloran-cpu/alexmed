@@ -9,6 +9,8 @@ import {
 } from "@/components/landing/PageBits";
 import { MarketingPage } from "@/components/landing/SiteChrome";
 import s from "@/components/landing/landing.module.css";
+import { BotReel } from "@/components/landing/Reels";
+import { TogetherBand } from "@/components/landing/Showcase";
 import {
   BASE_OPEN_GRAPH,
   BOT_PAGE_PATH,
@@ -151,6 +153,14 @@ export default function TelegramBotPage() {
         </div>
       </section>
 
+      <Section
+        id="watch"
+        title="شاهد كيف يعمل"
+        intro="من ملف في تيليجرام إلى أسئلة بشرح عربي."
+      >
+        <BotReel />
+      </Section>
+
       <Section id="how" title="كيف يعمل؟" intro="ثلاث خطوات، كلها داخل تلغرام.">
         <ol className={b.steps}>
           <li>
@@ -235,6 +245,7 @@ export default function TelegramBotPage() {
         </div>
       </Section>
 
+      <TogetherBand />
       <FaqSection items={FAQ} />
       <RelatedPages current={BOT_PAGE_PATH} />
       <section className={s.cta} aria-labelledby="cta-title">

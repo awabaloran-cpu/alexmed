@@ -12,6 +12,8 @@ import {
 import { MarketingPage } from "@/components/landing/SiteChrome";
 import { AfterMap, LecturePage } from "@/components/landing/Transformations";
 import s from "@/components/landing/landing.module.css";
+import { MindMapReel } from "@/components/landing/Reels";
+import { TogetherBand } from "@/components/landing/Showcase";
 import { BASE_OPEN_GRAPH } from "@/lib/site";
 
 // Targets "خريطة ذهنية" (1,900/mo, informational — people learning what a
@@ -82,6 +84,14 @@ export default function MindMapPage() {
         }
       />
 
+      <Section
+        id="watch"
+        title="شاهد كيف يعمل"
+        intro="من جزء من ملفك إلى خريطة ذهنية."
+      >
+        <MindMapReel />
+      </Section>
+
       <Section id="what" title="ما هي الخريطة الذهنية؟">
         <div className={s.prose}>
           <p>
@@ -147,6 +157,7 @@ export default function MindMapPage() {
         </div>
       </Section>
 
+      <TogetherBand />
       <FaqSection items={FAQ} />
       <RelatedPages current="/mind-map" />
       <CtaBand

@@ -15,6 +15,13 @@ The interface is in Arabic. Students can upload material in Arabic or English (f
 - PDF reader with highlights and notes; past-exam question files turned into review cards; study packs shared with classmates.
 - A Telegram bot (@Nirolearnbot): a student sends a PDF in Telegram and opens the result — interactive questions with an Arabic explanation per answer, or the book in their library — inside Telegram or the browser.
 
+## Studying together (free)
+
+- Study rooms (غرف مذاكرة): free online group study rooms of 2 to 20 members, private by link or public in a subject section, optionally for female students only. Voice with raised hands; the leader shows a PDF to everyone with the pages one under the other, and members write on it together with a pen, a highlighter, an eraser and a lasso; a chat whose messages carry their page or video moment.
+- Watch YouTube together: the leader pastes a YouTube link and the video plays, pauses and seeks in sync for everyone in the room while they talk.
+- Group quizzes: the room plays a quiz together — the same question for everyone at the same moment, points for right and fast answers, and a podium at the end. From the student's own question file or from Discover.
+- Discover (استكشف): a catalogue of ready general-knowledge quizzes in Arabic and English, in subject sections and channels, played alone (learn mode or swipe cards) or with friends in a room. Every quiz also has a public page that works without signing up.
+
 ## Who it is for
 
 University and school students across the Arab world who study from large PDF books, lecture files and past exam papers.
@@ -30,6 +37,11 @@ Free plan with all study tools at lower usage limits (no payment card needed). P
 - AI flashcards with spaced repetition: https://nirolearn.com/flashcards
 - AI mind maps from PDF: https://nirolearn.com/mind-map
 - Telegram bot (send a PDF, get interactive questions with Arabic explanations, or a book added to your library): https://nirolearn.com/telegram-bot
+- Free study rooms (voice, shared PDF with pens, YouTube together, group quizzes): https://nirolearn.com/study-rooms
+- Quizzes to play with friends: https://nirolearn.com/quiz-with-friends
+- Ready quizzes (Discover, public pages): https://nirolearn.com/quizzes
+- Past exam question files to interactive quizzes: https://nirolearn.com/past-exam-questions
+- Solve a PDF's questions with AI, with explanations: https://nirolearn.com/solve-questions
 - Study guide (how to study a big file before an exam): https://nirolearn.com/how-to-study
 - Pricing: https://nirolearn.com/pricing
 - Sign up (free): https://nirolearn.com/register
