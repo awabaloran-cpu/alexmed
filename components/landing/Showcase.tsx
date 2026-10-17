@@ -3,9 +3,9 @@
 // them — plus the question files and the Telegram bot, promoted from a
 // line under "and also" to a section of their own. Shared by the home page
 // and the new public pages (app/study-rooms, app/quiz-with-friends).
-// Server components: the only client island is Discover's drawn cover.
+// Server components only: no client JavaScript, and none of Discover's
+// own stylesheet (a quiz card here is its colour and its subject).
 import Link from "next/link";
-import { Cover } from "@/components/discover/Cover";
 import { label } from "@/lib/discover/i18n";
 import {
   PUBLIC_QUIZZES,
@@ -237,11 +237,13 @@ export function DiscoverSection({ withLink = true }: { withLink?: boolean }) {
               href={quizPath(quiz.slug)}
               className={s.quizCard}
             >
-              <Cover
-                art={quiz.art}
-                color={quiz.color}
+              <span
                 className={s.quizCover}
-              />
+                style={{ background: quiz.color }}
+                aria-hidden="true"
+              >
+                {label("ar", quiz.category)}
+              </span>
               <b>{quiz.title}</b>
               <small>
                 {questionsLabel(quiz.questions.length)} · {quiz.channelName}
